@@ -20,3 +20,5 @@ build/
 *.jks
 *.keystore
 *.log
+gradle/gradle-daemon-jvm.properties
+.kotlin
