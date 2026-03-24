@@ -1,25 +1,47 @@
-*.iml
-.gradle
-/local.properties
+# IDE / Editor
+.idea/
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
-.DS_Store
+.vscode/
+*.iml
+
+# Android / Gradle local files
+.gradle
+.kotlin
+/local.properties
+local.properties
+gradle/gradle-daemon-jvm.properties
+
+# Build outputs
 /build
+build/
+**/build/
+out/
+*.class
+*.jar
 /captures
 .externalNativeBuild
 .cxx
-local.properties
-docs/develop
-build/
-**/build/
-.idea/
+
+# Signing / secrets / environment
 *.jks
 *.keystore
+.env*
+
+# Logs / temporary files
 *.log
-gradle/gradle-daemon-jvm.properties
-.kotlin
+*.tmp
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Local docs scratch area
+docs/develop
+
+# scripts
 opencode-webui.cmd
