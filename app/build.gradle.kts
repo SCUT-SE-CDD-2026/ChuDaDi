@@ -1,4 +1,22 @@
 import io.gitlab.arturbosch.detekt.Detekt
+import java.util.Properties
+
+val keystoreProperties =
+    Properties().apply {
+        val keystorePropertiesFile = rootProject.file("keystore.properties")
+        if (keystorePropertiesFile.exists()) {
+            keystorePropertiesFile.inputStream().use(::load)
+        }
+    }
+
+fun signingProperty(name: String): String? =
+    keystoreProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+        ?: System.getenv("CHUDADI_${name.uppercase()}")?.takeIf { it.isNotBlank() }
+
+val releaseStoreFile = signingProperty("storeFile")
+val releaseStorePassword = signingProperty("storePassword")
+val releaseKeyAlias = signingProperty("keyAlias")
+val releaseKeyPassword = signingProperty("keyPassword")
 
 plugins {
     alias(libs.plugins.android.application)
@@ -30,13 +48,41 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            if (
+                releaseStoreFile != null &&
+                releaseStorePassword != null &&
+                releaseKeyAlias != null &&
+                releaseKeyPassword != null
+            ) {
+                storeFile = rootProject.file(releaseStoreFile)
+                storePassword = releaseStorePassword
+                keyAlias = releaseKeyAlias
+                keyPassword = releaseKeyPassword
+                enableV1Signing = true
+                enableV2Signing = true
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        }
+    }
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
         }
     }
     compileOptions {
@@ -52,6 +98,23 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+}
+
+val isReleaseTaskRequested =
+    gradle.startParameter.taskNames.any { taskName ->
+        taskName.contains("Release", ignoreCase = true)
+    }
+
+if (
+    isReleaseTaskRequested &&
+    (releaseStoreFile == null ||
+        releaseStorePassword == null ||
+        releaseKeyAlias == null ||
+        releaseKeyPassword == null)
+) {
+    throw GradleException(
+        "Missing release signing config. Create keystore.properties in project root (see keystore.properties.example).",
+    )
 }
 
 dependencies {

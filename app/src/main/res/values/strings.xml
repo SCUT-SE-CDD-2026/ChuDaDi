@@ -1,3 +1,26 @@
 <resources>
-    <string name="app_name">ChuDaDi</string>
+    <string name="app_name">锄大地</string>
+    <string name="home_title">锄大地单机对局</string>
+    <string name="home_subtitle">和 3 名规则型 AI 在同一台设备上完成一整局锄大地。</string>
+    <string name="start_local_match">开始本地对战</string>
+    <string name="game_title">对局中</string>
+    <string name="current_actor">当前行动者：%1$s</string>
+    <string name="current_table_play">当前桌面：%1$s - %2$s</string>
+    <string name="last_play_by">桌面出牌：%1$s · %2$s</string>
+    <string name="waiting_for_lead">当前桌面：等待新一轮领出</string>
+    <string name="your_hand">你的手牌</string>
+    <string name="player_status">你剩余手牌：%1$d</string>
+    <string name="selected_card_count">已选牌数：%1$d</string>
+    <string name="clear_selection">清空选牌</string>
+    <string name="pass_turn">过牌</string>
+    <string name="submit_play">出牌</string>
+    <string name="ai_turn_hint">AI 正在自动行动，请稍候。</string>
+    <string name="opponent_current_actor">当前行动中</string>
+    <string name="opponent_passed">本轮已过牌</string>
+    <string name="opponent_waiting">等待行动</string>
+    <string name="opponent_cards_left">剩余手牌：%1$d</string>
+    <string name="result_title">结算</string>
+    <string name="result_winner">胜者：%1$s</string>
+    <string name="restart_match">再来一局</string>
+    <string name="exit_to_home">返回入口</string>
 </resources>
