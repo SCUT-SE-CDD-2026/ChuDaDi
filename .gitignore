@@ -30,6 +30,9 @@ out/
 # Signing / secrets / environment
 *.jks
 *.keystore
+*.p12
+*.pfx
+keystore.properties
 .env*
 
 # Logs / temporary files
