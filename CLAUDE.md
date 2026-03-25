@@ -122,7 +122,7 @@ export https_proxy=http://127.0.0.1:10808 && export http_proxy=http://127.0.0.1:
 ### 提交信息格式
 
 ```
-<type>(<scope>): <subject>
+<type>(<scope>): <subject> //subject使用中文
 
 <body>
 
