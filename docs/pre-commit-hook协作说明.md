@@ -117,7 +117,7 @@
 
 - 当开发者执行 `git commit` 时，若本地已正确安装 `pre-commit hook`，会自动运行 `scripts/pre-commit.sh`
 - 当开发者执行 `git push` 时，若本地已正确安装 `pre-push hook`，会自动运行 `scripts/pre-push.sh`
-- 当分支推送到远端，或向 `main` 发起 Pull Request 时，GitHub Actions 会自动运行 `.github/workflows/ci.yml`
+- 当向 `main` 发起 Pull Request 时，GitHub Actions 会自动运行 `.github/workflows/ci.yml`
 - 任一检查失败时，对应的提交或推送会被拦截
 
 补充说明：
