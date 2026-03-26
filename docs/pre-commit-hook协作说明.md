@@ -13,20 +13,20 @@
 
 脚本当前执行的检查为：
 
-- `./gradlew ktlintCheck --daemon --console=plain`
-- `./gradlew detekt lintDebug testDebugUnitTest --daemon --console=plain`
+- `./gradlew ktlintFormat detekt --daemon --console=plain`
+- `./gradlew lintDebug testDebugUnitTest --daemon --console=plain`
 
 含义如下：
 
-- `ktlintCheck`：仅检查 Kotlin 和 Kotlin DSL 的格式问题，不在提交时自动改写工作区
-- `detekt`：执行 Kotlin 静态分析检查，放到推送前兜底，避免每次 commit 都跑全量分析
+- `ktlintFormat`：自动修复 Kotlin 和 Kotlin DSL 的格式问题，尽量在提交前直接收敛格式噪音
+- `detekt`：执行 Kotlin 静态分析检查，把 Kotlin 侧质量问题尽量前移到 commit 阶段
 - `lintDebug`：执行 Debug 变体的 Android 静态检查，保留 API 兼容性、资源清理和组件暴露问题检查，同时降低全变体 lint 的本地等待时间
 - `testDebugUnitTest`：执行 Debug 单元测试，作为推送前兜底校验，比全量 `test` 更轻
 
 这样拆分的目的：
 
-- `pre-commit` 只保留最便宜、最直接的格式校验，减少高频提交等待时间
-- `pre-push` 再补齐 `detekt`、Android lint 和单元测试，避免问题进入远端仓库
+- `pre-commit` 一次 Gradle 调用内同时完成 Kotlin 格式修复和静态分析，尽量在更早阶段拦住问题
+- `pre-push` 专注 Android lint 和单元测试，避免每次 push 再重复执行 `detekt`
 - CI 仍建议继续执行更完整的 `ktlintCheck detekt lint test`
 
 ## 3. 当前质量规则
@@ -121,15 +121,15 @@
 
 补充说明：
 
-- `pre-commit` 会先检查 staged 文件；如果这次提交里没有 `*.kt` 或 `*.kts` 文件，则直接跳过
-- 因此文档提交、图片提交或纯资源提交，不会再被 Kotlin 格式检查阻塞
+- `pre-commit` 会直接运行 `ktlintFormat`，如果自动修复了格式，开发者需要重新确认变更并重新 `git add`
+- `pre-commit` 同时运行 `detekt`，因此 Kotlin 代码中的复杂度、异常处理和潜在缺陷问题会在 commit 阶段被拦截
 
 ## 5. 运行时输出
 
 脚本开始时会输出：
 
-- `Running pre-commit hook: ktlintCheck`
-- `Running pre-push hook: detekt + lintDebug + testDebugUnitTest`
+- `Running pre-commit hook: ktlintFormat + detekt`
+- `Running pre-push hook: lintDebug + testDebugUnitTest`
 
 若成功，会输出：
 
@@ -142,7 +142,6 @@
 常见处理方式：
 
 - 先运行 `./gradlew.bat ktlintFormat`
-- 再运行 `./gradlew.bat ktlintCheck`
 - 再运行 `./gradlew.bat detekt`
 - 再运行 `./gradlew.bat lintDebug`
 - 最后运行 `./gradlew.bat testDebugUnitTest`
@@ -172,6 +171,6 @@
 
 - 不要绕过 `pre-commit hook` 作为日常提交方式
 - 不要绕过 `pre-push hook` 作为日常推送方式
-- 提交前优先保证 `ktlintCheck` 可正常运行；推送前优先保证 `detekt`、`lintDebug`、`testDebugUnitTest` 可正常运行
+- 提交前优先保证 `ktlintFormat`、`detekt` 可正常运行；推送前优先保证 `lintDebug`、`testDebugUnitTest` 可正常运行
 - 合并前或 CI 中仍建议执行完整的 `./gradlew.bat ktlintCheck detekt lint test`
 - 若本地访问远程依赖较慢，应按各自环境补充代理设置，但不要把个人代理参数写死进团队默认命令
