@@ -27,7 +27,7 @@
 
 - `pre-commit` 一次 Gradle 调用内同时完成 Kotlin 格式修复和静态分析，尽量在更早阶段拦住问题
 - `pre-push` 专注 Android lint 和单元测试，避免每次 push 再重复执行 `detekt`
-- CI 仍建议继续执行更完整的 `ktlintCheck detekt lint test`
+- 远端 GitHub Actions CI 会继续执行更完整的 `ktlintCheck detekt lint test`
 
 ## 3. 当前质量规则
 
@@ -117,6 +117,7 @@
 
 - 当开发者执行 `git commit` 时，若本地已正确安装 `pre-commit hook`，会自动运行 `scripts/pre-commit.sh`
 - 当开发者执行 `git push` 时，若本地已正确安装 `pre-push hook`，会自动运行 `scripts/pre-push.sh`
+- 当分支推送到远端，或向 `main` 发起 Pull Request 时，GitHub Actions 会自动运行 `.github/workflows/ci.yml`
 - 任一检查失败时，对应的提交或推送会被拦截
 
 补充说明：
@@ -172,5 +173,5 @@
 - 不要绕过 `pre-commit hook` 作为日常提交方式
 - 不要绕过 `pre-push hook` 作为日常推送方式
 - 提交前优先保证 `ktlintFormat`、`detekt` 可正常运行；推送前优先保证 `lintDebug`、`testDebugUnitTest` 可正常运行
-- 合并前或 CI 中仍建议执行完整的 `./gradlew.bat ktlintCheck detekt lint test`
+- 合并前或远端 CI 中仍建议执行完整的 `./gradlew.bat ktlintCheck detekt lint test`
 - 若本地访问远程依赖较慢，应按各自环境补充代理设置，但不要把个人代理参数写死进团队默认命令
