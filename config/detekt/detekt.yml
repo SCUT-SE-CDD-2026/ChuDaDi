@@ -6,12 +6,79 @@ config:
 
 style:
   MagicNumber:
-    active: false
+    active: true
+    excludes:
+      - '**/ui/**'
+    ignoreNumbers:
+      - '-1'
+      - '0'
+      - '1'
+      - '2'
+      - '3'
+      - '4'
+      - '5'
+      - '13'
+      - '26'
+      - '39'
+      - '52'
+    ignorePropertyDeclaration: true
+    ignoreCompanionObjectPropertyDeclaration: true
+    ignoreNamedArgument: true
+    ignoreAnnotation: true
+  ReturnCount:
+    active: true
+    max: 3
+    excludedFunctions:
+      - equals
+  LoopWithTooManyJumpStatements:
+    active: true
+    maxJumpCount: 1
+
+complexity:
+  LongMethod:
+    active: true
+    threshold: 80
+  LargeClass:
+    active: true
+    threshold: 600
+  CyclomaticComplexMethod:
+    active: true
+    threshold: 15
+  NestedBlockDepth:
+    active: true
+    threshold: 4
+  ComplexCondition:
+    active: true
+    threshold: 4
+
+exceptions:
+  SwallowedException:
+    active: true
+  TooGenericExceptionCaught:
+    active: true
+    exceptionNames:
+      - Error
+      - Exception
+      - RuntimeException
+      - Throwable
+  PrintStackTrace:
+    active: true
+  RethrowCaughtException:
+    active: true
+
+potential-bugs:
+  UnsafeCast:
+    active: true
 
 naming:
   FunctionNaming:
     ignoreAnnotated:
       - Composable
+      - Preview
+  TopLevelPropertyNaming:
+    active: false
+    constantPattern: '[A-Z][_A-Z0-9]*'
+    propertyPattern: '[a-z][A-Za-z0-9]*'
 
 comments:
   UndocumentedPublicClass:

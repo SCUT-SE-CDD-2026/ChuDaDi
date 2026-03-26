@@ -98,6 +98,35 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
     }
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = true
+        warningsAsErrors = false
+
+        xmlReport = true
+        htmlReport = true
+        sarifReport = true
+
+        disable.addAll(
+            listOf(
+                "TypographyFractions",
+                "MissingTranslation",
+                "ContentDescription",
+            ),
+        )
+
+        warning.add("UnusedResources")
+
+        error.addAll(
+            listOf(
+                "NewApi",
+                "InlinedApi",
+                "ObsoleteSdkInt",
+                "ExportedReceiver",
+                "ExportedService",
+            ),
+        )
+    }
 }
 
 val isReleaseTaskRequested =
@@ -105,13 +134,13 @@ val isReleaseTaskRequested =
         taskName.contains("Release", ignoreCase = true)
     }
 
-if (
-    isReleaseTaskRequested &&
-    (releaseStoreFile == null ||
+val isReleaseSigningConfigMissing =
+    releaseStoreFile == null ||
         releaseStorePassword == null ||
         releaseKeyAlias == null ||
-        releaseKeyPassword == null)
-) {
+        releaseKeyPassword == null
+
+if (isReleaseTaskRequested && isReleaseSigningConfigMissing) {
     throw GradleException(
         "Missing release signing config. Create keystore.properties in project root (see keystore.properties.example).",
     )
@@ -156,4 +185,13 @@ tasks.withType<Detekt>().configureEach {
 ktlint {
     android.set(true)
     outputToConsole.set(true)
+    ignoreFailures.set(false)
+    reporters {
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.CHECKSTYLE)
+    }
+    filter {
+        exclude("**/build/**")
+        exclude("**/generated/**")
+    }
 }
