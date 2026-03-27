@@ -3,7 +3,7 @@ set -eu
 
 printf '%s\n' '[pre-commit] Running pre-commit hook: ktlintFormat + detekt'
 
-if ./gradlew ktlintFormat detekt; then
+if ./gradlew ktlintFormat detekt --daemon --console=plain; then
     printf '%s\n' '[pre-commit] Hook passed.'
 else
     printf '%s\n' '[pre-commit] Hook failed. Fix the reported issues, then retry commit.'
