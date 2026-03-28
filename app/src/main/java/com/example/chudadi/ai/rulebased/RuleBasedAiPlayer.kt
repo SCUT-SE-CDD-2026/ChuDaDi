@@ -6,6 +6,7 @@ import com.example.chudadi.model.game.rule.CombinationEvaluator
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
+import com.example.chudadi.model.game.rule.CombinationType
 
 sealed interface AiDecision {
     data class Play(
@@ -41,21 +42,34 @@ class RuleBasedAiPlayer(
     }
 
     private fun chooseLeadCombination(combinations: List<PlayCombination>): PlayCombination? {
-        val openingCard = Card(suit = CardSuit.DIAMONDS, rank = CardRank.THREE)
-        val openingCandidates = combinations.filter { combination ->
-            combination.cards.any { it.id == openingCard.id }
+        val cardsWithThreeOfDiamonds = combinations.filter { combination ->
+            combination.cards.contains(Card(CardSuit.DIAMONDS, CardRank.THREE)) &&
+                combination.cards.size > 1
         }
-        val candidatePool = if (openingCandidates.isNotEmpty()) openingCandidates else combinations
 
-        return candidatePool
-            .filter { it.cardCount == 1 }
-            .minWithOrNull(compareBy<PlayCombination> { it.primaryRank }.thenBy { it.primarySuit })
-            ?: candidatePool.minWithOrNull(
-                compareBy<PlayCombination> { it.cardCount }
-                    .thenBy { it.type.typePower }
-                    .thenBy { it.primaryRank }
-                    .thenBy { it.primarySuit },
-            )
+        if (cardsWithThreeOfDiamonds.isNotEmpty()) {
+            return cardsWithThreeOfDiamonds.random()
+        }
+
+        val singleThreeOfDiamonds = combinations.filter { combination ->
+            combination.cards.contains(Card(CardSuit.DIAMONDS, CardRank.THREE)) &&
+                combination.cards.size == 1
+        }
+
+        if (singleThreeOfDiamonds.isNotEmpty()) {
+            return singleThreeOfDiamonds.first()
+        }
+        
+        return if ((0..1).random() == 0) {
+            combinations
+                .sortedWith(
+                    compareByDescending<PlayCombination> { it.type.typePower }
+                        .thenBy { it.primaryRank }
+                )
+                .firstOrNull()
+        } else {
+            combinations.randomOrNull()
+        }
     }
 
     private fun chooseResponseCombination(
