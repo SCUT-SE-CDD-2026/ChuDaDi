@@ -87,31 +87,47 @@ val Typography = Typography(
 val CardRankTextStyle = TextStyle(
     fontFamily = ChuDaDiSans,
     fontWeight = FontWeight.ExtraBold,
-    fontSize = 22.sp,
-    lineHeight = 24.sp,
+    fontSize = 12.sp,
+    lineHeight = 12.sp,
     letterSpacing = 0.sp,
 )
 
 val CardSuitTextStyle = TextStyle(
     fontFamily = ChuDaDiSans,
     fontWeight = FontWeight.Bold,
-    fontSize = 20.sp,
-    lineHeight = 22.sp,
+    fontSize = 11.sp,
+    lineHeight = 11.sp,
     letterSpacing = 0.sp,
 )
 
 val CompactCardRankTextStyle = TextStyle(
     fontFamily = ChuDaDiSans,
     fontWeight = FontWeight.ExtraBold,
-    fontSize = 14.sp,
-    lineHeight = 16.sp,
+    fontSize = 8.sp,
+    lineHeight = 8.sp,
     letterSpacing = 0.sp,
 )
 
 val CompactCardSuitTextStyle = TextStyle(
     fontFamily = ChuDaDiSans,
     fontWeight = FontWeight.Bold,
+    fontSize = 7.sp,
+    lineHeight = 7.sp,
+    letterSpacing = 0.sp,
+)
+
+val CardCenterSuitTextStyle = TextStyle(
+    fontFamily = ChuDaDiSans,
+    fontWeight = FontWeight.Bold,
+    fontSize = 24.sp,
+    lineHeight = 24.sp,
+    letterSpacing = 0.sp,
+)
+
+val CompactCardCenterSuitTextStyle = TextStyle(
+    fontFamily = ChuDaDiSans,
+    fontWeight = FontWeight.Bold,
     fontSize = 14.sp,
-    lineHeight = 16.sp,
+    lineHeight = 14.sp,
     letterSpacing = 0.sp,
 )

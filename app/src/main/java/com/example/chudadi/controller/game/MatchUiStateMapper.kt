@@ -1,5 +1,6 @@
 package com.example.chudadi.controller.game
 
+import com.example.chudadi.R
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.Match
@@ -46,6 +47,7 @@ class MatchUiStateMapper(
                     OpponentSummary(
                         seatId = seat.seatId,
                         displayName = seat.displayName,
+                        avatarResId = R.drawable.avatar,
                         remainingCards = seat.hand.size,
                         isCurrentActor = seat.seatId == match.activeSeatIndex,
                         hasPassed = seat.status == SeatStatus.PASSED,
