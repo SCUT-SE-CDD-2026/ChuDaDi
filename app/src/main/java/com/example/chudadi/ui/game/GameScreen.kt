@@ -41,7 +41,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -51,6 +50,10 @@ import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
 import com.example.chudadi.ui.ComposeTestTags
+import com.example.chudadi.ui.theme.CardRankTextStyle
+import com.example.chudadi.ui.theme.CardSuitTextStyle
+import com.example.chudadi.ui.theme.CompactCardRankTextStyle
+import com.example.chudadi.ui.theme.CompactCardSuitTextStyle
 
 private val TableFelt = Color(0xFF163726)
 private val TableBorder = Color(0xFF8D6A33)
@@ -282,13 +285,13 @@ private fun OpponentSeatPanel(
         Text(
             text = opponent.displayName,
             color = Color(0xFFC6F6D5),
-            style = MaterialTheme.typography.bodySmall,
+            style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
         )
         Text(
             text = stringResource(R.string.opponent_cards_left, opponent.remainingCards),
             color = Color.White,
-            style = MaterialTheme.typography.labelSmall,
+            style = MaterialTheme.typography.labelMedium,
         )
         OpponentCardBacks(cardCount = opponent.remainingCards)
         Text(
@@ -422,7 +425,7 @@ private fun RowScope.ActionButton(
         ) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.labelLarge,
             )
         }
     } else {
@@ -433,7 +436,7 @@ private fun RowScope.ActionButton(
         ) {
             Text(
                 text = text,
-                style = MaterialTheme.typography.bodyMedium,
+                style = MaterialTheme.typography.labelLarge,
             )
         }
     }
@@ -510,22 +513,20 @@ private fun CardFaceContent(
             color = CardBlack,
             style =
                 if (compact) {
-                    MaterialTheme.typography.bodyMedium
+                    CompactCardRankTextStyle
                 } else {
-                    MaterialTheme.typography.titleLarge
+                    CardRankTextStyle
                 },
-            fontWeight = FontWeight.Bold,
         )
         Text(
             text = suit,
             color = suitColor,
             style =
                 if (compact) {
-                    MaterialTheme.typography.bodyLarge
+                    CompactCardSuitTextStyle
                 } else {
-                    MaterialTheme.typography.titleLarge
+                    CardSuitTextStyle
                 },
-            fontWeight = FontWeight.Bold,
         )
     }
 }
