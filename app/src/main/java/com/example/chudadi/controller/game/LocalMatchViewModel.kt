@@ -22,7 +22,7 @@ class LocalMatchViewModel(
 
     constructor(engine: GameEngine) : this(
         engine = engine,
-        aiPlayer = RuleBasedAiPlayer(engine.evaluator()),
+        aiPlayer = RuleBasedAiPlayer(),
         mapper = MatchUiStateMapper(engine),
     )
     private val viewModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)

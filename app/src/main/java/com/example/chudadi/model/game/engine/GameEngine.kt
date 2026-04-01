@@ -12,6 +12,9 @@ import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.entity.TrickState
 import com.example.chudadi.model.game.rule.CombinationEvaluator
+import com.example.chudadi.model.game.rule.CombinationType
+import com.example.chudadi.model.game.rule.GameRuleSet
+import com.example.chudadi.model.game.rule.GameRules
 import java.util.UUID
 import kotlin.random.Random
 
@@ -24,9 +27,9 @@ data class ActionResult(
 
 open class GameEngine(
     private val random: Random = Random.Default,
-    private val evaluator: CombinationEvaluator = CombinationEvaluator(),
+    private val defaultRuleSet: GameRuleSet = GameRuleSet.SOUTHERN,
 ) {
-    open fun startLocalMatch(): Match {
+    open fun startLocalMatch(ruleSet: GameRuleSet = defaultRuleSet): Match {
         val shuffledDeck = Card.standardDeck().shuffled(random)
         val seats = listOf(
             createSeat(0, "You", SeatControllerType.HUMAN, shuffledDeck.subList(0, 13)),
@@ -40,6 +43,7 @@ open class GameEngine(
 
         return Match(
             matchId = UUID.randomUUID().toString(),
+            ruleSet = ruleSet,
             phase = MatchPhase.PLAYER_TURN,
             seats = seats,
             activeSeatIndex = openingSeat.seatId,
@@ -60,6 +64,7 @@ open class GameEngine(
         seatIndex: Int,
         selectedCardIds: Set<String>,
     ): ActionResult {
+        val evaluator = evaluator(match.ruleSet)
         if (match.phase == MatchPhase.FINISHED) {
             return ActionResult(
                 match = match,
@@ -99,6 +104,13 @@ open class GameEngine(
                 error = GameActionError.PLAY_DOES_NOT_BEAT_CURRENT,
             )
         }
+        if (!canUseBombForCurrentTrick(match, seat, candidate, evaluator)) {
+            return ActionResult(
+                match = match,
+                success = false,
+                error = GameActionError.PLAY_DOES_NOT_BEAT_CURRENT,
+            )
+        }
 
         val updatedMatch = TurnResolver.applyPlay(
             match = match,
@@ -117,6 +129,7 @@ open class GameEngine(
         match: Match,
         seatIndex: Int,
     ): ActionResult {
+        val passError = getPassError(match, seatIndex)
         if (match.phase == MatchPhase.FINISHED) {
             return ActionResult(
                 match = match,
@@ -131,11 +144,11 @@ open class GameEngine(
                 error = GameActionError.NOT_CURRENT_TURN,
             )
         }
-        if (!canPass(match, seatIndex)) {
+        if (passError != null) {
             return ActionResult(
                 match = match,
                 success = false,
-                error = GameActionError.CANNOT_PASS_LEAD_TURN,
+                error = passError,
             )
         }
 
@@ -143,7 +156,7 @@ open class GameEngine(
         return ActionResult(
             match = TurnResolver.applyPass(match, seatIndex),
             success = true,
-            message = "${seat.displayName} 要不起",
+            message = "${seat.displayName} passed",
         )
     }
 
@@ -153,6 +166,7 @@ open class GameEngine(
         selectedCardIds: Set<String>,
     ): Boolean {
         val activeMatch = match ?: return false
+        val evaluator = evaluator(activeMatch.ruleSet)
         if (activeMatch.phase == MatchPhase.FINISHED || activeMatch.activeSeatIndex != seatIndex) {
             return false
         }
@@ -170,13 +184,12 @@ open class GameEngine(
         seatIndex: Int,
     ): Boolean {
         val activeMatch = match ?: return false
-        if (activeMatch.phase == MatchPhase.FINISHED || activeMatch.activeSeatIndex != seatIndex) {
-            return false
-        }
-        return activeMatch.trickState.currentCombination != null
+        return getPassError(activeMatch, seatIndex) == null
     }
 
-    open fun evaluator(): CombinationEvaluator = evaluator
+    open fun evaluator(ruleSet: GameRuleSet = defaultRuleSet): CombinationEvaluator {
+        return CombinationEvaluator(GameRules.forRuleSet(ruleSet))
+    }
 
     private fun createSeat(
         seatId: Int,
@@ -202,6 +215,63 @@ open class GameEngine(
             match.trickState.passCount == 0 &&
             match.trickState.leadSeatIndex == seatIndex &&
             match.trickState.lastWinningSeatIndex == seatIndex
+    }
+
+    private fun getPassError(
+        match: Match,
+        seatIndex: Int,
+    ): GameActionError? {
+        if (match.phase == MatchPhase.FINISHED || match.activeSeatIndex != seatIndex) {
+            return GameActionError.NOT_CURRENT_TURN
+        }
+
+        val currentCombination = match.trickState.currentCombination
+            ?: return GameActionError.CANNOT_PASS_LEAD_TURN
+
+        val rules = GameRules.forRuleSet(match.ruleSet)
+        if (!rules.mustBeatIfPossible) {
+            return null
+        }
+
+        val seat = match.seats.first { it.seatId == seatIndex }
+        val evaluator = evaluator(match.ruleSet)
+        val hasMandatoryResponse = evaluator
+            .generateAllValidCombinations(seat.hand)
+            .any { candidate ->
+                !rules.isBomb(candidate.type) &&
+                    candidate.type == currentCombination.type &&
+                    candidate.cardCount == currentCombination.cardCount &&
+                    evaluator.canBeat(candidate, currentCombination)
+            }
+
+        return if (hasMandatoryResponse) GameActionError.MUST_BEAT_IF_POSSIBLE else null
+    }
+
+    private fun canUseBombForCurrentTrick(
+        match: Match,
+        seat: Seat,
+        candidate: com.example.chudadi.model.game.entity.PlayCombination,
+        evaluator: CombinationEvaluator,
+    ): Boolean {
+        val currentCombination = match.trickState.currentCombination ?: return true
+        val rules = GameRules.forRuleSet(match.ruleSet)
+        if (!rules.isBomb(candidate.type) || rules.isBomb(currentCombination.type)) {
+            return true
+        }
+        if (!rules.bombRequiresNoSameTypeResponse) {
+            return true
+        }
+
+        val hasSameTypeBeatOption = evaluator
+            .generateAllValidCombinations(seat.hand)
+            .any { alternative ->
+                !rules.isBomb(alternative.type) &&
+                    alternative.type == currentCombination.type &&
+                    alternative.cardCount == currentCombination.cardCount &&
+                    evaluator.canBeat(alternative, currentCombination)
+            }
+
+        return !hasSameTypeBeatOption
     }
 
     companion object {

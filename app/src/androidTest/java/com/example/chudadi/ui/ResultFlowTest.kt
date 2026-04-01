@@ -16,6 +16,7 @@ import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.entity.TrickState
+import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.navigation.ChuDaDiNavGraph
 import org.junit.Rule
 import org.junit.Test
@@ -65,7 +66,7 @@ class ResultFlowTest {
     ) : GameEngine() {
         private var cursor = 0
 
-        override fun startLocalMatch(): Match {
+        override fun startLocalMatch(ruleSet: GameRuleSet): Match {
             val match = scriptedMatches[cursor.coerceAtMost(scriptedMatches.lastIndex)]
             if (cursor < scriptedMatches.lastIndex) {
                 cursor++
@@ -78,6 +79,7 @@ class ResultFlowTest {
         private fun finishedMatch(): Match {
             return Match(
                 matchId = "finished-match",
+                ruleSet = GameRuleSet.SOUTHERN,
                 phase = MatchPhase.FINISHED,
                 seats = baseSeats(),
                 activeSeatIndex = 0,
@@ -101,6 +103,7 @@ class ResultFlowTest {
         private fun ongoingMatch(): Match {
             return Match(
                 matchId = "ongoing-match",
+                ruleSet = GameRuleSet.SOUTHERN,
                 phase = MatchPhase.PLAYER_TURN,
                 seats = baseSeats(),
                 activeSeatIndex = 0,
