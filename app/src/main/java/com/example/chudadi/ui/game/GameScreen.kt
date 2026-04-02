@@ -1043,7 +1043,7 @@ private fun RowScope.SecondaryActionButton(uiState: ActionButtonUiState) {
 }
 
 @Composable
-private fun rememberButtonInteractionSource(): MutableInteractionSource = MutableInteractionSource()
+private fun rememberButtonInteractionSource(): MutableInteractionSource = remember { MutableInteractionSource() }
 
 @Composable
 private fun RowScope.animatedActionButtonModifier(
