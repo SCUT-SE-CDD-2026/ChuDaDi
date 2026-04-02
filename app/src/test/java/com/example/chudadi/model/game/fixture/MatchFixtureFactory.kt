@@ -36,6 +36,7 @@ object MatchFixtureFactory {
                 roundNumber = 1,
             ),
             playHistory = emptyList(),
+            totalBombCount = 0,
             result = null,
         )
     }

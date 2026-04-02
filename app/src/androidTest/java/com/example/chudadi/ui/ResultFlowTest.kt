@@ -12,9 +12,11 @@ import com.example.chudadi.model.game.entity.CardSuit
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.RoundResult
+import com.example.chudadi.model.game.entity.RoundScore
 import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.entity.SeatStatus
+import com.example.chudadi.model.game.entity.ScoreSummary
 import com.example.chudadi.model.game.entity.TrickState
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.navigation.ChuDaDiNavGraph
@@ -91,11 +93,23 @@ class ResultFlowTest {
                     roundNumber = 1,
                 ),
                 playHistory = listOf("You win"),
+                totalBombCount = 0,
                 result =
                     RoundResult(
                         winnerSeatIndex = 0,
                         ranking = listOf(0, 1, 2, 3),
-                        summaryLines = listOf("1. You (0 cards left)"),
+                        scoreSummary = ScoreSummary(
+                            summaryLines = listOf("1. You (0 cards left)"),
+                            bombCount = 0,
+                            roundScores = listOf(
+                                RoundScore(
+                                    seatId = 0,
+                                    playerName = "You",
+                                    remainingCards = 0,
+                                    roundScore = 3,
+                                ),
+                            ),
+                        ),
                     ),
             )
         }
@@ -115,6 +129,7 @@ class ResultFlowTest {
                     roundNumber = 1,
                 ),
                 playHistory = listOf("You lead"),
+                totalBombCount = 0,
                 result = null,
             )
         }
