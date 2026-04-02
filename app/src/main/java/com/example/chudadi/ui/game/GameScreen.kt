@@ -2,10 +2,23 @@
 
 package com.example.chudadi.ui.game
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.keyframes
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -41,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
@@ -87,6 +101,8 @@ private val CardShadow = Color(0x3A180E09)
 private val CardShadowSelected = Color(0x661F130E)
 private val CardBack = Color(0xFF7D4B32)
 private val CardBackHighlight = Color(0xFF9E6A4E)
+private val SubmitButtonGold = Color(0xFFBA8C43)
+private val SubmitButtonGoldDisabled = Color(0xFF6B5530)
 private val CardRed = Color(0xFFB42318)
 private val CardBlack = Color(0xFF2C1C13)
 private val HumanPlayOffsetX = 26.dp
@@ -97,6 +113,10 @@ private const val RIGHT_SEAT_ID = 3
 private const val HUMAN_SEAT_ID = 0
 private val TableShape = RoundedCornerShape(28.dp)
 private val CardShape = RoundedCornerShape(10.dp)
+private const val HandCardMoveDurationMs = 150
+private const val ButtonStateDurationMs = 110
+private const val ButtonPressDurationMs = 70
+private const val ActorPulseDurationMs = 1400
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -482,17 +502,28 @@ private fun OpponentAvatar(
     opponent: OpponentSummary,
     layoutSpec: GameLayoutSpec,
 ) {
+    val pulse = rememberActorPulse(opponent.isCurrentActor)
+    val ringColor =
+        if (opponent.isCurrentActor) {
+            CardGlow.copy(alpha = 0.56f + 0.22f * pulse)
+        } else {
+            Color(0xAAFFF7DD)
+        }
+    val ringWidth = if (opponent.isCurrentActor) 2.dp + 1.dp * pulse else 1.dp
+    val ringScale = if (opponent.isCurrentActor) 1.05f + 0.03f * pulse else 1f
+
     Image(
         painter = painterResource(opponent.avatarResId),
         contentDescription = opponent.displayName,
         contentScale = ContentScale.Crop,
         modifier = Modifier
+            .scale(ringScale)
             .size(layoutSpec.opponentAvatarSize)
             .clip(CircleShape)
             .background(Color(0xFFEEE2C0), CircleShape)
             .border(
-                width = if (opponent.isCurrentActor) 2.dp else 1.dp,
-                color = if (opponent.isCurrentActor) CardGlow else Color(0xAAFFF7DD),
+                width = ringWidth,
+                color = ringColor,
                 shape = CircleShape,
             ),
     )
@@ -504,11 +535,30 @@ private fun OpponentInfoBadge(
     layoutSpec: GameLayoutSpec,
     alignEnd: Boolean,
 ) {
+    val pulse = rememberActorPulse(opponent.isCurrentActor)
     val status =
         when {
             opponent.isCurrentActor -> stringResource(R.string.opponent_current_actor)
             opponent.hasPassed -> stringResource(R.string.opponent_passed)
             else -> stringResource(R.string.opponent_waiting)
+        }
+    val badgeBorderColor =
+        if (opponent.isCurrentActor) {
+            InfoBadgeStroke.copy(alpha = 0.45f + 0.20f * pulse)
+        } else {
+            InfoBadgeStroke
+        }
+    val nameColor =
+        if (opponent.isCurrentActor) {
+            Color(0xFFC6F6D5).copy(alpha = 0.88f + 0.12f * pulse)
+        } else {
+            Color(0xFFC6F6D5)
+        }
+    val statusColor =
+        if (opponent.isCurrentActor) {
+            Color(0xFFE7D7B1).copy(alpha = 0.84f + 0.16f * pulse)
+        } else {
+            Color(0xFFE7D7B1)
         }
 
     Column(
@@ -516,14 +566,14 @@ private fun OpponentInfoBadge(
             .widthIn(min = layoutSpec.opponentInfoMinWidth, max = layoutSpec.opponentInfoMaxWidth)
             .clip(RoundedCornerShape(14.dp))
             .background(InfoBadge)
-            .border(1.dp, InfoBadgeStroke, RoundedCornerShape(14.dp))
+            .border(1.dp, badgeBorderColor, RoundedCornerShape(14.dp))
             .padding(horizontal = 8.dp, vertical = 6.dp),
         verticalArrangement = Arrangement.spacedBy(1.dp),
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
     ) {
         Text(
             text = opponent.displayName,
-            color = Color(0xFFC6F6D5),
+            color = nameColor,
             style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
             textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
@@ -536,7 +586,7 @@ private fun OpponentInfoBadge(
         )
         Text(
             text = status,
-            color = Color(0xFFE7D7B1),
+            color = statusColor,
             style = MaterialTheme.typography.labelSmall,
             textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
         )
@@ -658,6 +708,18 @@ private fun PlayerHandRow(
         ) {
             cards.forEachIndexed { index, card ->
                 val placement = layout.placements[index]
+                val animatedX =
+                    animateDpAsState(
+                        targetValue = placement.x,
+                        animationSpec = tween(durationMillis = HandCardMoveDurationMs),
+                        label = "player-card-x",
+                    )
+                val animatedY =
+                    animateDpAsState(
+                        targetValue = placement.y,
+                        animationSpec = tween(durationMillis = HandCardMoveDurationMs),
+                        label = "player-card-y",
+                    )
                 PlayerCardChip(
                     uiState =
                         PlayerCardUiState(
@@ -668,7 +730,7 @@ private fun PlayerHandRow(
                             height = layoutSpec.playerCardHeight,
                             onToggle = { onToggleCardSelection(card.id) },
                         ),
-                    modifier = Modifier.offset(x = placement.x, y = placement.y),
+                    modifier = Modifier.offset(x = animatedX.value, y = animatedY.value),
                 )
             }
         }
@@ -703,6 +765,12 @@ private data class ActionButtonUiState(
     val tag: String,
     val minHeight: Dp,
     val primary: Boolean = false,
+)
+
+private data class AnimatedActionButtonColors(
+    val containerColor: Color,
+    val contentColor: Color,
+    val borderColor: Color? = null,
 )
 
 private data class PlayerCardUiState(
@@ -818,45 +886,133 @@ private fun GameActionButtons(
 private fun RowScope.ActionButton(
     uiState: ActionButtonUiState,
 ) {
-    val buttonModifier = Modifier
+    if (uiState.primary) {
+        PrimaryActionButton(uiState = uiState)
+    } else {
+        SecondaryActionButton(uiState = uiState)
+    }
+}
+
+@Composable
+private fun RowScope.PrimaryActionButton(uiState: ActionButtonUiState) {
+    val interactionSource = rememberButtonInteractionSource()
+    val buttonModifier = animatedActionButtonModifier(uiState = uiState, interactionSource = interactionSource)
+    val colors = animatedPrimaryButtonColors(enabled = uiState.enabled)
+
+    Button(
+        modifier = buttonModifier,
+        onClick = uiState.onClick,
+        enabled = uiState.enabled,
+        interactionSource = interactionSource,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = colors.containerColor,
+            contentColor = colors.contentColor,
+            disabledContainerColor = colors.containerColor,
+            disabledContentColor = colors.contentColor,
+        ),
+    ) {
+        Text(
+            text = uiState.text,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun RowScope.SecondaryActionButton(uiState: ActionButtonUiState) {
+    val interactionSource = rememberButtonInteractionSource()
+    val buttonModifier = animatedActionButtonModifier(uiState = uiState, interactionSource = interactionSource)
+    val colors = animatedSecondaryButtonColors(enabled = uiState.enabled)
+
+    OutlinedButton(
+        modifier = buttonModifier,
+        onClick = uiState.onClick,
+        enabled = uiState.enabled,
+        interactionSource = interactionSource,
+        border = BorderStroke(1.dp, colors.borderColor ?: Color.Transparent),
+        colors = ButtonDefaults.outlinedButtonColors(
+            containerColor = colors.containerColor,
+            contentColor = colors.contentColor,
+            disabledContainerColor = colors.containerColor,
+            disabledContentColor = colors.contentColor,
+        ),
+    ) {
+        Text(
+            text = uiState.text,
+            style = MaterialTheme.typography.labelMedium,
+        )
+    }
+}
+
+@Composable
+private fun rememberButtonInteractionSource(): MutableInteractionSource = MutableInteractionSource()
+
+@Composable
+private fun RowScope.animatedActionButtonModifier(
+    uiState: ActionButtonUiState,
+    interactionSource: MutableInteractionSource,
+): Modifier {
+    val isPressed = interactionSource.collectIsPressedAsState()
+    val scale =
+        animateFloatAsState(
+            targetValue = if (isPressed.value && uiState.enabled) 0.98f else 1f,
+            animationSpec = tween(durationMillis = ButtonPressDurationMs),
+            label = "action-button-scale",
+        )
+    return Modifier
         .weight(1f, fill = true)
         .sizeIn(minHeight = uiState.minHeight)
         .testTag(uiState.tag)
-    if (uiState.primary) {
-        Button(
-            modifier = buttonModifier,
-            onClick = uiState.onClick,
-            enabled = uiState.enabled,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = Color(0xCC3A281F),
-                contentColor = Color.White,
-                disabledContainerColor = Color(0x883A281F),
-                disabledContentColor = Color(0xFFD6D0C6),
-            ),
-        ) {
-            Text(
-                text = uiState.text,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-    } else {
-        OutlinedButton(
-            modifier = buttonModifier,
-            onClick = uiState.onClick,
-            enabled = uiState.enabled,
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = Color(0xCC1D1A19),
-                contentColor = Color.White,
-                disabledContainerColor = Color(0x881D1A19),
-                disabledContentColor = Color(0xFFD6D0C6),
-            ),
-        ) {
-            Text(
-                text = uiState.text,
-                style = MaterialTheme.typography.labelMedium,
-            )
-        }
-    }
+        .scale(scale.value)
+}
+
+@Composable
+private fun animatedPrimaryButtonColors(enabled: Boolean): AnimatedActionButtonColors {
+    val containerColor =
+        animateColorAsState(
+            targetValue = if (enabled) SubmitButtonGold else SubmitButtonGoldDisabled,
+            animationSpec = tween(durationMillis = ButtonStateDurationMs),
+            label = "primary-button-container",
+        )
+    val contentColor =
+        animateColorAsState(
+            targetValue = if (enabled) Color(0xFFFDF7EA) else Color(0xFFD6D0C6),
+            animationSpec = tween(durationMillis = ButtonStateDurationMs),
+            label = "primary-button-content",
+        )
+
+    return AnimatedActionButtonColors(
+        containerColor = containerColor.value,
+        contentColor = contentColor.value,
+    )
+}
+
+@Composable
+private fun animatedSecondaryButtonColors(enabled: Boolean): AnimatedActionButtonColors {
+    val containerColor =
+        animateColorAsState(
+            targetValue = if (enabled) Color(0xCC1D1A19) else Color(0x881D1A19),
+            animationSpec = tween(durationMillis = ButtonStateDurationMs),
+            label = "secondary-button-container",
+        )
+    val contentColor =
+        animateColorAsState(
+            targetValue = if (enabled) Color.White else Color(0xFFD6D0C6),
+            animationSpec = tween(durationMillis = ButtonStateDurationMs),
+            label = "secondary-button-content",
+        )
+    val borderColor =
+        animateColorAsState(
+            targetValue = if (enabled) Color(0x66F7E8C2) else Color(0x33F7E8C2),
+            animationSpec = tween(durationMillis = ButtonStateDurationMs),
+            label = "secondary-button-border",
+        )
+
+    return AnimatedActionButtonColors(
+        containerColor = containerColor.value,
+        contentColor = contentColor.value,
+        borderColor = borderColor.value,
+    )
 }
 
 @Composable
@@ -920,7 +1076,7 @@ private fun PlayerCardChip(
     uiState: PlayerCardUiState,
     modifier: Modifier = Modifier,
 ) {
-    val visualSpec = playerCardVisualSpec(uiState)
+    val visualSpec = animatedPlayerCardVisualSpec(uiState)
     val selectedGlowModifier =
         Modifier.fillMaxSize().blurredRoundRectModifier(
             spec = visualSpec.selectedGlowSpec,
@@ -978,15 +1134,47 @@ private fun PlayerCardChip(
     }
 }
 
-private fun playerCardVisualSpec(uiState: PlayerCardUiState): PlayerCardVisualSpec =
-    PlayerCardVisualSpec(
-        shadowColor = if (uiState.isSelected) CardShadowSelected else CardShadow,
-        cardShadowElevation = if (uiState.isSelected) 10.dp else 6.dp,
-        outerWidth = if (uiState.isSelected) uiState.width + 12.dp else uiState.width + 6.dp,
-        outerHeight = if (uiState.isSelected) uiState.height + 34.dp else uiState.height + 14.dp,
+@Composable
+private fun animatedPlayerCardVisualSpec(uiState: PlayerCardUiState): PlayerCardVisualSpec {
+    val cardSelectionProgress =
+        animateFloatAsState(
+            targetValue = if (uiState.isSelected) 1f else 0f,
+            animationSpec = tween(durationMillis = HandCardMoveDurationMs),
+            label = "card-selection-progress",
+        )
+    val shadowColor =
+        animateColorAsState(
+            targetValue = if (uiState.isSelected) CardShadowSelected else CardShadow,
+            animationSpec = tween(durationMillis = HandCardMoveDurationMs),
+            label = "card-shadow-color",
+        )
+    val cardShadowElevation =
+        animateDpAsState(
+            targetValue = if (uiState.isSelected) 10.dp else 6.dp,
+            animationSpec = tween(durationMillis = HandCardMoveDurationMs),
+            label = "card-shadow-elevation",
+        )
+    val outerWidth =
+        animateDpAsState(
+            targetValue = if (uiState.isSelected) uiState.width + 12.dp else uiState.width + 6.dp,
+            animationSpec = tween(durationMillis = HandCardMoveDurationMs),
+            label = "card-outer-width",
+        )
+    val outerHeight =
+        animateDpAsState(
+            targetValue = if (uiState.isSelected) uiState.height + 34.dp else uiState.height + 14.dp,
+            animationSpec = tween(durationMillis = HandCardMoveDurationMs),
+            label = "card-outer-height",
+        )
+
+    return PlayerCardVisualSpec(
+        shadowColor = shadowColor.value,
+        cardShadowElevation = cardShadowElevation.value,
+        outerWidth = outerWidth.value,
+        outerHeight = outerHeight.value,
         selectedGlowSpec =
             BlurredRoundRectSpec(
-                color = CardGlow.copy(alpha = 0.60f),
+                color = CardGlow.copy(alpha = 0.60f * cardSelectionProgress.value),
                 widthFactor = 0.87f,
                 heightFactor = 0.87f,
                 offsetX = 0.dp,
@@ -996,7 +1184,7 @@ private fun playerCardVisualSpec(uiState: PlayerCardUiState): PlayerCardVisualSp
             ),
         selectedShadowSpec =
             BlurredRoundRectSpec(
-                color = CardShadowSelected.copy(alpha = 0.28f),
+                color = CardShadowSelected.copy(alpha = 0.28f * cardSelectionProgress.value),
                 widthFactor = 0.80f,
                 heightFactor = 0.88f,
                 offsetX = (-3).dp,
@@ -1006,7 +1194,10 @@ private fun playerCardVisualSpec(uiState: PlayerCardUiState): PlayerCardVisualSp
             ),
         baseShadowSpec =
             BlurredRoundRectSpec(
-                color = CardShadow.copy(alpha = 0.48f),
+                color =
+                    CardShadow.copy(
+                        alpha = 0.48f - 0.30f * cardSelectionProgress.value,
+                    ),
                 widthFactor = 0.78f,
                 heightFactor = 0.84f,
                 offsetX = (-2).dp,
@@ -1015,6 +1206,7 @@ private fun playerCardVisualSpec(uiState: PlayerCardUiState): PlayerCardVisualSp
                 blurRadius = 10.dp,
             ),
     )
+}
 
 @Composable
 private fun BoxScope.PlayerCardEffects(
@@ -1023,6 +1215,11 @@ private fun BoxScope.PlayerCardEffects(
     selectedShadowModifier: Modifier,
     baseShadowModifier: Modifier,
 ) {
+    Box(
+        modifier = Modifier
+            .align(Alignment.Center)
+            .then(baseShadowModifier),
+    )
     if (isSelected) {
         Box(
             modifier = Modifier
@@ -1034,13 +1231,34 @@ private fun BoxScope.PlayerCardEffects(
                 .align(Alignment.Center)
                 .then(selectedShadowModifier),
         )
-    } else {
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .then(baseShadowModifier),
-        )
     }
+}
+
+@Composable
+private fun rememberActorPulse(isCurrentActor: Boolean): Float {
+    if (!isCurrentActor) {
+        return 0f
+    }
+
+    val transition = rememberInfiniteTransition(label = "actor-pulse")
+    val pulse =
+        transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec =
+                infiniteRepeatable(
+                    animation =
+                        keyframes {
+                            durationMillis = ActorPulseDurationMs
+                            0f at 0 using LinearEasing
+                            1f at ActorPulseDurationMs / 2 using LinearEasing
+                            0f at ActorPulseDurationMs using LinearEasing
+                        },
+                    repeatMode = RepeatMode.Restart,
+                ),
+            label = "actor-pulse-value",
+        )
+    return pulse.value
 }
 
 private fun Modifier.blurredRoundRectModifier(spec: BlurredRoundRectSpec): Modifier =
