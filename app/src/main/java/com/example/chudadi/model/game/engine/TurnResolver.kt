@@ -4,8 +4,10 @@ import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.entity.RoundResult
+import com.example.chudadi.model.game.entity.ScoreSummary
 import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatStatus
+import com.example.chudadi.model.game.rule.GameRules
 
 object TurnResolver {
     fun applyPlay(
@@ -14,6 +16,8 @@ object TurnResolver {
         combination: PlayCombination,
     ): Match {
         val currentSeat = match.seats.first { it.seatId == seatIndex }
+        val rules = GameRules.forRuleSet(match.ruleSet)
+        val nextBombCount = match.totalBombCount + if (rules.isBomb(combination.type)) 1 else 0
         val remainingHand = currentSeat.hand.filterNot { card ->
             combination.cards.any { selected -> selected.id == card.id }
         }
@@ -45,7 +49,13 @@ object TurnResolver {
                     tablePlays = match.trickState.tablePlays + (seatIndex to combination),
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
-                result = createResult(rankedSeats),
+                totalBombCount = nextBombCount,
+                result = createResult(
+                    match = match,
+                    seats = rankedSeats,
+                    winnerSeatId = seatIndex,
+                    totalBombCount = nextBombCount,
+                ),
             )
         }
 
@@ -61,6 +71,7 @@ object TurnResolver {
                 tablePlays = match.trickState.tablePlays + (seatIndex to combination),
             ),
             playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
+            totalBombCount = nextBombCount,
         )
     }
 
@@ -152,14 +163,29 @@ object TurnResolver {
         }
     }
 
-    private fun createResult(seats: List<Seat>): RoundResult {
+    private fun createResult(
+        match: Match,
+        seats: List<Seat>,
+        winnerSeatId: Int,
+        totalBombCount: Int,
+    ): RoundResult {
         val orderedSeats = seats.sortedBy { it.finishOrder ?: Int.MAX_VALUE }
+        val roundScores = ScoreCalculator.calculateRoundScores(
+            ruleSet = match.ruleSet,
+            seats = orderedSeats,
+            winnerSeatId = winnerSeatId,
+            totalBombCount = totalBombCount,
+        )
         return RoundResult(
             winnerSeatIndex = orderedSeats.first().seatId,
             ranking = orderedSeats.map(Seat::seatId),
-            summaryLines = orderedSeats.mapIndexed { index, seat ->
-                "${index + 1}. ${seat.displayName} (${seat.hand.size} cards left)"
-            },
+            scoreSummary = ScoreSummary(
+                summaryLines = orderedSeats.mapIndexed { index, seat ->
+                    "${index + 1}. ${seat.displayName} (${seat.hand.size} cards left)"
+                },
+                bombCount = totalBombCount,
+                roundScores = roundScores,
+            ),
         )
     }
 }

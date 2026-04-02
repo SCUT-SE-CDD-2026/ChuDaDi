@@ -55,6 +55,7 @@ open class GameEngine(
                 roundNumber = 1,
             ),
             playHistory = listOf("${openingSeat.displayName} leads the first round"),
+            totalBombCount = 0,
             result = null,
         )
     }

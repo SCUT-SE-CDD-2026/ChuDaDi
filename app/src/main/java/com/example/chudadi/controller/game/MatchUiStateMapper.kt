@@ -75,7 +75,7 @@ class MatchUiStateMapper(
             resultSummary = match.result?.let { result ->
                 ResultSummary(
                     winnerName = match.seats.first { it.seatId == result.winnerSeatIndex }.displayName,
-                    rankingLines = result.summaryLines,
+                    rankingLines = result.scoreSummary.summaryLines,
                 )
             },
             isHumanTurn = match.phase != MatchPhase.FINISHED && match.activeSeatIndex == HUMAN_SEAT_ID,

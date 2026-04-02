@@ -26,9 +26,6 @@ class CombinationComparator(
                     )
 
                 candidate.cardCount != current.cardCount -> false
-                candidate.cardCount == FIVE_CARD_COUNT && candidate.type.typePower != current.type.typePower ->
-                    candidate.type.typePower > current.type.typePower
-
                 candidate.type != current.type -> false
                 else -> compareSameType(candidate, current) > 0
             }
@@ -42,7 +39,7 @@ class CombinationComparator(
     ): Int {
         return when {
             left.cardCount != right.cardCount -> left.cardCount.compareTo(right.cardCount)
-            left.cardCount == FIVE_CARD_COUNT && left.type.typePower != right.type.typePower ->
+            left.type != right.type ->
                 left.type.typePower.compareTo(right.type.typePower)
             else -> compareSameType(left, right)
         }
@@ -106,7 +103,6 @@ class CombinationComparator(
     }
 
     private companion object {
-        const val FIVE_CARD_COUNT = 5
         const val NO_BOMB_POWER = 0
         const val STANDARD_BOMB_POWER = 1
         const val HIGH_BOMB_POWER = 2
