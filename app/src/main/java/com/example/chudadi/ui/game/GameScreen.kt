@@ -5,6 +5,7 @@ package com.example.chudadi.ui.game
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -48,8 +49,16 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
@@ -117,6 +126,10 @@ private const val HandCardMoveDurationMs = 150
 private const val ButtonStateDurationMs = 110
 private const val ButtonPressDurationMs = 70
 private const val ActorPulseDurationMs = 1400
+private const val TableCardEnterDurationMs = 170
+private const val TableCardEnterDelayMs = 45
+private const val OpponentCardExitDurationMs = 150
+private const val HumanTurnPromptDurationMs = 220
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -418,12 +431,33 @@ private fun playOffset(ownerSeatId: Int): Dp {
     }
 }
 
+private fun playVerticalOffset(
+    ownerSeatId: Int,
+    layoutSpec: GameLayoutSpec,
+): Dp {
+    return when (ownerSeatId) {
+        HUMAN_SEAT_ID -> layoutSpec.tableCardHeight / 4
+        else -> 0.dp
+    }
+}
+
 @Composable
 private fun TablePlaySlot(
     tablePlay: TablePlaySummary,
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
+    var animationKey by remember(tablePlay.ownerSeatId) { mutableIntStateOf(0) }
+    var previousSignature by remember(tablePlay.ownerSeatId) { mutableStateOf<String?>(null) }
+    val tablePlaySignature = remember(tablePlay.cardLabels) { tablePlay.cardLabels.joinToString(separator = "|") }
+
+    LaunchedEffect(tablePlaySignature) {
+        if (tablePlay.cardLabels.isNotEmpty() && previousSignature != tablePlaySignature) {
+            animationKey += 1
+            previousSignature = tablePlaySignature
+        }
+    }
+
     val tableCardOuterWidth = layoutSpec.tableCardWidth + 6.dp
     val tableCardOuterHeight = layoutSpec.tableCardHeight + 14.dp
     val tableCardStep = layoutSpec.tableCardWidth * 0.85f
@@ -437,7 +471,10 @@ private fun TablePlaySlot(
     ) {
         Box(
             modifier = Modifier
-                .offset(x = playOffset(tablePlay.ownerSeatId))
+                .offset(
+                    x = playOffset(tablePlay.ownerSeatId),
+                    y = playVerticalOffset(tablePlay.ownerSeatId, layoutSpec),
+                )
                 .width(contentWidth)
                 .height(tableCardOuterHeight),
         ) {
@@ -445,6 +482,8 @@ private fun TablePlaySlot(
                 TableCard(
                     label = label,
                     layoutSpec = layoutSpec,
+                    entryKey = animationKey,
+                    entryIndex = index,
                     modifier = Modifier.offset(x = tableCardStep * index),
                 )
             }
@@ -459,19 +498,25 @@ private fun BottomHandArea(
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
+    val humanTurnPrompt = rememberHumanTurnPrompt(uiState.isHumanTurn)
+
     Column(
-        modifier = modifier,
+        modifier = modifier
+            .alpha(0.96f + 0.04f * humanTurnPrompt)
+            .scale(1f + 0.01f * humanTurnPrompt),
         verticalArrangement = Arrangement.spacedBy(layoutSpec.areaSpacing),
     ) {
         GameActionButtons(
             uiState = uiState,
             actions = actions,
             layoutSpec = layoutSpec,
+            humanTurnPrompt = humanTurnPrompt,
         )
         PlayerHandRow(
             uiState = uiState,
             layoutSpec = layoutSpec,
             onToggleCardSelection = actions.onToggleCardSelection,
+            humanTurnPrompt = humanTurnPrompt,
         )
         Spacer(modifier = Modifier.height(4.dp))
     }
@@ -608,10 +653,27 @@ private fun OpponentCardStack(
         return
     }
 
+    var displayedCount by remember(orientation) { mutableIntStateOf(cardCount) }
+    val exitingIndices = remember(orientation) { mutableStateListOf<Int>() }
+
+    LaunchedEffect(cardCount) {
+        if (cardCount < displayedCount) {
+            val removedCount = displayedCount - cardCount
+            exitingIndices.clear()
+            exitingIndices.addAll((0 until removedCount).map { cardCount + it })
+            kotlinx.coroutines.delay(OpponentCardExitDurationMs.toLong())
+            displayedCount = cardCount
+            exitingIndices.clear()
+        } else {
+            displayedCount = cardCount
+            exitingIndices.clear()
+        }
+    }
+
     val width =
         if (orientation == StackOrientation.Horizontal) {
             layoutSpec.opponentHorizontalCardWidth +
-                layoutSpec.opponentHorizontalCardStep * (cardCount - 1).coerceAtLeast(0)
+                layoutSpec.opponentHorizontalCardStep * (displayedCount - 1).coerceAtLeast(0)
         } else {
             layoutSpec.opponentVerticalCardWidth
         }
@@ -620,7 +682,7 @@ private fun OpponentCardStack(
             layoutSpec.opponentHorizontalCardHeight
         } else {
             layoutSpec.opponentVerticalCardHeight +
-                layoutSpec.opponentVerticalCardStep * (cardCount - 1).coerceAtLeast(0)
+                layoutSpec.opponentVerticalCardStep * (displayedCount - 1).coerceAtLeast(0)
         }
 
     Box(
@@ -628,7 +690,7 @@ private fun OpponentCardStack(
             .width(width)
             .height(height),
     ) {
-        repeat(cardCount) { index ->
+        repeat(displayedCount) { index ->
             val cardModifier =
                 if (orientation == StackOrientation.Horizontal) {
                     Modifier.offset(x = layoutSpec.opponentHorizontalCardStep * index)
@@ -636,28 +698,59 @@ private fun OpponentCardStack(
                     Modifier.offset(y = layoutSpec.opponentVerticalCardStep * index)
                 }
 
-            Box(
+            OpponentBackCard(
+                orientation = orientation,
+                layoutSpec = layoutSpec,
+                modifier = cardModifier,
+            )
+        }
+
+        exitingIndices.forEach { index ->
+            val progress = rememberOpponentCardExitProgress(key = "$orientation-$index-$cardCount")
+            val cardModifier =
+                if (orientation == StackOrientation.Horizontal) {
+                    Modifier.offset(x = layoutSpec.opponentHorizontalCardStep * index)
+                } else {
+                    Modifier.offset(y = layoutSpec.opponentVerticalCardStep * index)
+                }
+
+            OpponentBackCard(
+                orientation = orientation,
+                layoutSpec = layoutSpec,
                 modifier = cardModifier
-                    .size(
-                        width =
-                            if (orientation == StackOrientation.Horizontal) {
-                                layoutSpec.opponentHorizontalCardWidth
-                            } else {
-                                layoutSpec.opponentVerticalCardWidth
-                            },
-                        height =
-                            if (orientation == StackOrientation.Horizontal) {
-                                layoutSpec.opponentHorizontalCardHeight
-                            } else {
-                                layoutSpec.opponentVerticalCardHeight
-                            },
-                    )
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(CardBack)
-                    .border(1.dp, CardBackHighlight, RoundedCornerShape(3.dp)),
+                    .alpha(1f - progress)
+                    .scale(1f - 0.14f * progress),
             )
         }
     }
+}
+
+@Composable
+private fun OpponentBackCard(
+    orientation: StackOrientation,
+    layoutSpec: GameLayoutSpec,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .size(
+                width =
+                    if (orientation == StackOrientation.Horizontal) {
+                        layoutSpec.opponentHorizontalCardWidth
+                    } else {
+                        layoutSpec.opponentVerticalCardWidth
+                    },
+                height =
+                    if (orientation == StackOrientation.Horizontal) {
+                        layoutSpec.opponentHorizontalCardHeight
+                    } else {
+                        layoutSpec.opponentVerticalCardHeight
+                    },
+            )
+            .clip(RoundedCornerShape(3.dp))
+            .background(CardBack)
+            .border(1.dp, CardBackHighlight, RoundedCornerShape(3.dp)),
+    )
 }
 
 @Composable
@@ -665,6 +758,7 @@ private fun PlayerHandRow(
     uiState: MatchUiState,
     layoutSpec: GameLayoutSpec,
     onToggleCardSelection: (String) -> Unit,
+    humanTurnPrompt: Float,
 ) {
     val cards = uiState.playerHand
     if (cards.isEmpty()) {
@@ -703,6 +797,7 @@ private fun PlayerHandRow(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = topEffectAllowance - 32.dp)
+                .scale(1f + 0.01f * humanTurnPrompt)
                 .width(layout.contentWidth.coerceAtMost(maxWidth))
                 .height(handRowHeight),
         ) {
@@ -836,6 +931,7 @@ private fun GameActionButtons(
     uiState: MatchUiState,
     actions: GameScreenActions,
     layoutSpec: GameLayoutSpec,
+    humanTurnPrompt: Float,
 ) {
     Row(
         modifier = Modifier
@@ -844,7 +940,9 @@ private fun GameActionButtons(
         horizontalArrangement = Arrangement.Center,
     ) {
         Row(
-            modifier = Modifier.widthIn(max = layoutSpec.actionButtonsMaxWidth),
+            modifier = Modifier
+                .widthIn(max = layoutSpec.actionButtonsMaxWidth)
+                .scale(1f + 0.012f * humanTurnPrompt),
             horizontalArrangement = Arrangement.spacedBy(layoutSpec.actionButtonSpacing),
         ) {
             ActionButton(
@@ -1019,13 +1117,16 @@ private fun animatedSecondaryButtonColors(enabled: Boolean): AnimatedActionButto
 private fun TableCard(
     label: String,
     layoutSpec: GameLayoutSpec,
+    entryKey: Int,
+    entryIndex: Int,
     modifier: Modifier = Modifier,
 ) {
+    val entryProgress = rememberTableCardEntryProgress(entryKey = entryKey, entryIndex = entryIndex)
     val baseShadowModifier =
         Modifier.fillMaxSize().blurredRoundRectModifier(
             spec =
                 BlurredRoundRectSpec(
-                    color = CardShadow.copy(alpha = 0.44f),
+                    color = CardShadow.copy(alpha = 0.30f + 0.14f * entryProgress),
                     widthFactor = 0.78f,
                     heightFactor = 0.84f,
                     offsetX = (-2).dp,
@@ -1037,6 +1138,8 @@ private fun TableCard(
 
     Box(
         modifier = modifier
+            .alpha(entryProgress)
+            .scale(1.08f - 0.08f * entryProgress)
             .size(
                 width = layoutSpec.tableCardWidth + 6.dp,
                 height = layoutSpec.tableCardHeight + 14.dp,
@@ -1259,6 +1362,64 @@ private fun rememberActorPulse(isCurrentActor: Boolean): Float {
             label = "actor-pulse-value",
         )
     return pulse.value
+}
+
+@Composable
+private fun rememberTableCardEntryProgress(
+    entryKey: Int,
+    entryIndex: Int,
+): Float {
+    val progress = remember(entryKey, entryIndex) { Animatable(0f) }
+
+    LaunchedEffect(entryKey, entryIndex) {
+        progress.snapTo(0f)
+        kotlinx.coroutines.delay((entryIndex * TableCardEnterDelayMs).toLong())
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = TableCardEnterDurationMs),
+        )
+    }
+
+    return progress.value
+}
+
+@Composable
+private fun rememberOpponentCardExitProgress(key: String): Float {
+    val progress = remember(key) { Animatable(0f) }
+
+    LaunchedEffect(key) {
+        progress.snapTo(0f)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = OpponentCardExitDurationMs),
+        )
+    }
+
+    return progress.value
+}
+
+@Composable
+private fun rememberHumanTurnPrompt(isHumanTurn: Boolean): Float {
+    val progress = remember { Animatable(0f) }
+
+    LaunchedEffect(isHumanTurn) {
+        if (!isHumanTurn) {
+            progress.snapTo(0f)
+            return@LaunchedEffect
+        }
+
+        progress.snapTo(0f)
+        progress.animateTo(
+            targetValue = 1f,
+            animationSpec = tween(durationMillis = HumanTurnPromptDurationMs),
+        )
+        progress.animateTo(
+            targetValue = 0f,
+            animationSpec = tween(durationMillis = HumanTurnPromptDurationMs),
+        )
+    }
+
+    return progress.value
 }
 
 private fun Modifier.blurredRoundRectModifier(spec: BlurredRoundRectSpec): Modifier =

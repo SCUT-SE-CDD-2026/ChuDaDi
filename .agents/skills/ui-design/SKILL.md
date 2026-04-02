@@ -9,6 +9,10 @@ description: Practical guidance for designing and refining complex Android/Compo
 
 若需要设计与高光、阴影相关内容，请查看`references/highlight-and-shadow-design.md`
 
+设计风格见`references/design-guideline.md`
+
+字体规则见`references/font-guideline.md`
+
 ## 核心原则
 
 1. 先读规范，再改界面。
