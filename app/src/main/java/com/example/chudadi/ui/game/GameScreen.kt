@@ -404,19 +404,28 @@ private fun TablePlaySlot(
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
+    val tableCardOuterWidth = layoutSpec.tableCardWidth + 6.dp
+    val tableCardOuterHeight = layoutSpec.tableCardHeight + 14.dp
+    val tableCardStep = layoutSpec.tableCardWidth * 0.85f
+    val contentWidth =
+        tableCardOuterWidth + tableCardStep * (tablePlay.cardLabels.size - 1).coerceAtLeast(0)
+
     Column(
         modifier = modifier.padding(horizontal = 6.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        Row(
-            modifier = Modifier.offset(x = playOffset(tablePlay.ownerSeatId)),
-            horizontalArrangement = Arrangement.spacedBy(layoutSpec.tableCardSpacing),
+        Box(
+            modifier = Modifier
+                .offset(x = playOffset(tablePlay.ownerSeatId))
+                .width(contentWidth)
+                .height(tableCardOuterHeight),
         ) {
-            tablePlay.cardLabels.forEach { label ->
+            tablePlay.cardLabels.forEachIndexed { index, label ->
                 TableCard(
                     label = label,
                     layoutSpec = layoutSpec,
+                    modifier = Modifier.offset(x = tableCardStep * index),
                 )
             }
         }
@@ -854,19 +863,55 @@ private fun RowScope.ActionButton(
 private fun TableCard(
     label: String,
     layoutSpec: GameLayoutSpec,
+    modifier: Modifier = Modifier,
 ) {
-    Box(
-        modifier = Modifier
-            .size(width = layoutSpec.tableCardWidth, height = layoutSpec.tableCardHeight)
-            .clip(CardShape)
-            .background(CardFace)
-            .border(1.dp, CardStroke, CardShape),
-    ) {
-        CardFaceContent(
-            label = label,
-            compact = true,
-            modifier = Modifier.fillMaxSize(),
+    val baseShadowModifier =
+        Modifier.fillMaxSize().blurredRoundRectModifier(
+            spec =
+                BlurredRoundRectSpec(
+                    color = CardShadow.copy(alpha = 0.44f),
+                    widthFactor = 0.78f,
+                    heightFactor = 0.84f,
+                    offsetX = (-2).dp,
+                    offsetY = 5.dp,
+                    cornerRadius = 18.dp,
+                    blurRadius = 10.dp,
+                ),
         )
+
+    Box(
+        modifier = modifier
+            .size(
+                width = layoutSpec.tableCardWidth + 6.dp,
+                height = layoutSpec.tableCardHeight + 14.dp,
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .then(baseShadowModifier),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(width = layoutSpec.tableCardWidth, height = layoutSpec.tableCardHeight)
+                .shadow(
+                    elevation = 6.dp,
+                    shape = CardShape,
+                    ambientColor = CardShadow,
+                    spotColor = CardShadow,
+                    clip = false,
+                )
+                .clip(CardShape)
+                .background(CardFace)
+                .border(1.dp, CardStroke, CardShape),
+        ) {
+            CardFaceContent(
+                label = label,
+                compact = true,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
