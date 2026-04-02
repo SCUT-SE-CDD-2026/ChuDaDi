@@ -6,6 +6,8 @@ import com.example.chudadi.model.game.rule.CombinationEvaluator
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
+import com.example.chudadi.model.game.rule.CombinationType
+import com.example.chudadi.model.game.rule.GameRules
 
 sealed interface AiDecision {
     data class Play(
@@ -16,12 +18,15 @@ sealed interface AiDecision {
 }
 
 class RuleBasedAiPlayer(
-    private val evaluator: CombinationEvaluator = CombinationEvaluator(),
+    private val evaluatorFactory: (Match) -> CombinationEvaluator = { match ->
+        CombinationEvaluator(GameRules.forRuleSet(match.ruleSet))
+    },
 ) {
     fun decideAction(
         match: Match,
         seatIndex: Int,
     ): AiDecision {
+        val evaluator = evaluatorFactory(match)
         val seat = match.seats.first { it.seatId == seatIndex }
         val currentCombination = match.trickState.currentCombination
         val allCombinations = evaluator.generateAllValidCombinations(seat.hand)
@@ -30,7 +35,12 @@ class RuleBasedAiPlayer(
             if (currentCombination == null) {
                 chooseLeadCombination(allCombinations)
             } else {
-                chooseResponseCombination(allCombinations, currentCombination)
+                chooseResponseCombination(
+                    combinations = allCombinations,
+                    currentCombination = currentCombination,
+                    evaluator = evaluator,
+                    rules = GameRules.forRuleSet(match.ruleSet),
+                )
             }
 
         return if (candidate == null) {
@@ -61,9 +71,24 @@ class RuleBasedAiPlayer(
     private fun chooseResponseCombination(
         combinations: List<PlayCombination>,
         currentCombination: PlayCombination,
+        evaluator: CombinationEvaluator,
+        rules: GameRules,
     ): PlayCombination? {
+        val sameTypeResponses = combinations.filter { combination ->
+            !rules.isBomb(combination.type) &&
+                combination.type == currentCombination.type &&
+                combination.cardCount == currentCombination.cardCount &&
+                evaluator.canBeat(combination, currentCombination)
+        }
+
         return combinations
             .filter { evaluator.canBeat(it, currentCombination) }
+            .filter { combination ->
+                if (!rules.isBomb(combination.type) || !rules.bombRequiresNoSameTypeResponse) {
+                    return@filter true
+                }
+                sameTypeResponses.isEmpty() || currentCombination.type == CombinationType.FOUR_OF_A_KIND_BOMB
+            }
             .minWithOrNull(
                 compareBy<PlayCombination> { it.type.typePower }
                     .thenBy { it.primaryRank }

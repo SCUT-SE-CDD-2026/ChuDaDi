@@ -9,6 +9,7 @@ import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.entity.TrickState
+import com.example.chudadi.model.game.rule.GameRuleSet
 
 object MatchFixtureFactory {
     fun card(
@@ -19,9 +20,11 @@ object MatchFixtureFactory {
     fun localMatch(
         activeSeatIndex: Int = 0,
         seats: List<Seat> = defaultSeats(),
+        ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
     ): Match {
         return Match(
             matchId = "fixture-match",
+            ruleSet = ruleSet,
             phase = MatchPhase.PLAYER_TURN,
             seats = seats,
             activeSeatIndex = activeSeatIndex,
@@ -33,6 +36,7 @@ object MatchFixtureFactory {
                 roundNumber = 1,
             ),
             playHistory = emptyList(),
+            totalBombCount = 0,
             result = null,
         )
     }
