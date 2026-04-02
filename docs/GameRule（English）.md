@@ -85,7 +85,7 @@
 
 ### 5.4. Special Bomb Rules
 
-| 项目 | 南方 | 北方           |
+| Item | Southern | Northern           |
 |------|-----|--------------|
 | Can Bomb interrupt other types | Yes | Under certain conditions (when there is no other combination to beat). |
 | Can Bomb interrupt at any time | Yes | Under certain conditions (when there is no other combination to beat). |
