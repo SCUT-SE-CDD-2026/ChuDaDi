@@ -38,6 +38,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
@@ -48,6 +49,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.Card as GameCard
 import com.example.chudadi.model.game.snapshot.MatchUiState
@@ -70,7 +72,11 @@ private val InfoBadgeStroke = Color(0x55F7E8C2)
 private val CardFace = Color(0xFFF7F1E4)
 private val CardFaceHighlight = Color(0xFFFFFBF0)
 private val CardStroke = Color(0xFFD9C9A6)
-private val CardGlow = Color(0x99EBCB7E)
+private val CardGlow = Color(0x20F7E2A4)
+private val CardGlowFill = Color(0x26F7E2A4)
+private val CardShadow = Color(0x2E180E09)
+private val CardShadowFill = Color(0x14180E09)
+private val CardShadowSelected = Color(0x5222140E)
 private val CardBack = Color(0xFF7D4B32)
 private val CardBackHighlight = Color(0xFF9E6A4E)
 private val CardRed = Color(0xFFB42318)
@@ -219,7 +225,7 @@ private fun GameTableLayout(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(min = layoutSpec.bottomAreaMinHeight)
-                .heightIn(max = layoutSpec.bottomAreaHeight),
+                .heightIn(max = layoutSpec.bottomAreaHeight + 16.dp),
         )
     }
 }
@@ -599,10 +605,18 @@ private fun PlayerHandRow(
         return
     }
 
+    val topEffectAllowance = 18.dp
+    val bottomEffectAllowance = 22.dp
+    val handRowHeight =
+        topEffectAllowance +
+            layoutSpec.playerCardHeight +
+            layoutSpec.selectedCardLift +
+            bottomEffectAllowance
+
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = layoutSpec.playerCardHeight + layoutSpec.selectedCardLift + 12.dp),
+            .heightIn(min = handRowHeight),
     ) {
         val layout = calculatePlayerHandLayout(
             input =
@@ -621,9 +635,9 @@ private fun PlayerHandRow(
         Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
-                .offset(y = (-14).dp)
+                .offset(y = topEffectAllowance - 32.dp)
                 .width(layout.contentWidth.coerceAtMost(maxWidth))
-                .height(layoutSpec.playerCardHeight + layoutSpec.selectedCardLift + 12.dp),
+                .height(handRowHeight),
         ) {
             cards.forEachIndexed { index, card ->
                 val placement = layout.placements[index]
@@ -833,27 +847,93 @@ private fun PlayerCardChip(
     uiState: PlayerCardUiState,
     modifier: Modifier = Modifier,
 ) {
+    val shadowColor = if (uiState.isSelected) CardShadowSelected else CardShadow
+    val cardShadowElevation = if (uiState.isSelected) 12.dp else 8.dp
+    val cardShapeOuter = RoundedCornerShape(18.dp)
+
     Box(
         modifier = modifier
-            .size(width = uiState.width, height = uiState.height)
-            .clip(CardShape)
-            .background(if (uiState.isSelected) CardFaceHighlight else CardFace)
-            .border(
-                width = if (uiState.isSelected) 2.dp else 1.dp,
-                color = if (uiState.isSelected) CardGlow else CardStroke,
-                shape = CardShape,
-            )
-            .clickable(enabled = uiState.enabled, onClick = uiState.onToggle)
-            .semantics {
-                contentDescription = uiState.card.displayName
-            }
-            .testTag("${ComposeTestTags.PLAYER_CARD_PREFIX}${uiState.card.id}"),
+            .zIndex(if (uiState.isSelected) 1f else 0f)
+            .size(
+                width = if (uiState.isSelected) uiState.width + 16.dp else uiState.width + 8.dp,
+                height = if (uiState.isSelected) uiState.height + 38.dp else uiState.height + 16.dp,
+            ),
     ) {
-        CardFaceContent(
-            label = uiState.card.displayName,
-            compact = false,
-            modifier = Modifier.fillMaxSize(),
-        )
+        if (uiState.isSelected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .size(width = uiState.width + 12.dp, height = uiState.height + 12.dp)
+                    .background(CardGlowFill, shape = cardShapeOuter)
+                    .shadow(
+                        elevation = 22.dp,
+                        shape = cardShapeOuter,
+                        ambientColor = CardGlow,
+                        spotColor = CardGlow,
+                        clip = false,
+                    )
+            )
+//            阴影会干扰高光，先注释掉
+//            Box(
+//                modifier = Modifier
+//                    .align(Alignment.Center)
+//                    .offset(x = (-4).dp, y = 8.dp)
+//                    .size(width = uiState.width + 10.dp, height = uiState.height + 30.dp)
+//                    .background(CardShadowSelectedFill, shape = cardShapeOuter)
+//                    .shadow(
+//                        elevation = 24.dp,
+//                        shape = cardShapeOuter,
+//                        ambientColor = CardShadowSelected,
+//                        spotColor = CardShadowSelected,
+//                        clip = false,
+//                    )
+//            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .offset(x = (-2).dp, y = 4.dp)
+                    .size(width = uiState.width + 4.dp, height = uiState.height + 14.dp)
+                    .background(CardShadowFill, shape = RoundedCornerShape(14.dp))
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = RoundedCornerShape(14.dp),
+                        ambientColor = CardShadow,
+                        spotColor = CardShadow,
+                        clip = false,
+                    )
+            )
+        }
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .size(width = uiState.width, height = uiState.height)
+                .shadow(
+                    elevation = cardShadowElevation,
+                    shape = CardShape,
+                    ambientColor = shadowColor,
+                    spotColor = shadowColor,
+                    clip = false,
+                )
+                .clip(CardShape)
+                .background(if (uiState.isSelected) CardFaceHighlight else CardFace)
+                .border(
+                    width = if (uiState.isSelected) 1.5.dp else 1.dp,
+                    color = if (uiState.isSelected) Color(0xFFF1E8C8) else CardStroke,
+                    shape = CardShape,
+                )
+                .clickable(enabled = uiState.enabled, onClick = uiState.onToggle)
+                .semantics {
+                    contentDescription = uiState.card.displayName
+                }
+                .testTag("${ComposeTestTags.PLAYER_CARD_PREFIX}${uiState.card.id}"),
+        ) {
+            CardFaceContent(
+                label = uiState.card.displayName,
+                compact = false,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
     }
 }
 
