@@ -8,6 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,9 +38,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
@@ -50,6 +53,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import android.os.Build
+import android.graphics.BlurMaskFilter
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.toArgb
 import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.Card as GameCard
 import com.example.chudadi.model.game.snapshot.MatchUiState
@@ -72,11 +82,9 @@ private val InfoBadgeStroke = Color(0x55F7E8C2)
 private val CardFace = Color(0xFFF7F1E4)
 private val CardFaceHighlight = Color(0xFFFFFBF0)
 private val CardStroke = Color(0xFFD9C9A6)
-private val CardGlow = Color(0x20F7E2A4)
-private val CardGlowFill = Color(0x26F7E2A4)
-private val CardShadow = Color(0x2E180E09)
-private val CardShadowFill = Color(0x14180E09)
-private val CardShadowSelected = Color(0x5222140E)
+private val CardGlow = Color(0x8CF7E2A4)
+private val CardShadow = Color(0x3A180E09)
+private val CardShadowSelected = Color(0x661F130E)
 private val CardBack = Color(0xFF7D4B32)
 private val CardBackHighlight = Color(0xFF9E6A4E)
 private val CardRed = Color(0xFFB42318)
@@ -697,6 +705,26 @@ private data class PlayerCardUiState(
     val onToggle: () -> Unit,
 )
 
+private data class BlurredRoundRectSpec(
+    val color: Color,
+    val widthFactor: Float,
+    val heightFactor: Float,
+    val offsetX: Dp,
+    val offsetY: Dp,
+    val cornerRadius: Dp,
+    val blurRadius: Dp,
+)
+
+private data class PlayerCardVisualSpec(
+    val shadowColor: Color,
+    val cardShadowElevation: Dp,
+    val outerWidth: Dp,
+    val outerHeight: Dp,
+    val selectedGlowSpec: BlurredRoundRectSpec,
+    val selectedShadowSpec: BlurredRoundRectSpec,
+    val baseShadowSpec: BlurredRoundRectSpec,
+)
+
 private fun calculatePlayerHandLayout(
     input: PlayerHandLayoutInput,
 ): PlayerHandLayoutResult {
@@ -847,72 +875,40 @@ private fun PlayerCardChip(
     uiState: PlayerCardUiState,
     modifier: Modifier = Modifier,
 ) {
-    val shadowColor = if (uiState.isSelected) CardShadowSelected else CardShadow
-    val cardShadowElevation = if (uiState.isSelected) 12.dp else 8.dp
-    val cardShapeOuter = RoundedCornerShape(18.dp)
+    val visualSpec = playerCardVisualSpec(uiState)
+    val selectedGlowModifier =
+        Modifier.fillMaxSize().blurredRoundRectModifier(
+            spec = visualSpec.selectedGlowSpec,
+        )
+    val selectedShadowModifier =
+        Modifier.fillMaxSize().blurredRoundRectModifier(
+            spec = visualSpec.selectedShadowSpec,
+        )
+    val baseShadowModifier =
+        Modifier.fillMaxSize().blurredRoundRectModifier(
+            spec = visualSpec.baseShadowSpec,
+        )
 
     Box(
         modifier = modifier
             .zIndex(if (uiState.isSelected) 1f else 0f)
-            .size(
-                width = if (uiState.isSelected) uiState.width + 16.dp else uiState.width + 8.dp,
-                height = if (uiState.isSelected) uiState.height + 38.dp else uiState.height + 16.dp,
-            ),
+            .size(width = visualSpec.outerWidth, height = visualSpec.outerHeight),
     ) {
-        if (uiState.isSelected) {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .size(width = uiState.width + 12.dp, height = uiState.height + 12.dp)
-                    .background(CardGlowFill, shape = cardShapeOuter)
-                    .shadow(
-                        elevation = 22.dp,
-                        shape = cardShapeOuter,
-                        ambientColor = CardGlow,
-                        spotColor = CardGlow,
-                        clip = false,
-                    )
-            )
-//            阴影会干扰高光，先注释掉
-//            Box(
-//                modifier = Modifier
-//                    .align(Alignment.Center)
-//                    .offset(x = (-4).dp, y = 8.dp)
-//                    .size(width = uiState.width + 10.dp, height = uiState.height + 30.dp)
-//                    .background(CardShadowSelectedFill, shape = cardShapeOuter)
-//                    .shadow(
-//                        elevation = 24.dp,
-//                        shape = cardShapeOuter,
-//                        ambientColor = CardShadowSelected,
-//                        spotColor = CardShadowSelected,
-//                        clip = false,
-//                    )
-//            )
-        } else {
-            Box(
-                modifier = Modifier
-                    .align(Alignment.Center)
-                    .offset(x = (-2).dp, y = 4.dp)
-                    .size(width = uiState.width + 4.dp, height = uiState.height + 14.dp)
-                    .background(CardShadowFill, shape = RoundedCornerShape(14.dp))
-                    .shadow(
-                        elevation = 12.dp,
-                        shape = RoundedCornerShape(14.dp),
-                        ambientColor = CardShadow,
-                        spotColor = CardShadow,
-                        clip = false,
-                    )
-            )
-        }
+        PlayerCardEffects(
+            isSelected = uiState.isSelected,
+            selectedGlowModifier = selectedGlowModifier,
+            selectedShadowModifier = selectedShadowModifier,
+            baseShadowModifier = baseShadowModifier,
+        )
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
                 .size(width = uiState.width, height = uiState.height)
                 .shadow(
-                    elevation = cardShadowElevation,
+                    elevation = visualSpec.cardShadowElevation,
                     shape = CardShape,
-                    ambientColor = shadowColor,
-                    spotColor = shadowColor,
+                    ambientColor = visualSpec.shadowColor,
+                    spotColor = visualSpec.shadowColor,
                     clip = false,
                 )
                 .clip(CardShape)
@@ -934,6 +930,126 @@ private fun PlayerCardChip(
                 modifier = Modifier.fillMaxSize(),
             )
         }
+    }
+}
+
+private fun playerCardVisualSpec(uiState: PlayerCardUiState): PlayerCardVisualSpec =
+    PlayerCardVisualSpec(
+        shadowColor = if (uiState.isSelected) CardShadowSelected else CardShadow,
+        cardShadowElevation = if (uiState.isSelected) 10.dp else 6.dp,
+        outerWidth = if (uiState.isSelected) uiState.width + 12.dp else uiState.width + 6.dp,
+        outerHeight = if (uiState.isSelected) uiState.height + 34.dp else uiState.height + 14.dp,
+        selectedGlowSpec =
+            BlurredRoundRectSpec(
+                color = CardGlow.copy(alpha = 0.60f),
+                widthFactor = 0.87f,
+                heightFactor = 0.87f,
+                offsetX = 0.dp,
+                offsetY = 0.dp,
+                cornerRadius = 24.dp,
+                blurRadius = 18.dp,
+            ),
+        selectedShadowSpec =
+            BlurredRoundRectSpec(
+                color = CardShadowSelected.copy(alpha = 0.28f),
+                widthFactor = 0.80f,
+                heightFactor = 0.88f,
+                offsetX = (-3).dp,
+                offsetY = 8.dp,
+                cornerRadius = 24.dp,
+                blurRadius = 12.dp,
+            ),
+        baseShadowSpec =
+            BlurredRoundRectSpec(
+                color = CardShadow.copy(alpha = 0.48f),
+                widthFactor = 0.78f,
+                heightFactor = 0.84f,
+                offsetX = (-2).dp,
+                offsetY = 5.dp,
+                cornerRadius = 18.dp,
+                blurRadius = 10.dp,
+            ),
+    )
+
+@Composable
+private fun BoxScope.PlayerCardEffects(
+    isSelected: Boolean,
+    selectedGlowModifier: Modifier,
+    selectedShadowModifier: Modifier,
+    baseShadowModifier: Modifier,
+) {
+    if (isSelected) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .then(selectedGlowModifier),
+        )
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .then(selectedShadowModifier),
+        )
+    } else {
+        Box(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .then(baseShadowModifier),
+        )
+    }
+}
+
+private fun Modifier.blurredRoundRectModifier(spec: BlurredRoundRectSpec): Modifier =
+    fillMaxSize().drawWithCache {
+        val width = size.width * spec.widthFactor
+        val height = size.height * spec.heightFactor
+        val left = (size.width - width) / 2f + spec.offsetX.toPx()
+        val top = (size.height - height) / 2f + spec.offsetY.toPx()
+        val radius = spec.cornerRadius.toPx()
+        val blurRadius = spec.blurRadius.toPx()
+        onDrawBehind {
+            drawBlurredRoundRect(
+                spec =
+                    DrawBlurredRoundRectSpec(
+                        color = spec.color,
+                        left = left,
+                        top = top,
+                        width = width,
+                        height = height,
+                        cornerRadius = radius,
+                        blurRadius = blurRadius,
+                    ),
+            )
+        }
+    }
+
+private data class DrawBlurredRoundRectSpec(
+    val color: Color,
+    val left: Float,
+    val top: Float,
+    val width: Float,
+    val height: Float,
+    val cornerRadius: Float,
+    val blurRadius: Float,
+)
+
+private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawBlurredRoundRect(
+    spec: DrawBlurredRoundRectSpec,
+) {
+    drawIntoCanvas { canvas ->
+        val paint = android.graphics.Paint().apply {
+            isAntiAlias = true
+            this.color = spec.color.toArgb()
+            maskFilter = BlurMaskFilter(spec.blurRadius, BlurMaskFilter.Blur.NORMAL)
+        }
+        canvas.nativeCanvas.drawRoundRect(
+            spec.left,
+            spec.top,
+            spec.left + spec.width,
+            spec.top + spec.height,
+            spec.cornerRadius,
+            spec.cornerRadius,
+            paint,
+        )
     }
 }
 

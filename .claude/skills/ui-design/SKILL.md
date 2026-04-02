@@ -7,6 +7,8 @@ description: Practical guidance for designing and refining complex Android/Compo
 
 适用于 Android / Compose 中的复杂界面改造，尤其是容易出现重叠、压缩、错位、裁切的问题。
 
+若需要设计与高光、阴影相关内容，请查看`references/highlight-and-shadow-design.md`
+
 ## 核心原则
 
 1. 先读规范，再改界面。
