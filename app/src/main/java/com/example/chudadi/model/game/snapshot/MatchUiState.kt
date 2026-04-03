@@ -1,11 +1,13 @@
 package com.example.chudadi.model.game.snapshot
 
+import androidx.annotation.DrawableRes
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.MatchPhase
 
 data class OpponentSummary(
     val seatId: Int,
     val displayName: String,
+    @param:DrawableRes val avatarResId: Int,
     val remainingCards: Int,
     val isCurrentActor: Boolean,
     val hasPassed: Boolean,

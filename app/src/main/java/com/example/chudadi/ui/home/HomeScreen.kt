@@ -48,7 +48,10 @@ fun HomeScreen(
                 modifier = Modifier.testTag(ComposeTestTags.START_MATCH_BUTTON),
                 onClick = onStartLocalMatch,
             ) {
-                Text(text = stringResource(R.string.start_local_match))
+                Text(
+                    text = stringResource(R.string.start_local_match),
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
         }
     }

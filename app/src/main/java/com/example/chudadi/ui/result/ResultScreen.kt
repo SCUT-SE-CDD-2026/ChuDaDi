@@ -32,7 +32,14 @@ fun ResultScreen(
             .fillMaxSize()
             .testTag(ComposeTestTags.RESULT_SCREEN),
         topBar = {
-            TopAppBar(title = { Text(text = stringResource(R.string.result_title)) })
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.result_title),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                },
+            )
         },
     ) { innerPadding ->
         Column(
@@ -53,13 +60,19 @@ fun ResultScreen(
                 modifier = Modifier.testTag(ComposeTestTags.RESTART_BUTTON),
                 onClick = onRestartMatch,
             ) {
-                Text(text = stringResource(R.string.restart_match))
+                Text(
+                    text = stringResource(R.string.restart_match),
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
             Button(
                 modifier = Modifier.testTag(ComposeTestTags.EXIT_BUTTON),
                 onClick = onExitToHome,
             ) {
-                Text(text = stringResource(R.string.exit_to_home))
+                Text(
+                    text = stringResource(R.string.exit_to_home),
+                    style = MaterialTheme.typography.labelLarge,
+                )
             }
         }
     }
