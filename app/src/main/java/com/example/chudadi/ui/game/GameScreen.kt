@@ -76,11 +76,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import android.os.Build
 import android.graphics.BlurMaskFilter
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.toArgb
 import com.example.chudadi.R
@@ -89,31 +85,43 @@ import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
 import com.example.chudadi.ui.ComposeTestTags
+import com.example.chudadi.ui.theme.AvatarBase
+import com.example.chudadi.ui.theme.AvatarRingIdle
+import com.example.chudadi.ui.theme.ButtonPrimaryText
+import com.example.chudadi.ui.theme.ButtonSecondaryBorder
+import com.example.chudadi.ui.theme.ButtonSecondaryBorderDisabled
+import com.example.chudadi.ui.theme.ButtonSecondaryContainer
+import com.example.chudadi.ui.theme.ButtonSecondaryContainerDisabled
+import com.example.chudadi.ui.theme.ButtonTextDisabled
+import com.example.chudadi.ui.theme.CardBack
+import com.example.chudadi.ui.theme.CardBackHighlight
+import com.example.chudadi.ui.theme.CardBlack
 import com.example.chudadi.ui.theme.CardCenterSuitTextStyle
+import com.example.chudadi.ui.theme.CardFace
+import com.example.chudadi.ui.theme.CardFaceHighlight
+import com.example.chudadi.ui.theme.CardGlow
 import com.example.chudadi.ui.theme.CardRankTextStyle
+import com.example.chudadi.ui.theme.CardRed
+import com.example.chudadi.ui.theme.CardSelectedStroke
+import com.example.chudadi.ui.theme.CardShadow
+import com.example.chudadi.ui.theme.CardShadowSelected
+import com.example.chudadi.ui.theme.CardStroke
 import com.example.chudadi.ui.theme.CardSuitTextStyle
 import com.example.chudadi.ui.theme.CompactCardCenterSuitTextStyle
 import com.example.chudadi.ui.theme.CompactCardRankTextStyle
 import com.example.chudadi.ui.theme.CompactCardSuitTextStyle
-
-private val TableFelt = Color(0xFF163726)
-private val TableBorder = Color(0xFF8D6A33)
-private val TableOuter = Color(0xFF241612)
-private val WoodTint = Color(0xFF2A1B15)
-private val InfoBadge = Color(0xAA221A18)
-private val InfoBadgeStroke = Color(0x55F7E8C2)
-private val CardFace = Color(0xFFF7F1E4)
-private val CardFaceHighlight = Color(0xFFFFFBF0)
-private val CardStroke = Color(0xFFD9C9A6)
-private val CardGlow = Color(0x8CF7E2A4)
-private val CardShadow = Color(0x3A180E09)
-private val CardShadowSelected = Color(0x661F130E)
-private val CardBack = Color(0xFF7D4B32)
-private val CardBackHighlight = Color(0xFF9E6A4E)
-private val SubmitButtonGold = Color(0xFFBA8C43)
-private val SubmitButtonGoldDisabled = Color(0xFF6B5530)
-private val CardRed = Color(0xFFB42318)
-private val CardBlack = Color(0xFF2C1C13)
+import com.example.chudadi.ui.theme.InfoBadge
+import com.example.chudadi.ui.theme.InfoBadgeStroke
+import com.example.chudadi.ui.theme.InfoTextAccent
+import com.example.chudadi.ui.theme.InfoTextPrimary
+import com.example.chudadi.ui.theme.InfoTextSecondary
+import com.example.chudadi.ui.theme.SubmitButtonGold
+import com.example.chudadi.ui.theme.SubmitButtonGoldDisabled
+import com.example.chudadi.ui.theme.TableBorder
+import com.example.chudadi.ui.theme.TableFelt
+import com.example.chudadi.ui.theme.TableOuter
+import com.example.chudadi.ui.theme.TransparentColor
+import com.example.chudadi.ui.theme.WoodTint
 private val HumanPlayOffsetX = 26.dp
 private val OpponentPlayOffsetX = 26.dp
 private const val LEFT_SEAT_ID = 1
@@ -536,7 +544,7 @@ private fun ActionMessageBanner(
     ) {
         Text(
             text = message,
-            color = Color.White,
+            color = InfoTextPrimary,
             style = MaterialTheme.typography.bodySmall,
         )
     }
@@ -552,7 +560,7 @@ private fun OpponentAvatar(
         if (opponent.isCurrentActor) {
             CardGlow.copy(alpha = 0.56f + 0.22f * pulse)
         } else {
-            Color(0xAAFFF7DD)
+            AvatarRingIdle
         }
     val ringWidth = if (opponent.isCurrentActor) 2.dp + 1.dp * pulse else 1.dp
     val ringScale = if (opponent.isCurrentActor) 1.05f + 0.03f * pulse else 1f
@@ -565,7 +573,7 @@ private fun OpponentAvatar(
             .scale(ringScale)
             .size(layoutSpec.opponentAvatarSize)
             .clip(CircleShape)
-            .background(Color(0xFFEEE2C0), CircleShape)
+            .background(AvatarBase, CircleShape)
             .border(
                 width = ringWidth,
                 color = ringColor,
@@ -595,15 +603,15 @@ private fun OpponentInfoBadge(
         }
     val nameColor =
         if (opponent.isCurrentActor) {
-            Color(0xFFC6F6D5).copy(alpha = 0.88f + 0.12f * pulse)
+            InfoTextAccent.copy(alpha = 0.88f + 0.12f * pulse)
         } else {
-            Color(0xFFC6F6D5)
+            InfoTextAccent
         }
     val statusColor =
         if (opponent.isCurrentActor) {
-            Color(0xFFE7D7B1).copy(alpha = 0.84f + 0.16f * pulse)
+            InfoTextSecondary.copy(alpha = 0.84f + 0.16f * pulse)
         } else {
-            Color(0xFFE7D7B1)
+            InfoTextSecondary
         }
 
     Column(
@@ -625,7 +633,7 @@ private fun OpponentInfoBadge(
         )
         Text(
             text = stringResource(R.string.opponent_cards_left, opponent.remainingCards),
-            color = Color.White,
+            color = InfoTextPrimary,
             style = MaterialTheme.typography.labelSmall,
             textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
         )
@@ -1027,7 +1035,7 @@ private fun RowScope.SecondaryActionButton(uiState: ActionButtonUiState) {
         onClick = uiState.onClick,
         enabled = uiState.enabled,
         interactionSource = interactionSource,
-        border = BorderStroke(1.dp, colors.borderColor ?: Color.Transparent),
+        border = BorderStroke(1.dp, colors.borderColor ?: TransparentColor),
         colors = ButtonDefaults.outlinedButtonColors(
             containerColor = colors.containerColor,
             contentColor = colors.contentColor,
@@ -1074,7 +1082,7 @@ private fun animatedPrimaryButtonColors(enabled: Boolean): AnimatedActionButtonC
         )
     val contentColor =
         animateColorAsState(
-            targetValue = if (enabled) Color(0xFFFDF7EA) else Color(0xFFD6D0C6),
+            targetValue = if (enabled) ButtonPrimaryText else ButtonTextDisabled,
             animationSpec = tween(durationMillis = ButtonStateDurationMs),
             label = "primary-button-content",
         )
@@ -1089,19 +1097,19 @@ private fun animatedPrimaryButtonColors(enabled: Boolean): AnimatedActionButtonC
 private fun animatedSecondaryButtonColors(enabled: Boolean): AnimatedActionButtonColors {
     val containerColor =
         animateColorAsState(
-            targetValue = if (enabled) Color(0xCC1D1A19) else Color(0x881D1A19),
+            targetValue = if (enabled) ButtonSecondaryContainer else ButtonSecondaryContainerDisabled,
             animationSpec = tween(durationMillis = ButtonStateDurationMs),
             label = "secondary-button-container",
         )
     val contentColor =
         animateColorAsState(
-            targetValue = if (enabled) Color.White else Color(0xFFD6D0C6),
+            targetValue = if (enabled) InfoTextPrimary else ButtonTextDisabled,
             animationSpec = tween(durationMillis = ButtonStateDurationMs),
             label = "secondary-button-content",
         )
     val borderColor =
         animateColorAsState(
-            targetValue = if (enabled) Color(0x66F7E8C2) else Color(0x33F7E8C2),
+            targetValue = if (enabled) ButtonSecondaryBorder else ButtonSecondaryBorderDisabled,
             animationSpec = tween(durationMillis = ButtonStateDurationMs),
             label = "secondary-button-border",
         )
@@ -1219,7 +1227,7 @@ private fun PlayerCardChip(
                 .background(if (uiState.isSelected) CardFaceHighlight else CardFace)
                 .border(
                     width = if (uiState.isSelected) 1.5.dp else 1.dp,
-                    color = if (uiState.isSelected) Color(0xFFF1E8C8) else CardStroke,
+                    color = if (uiState.isSelected) CardSelectedStroke else CardStroke,
                     shape = CardShape,
                 )
                 .clickable(enabled = uiState.enabled, onClick = uiState.onToggle)
