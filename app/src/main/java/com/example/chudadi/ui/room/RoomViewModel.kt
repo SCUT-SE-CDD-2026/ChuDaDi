@@ -20,7 +20,7 @@ class RoomViewModel : ViewModel() {
                 SlotState(
                     seatIndex = 0,
                     occupantType = SlotOccupantType.HUMAN_HOST,
-                    displayName = "房主",
+                    displayName = "默认玩家",
                     avatarResId = R.drawable.avatar,
                     connectionStatus = MemberConnectionStatus.READY,
                     isLocalPlayer = true,
@@ -197,7 +197,7 @@ class RoomViewModel : ViewModel() {
                 SlotState(
                     seatIndex = 0,
                     occupantType = SlotOccupantType.HUMAN_HOST,
-                    displayName = "房主",
+                    displayName = "默认玩家",
                     avatarResId = R.drawable.avatar,
                     connectionStatus = MemberConnectionStatus.READY,
                     isLocalPlayer = true,

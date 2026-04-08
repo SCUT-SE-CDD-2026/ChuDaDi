@@ -42,8 +42,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.R
+import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
 
@@ -78,7 +80,8 @@ fun RoomScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BgOuter),
+            .background(BgOuter)
+            .testTag(ComposeTestTags.ROOM_SCREEN),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -434,6 +437,7 @@ private fun FilledSlotContent(slot: SlotState) {
     }
 }
 
+@Suppress("LongMethod")
 @Composable
 private fun ControlPanel(
     uiState: RoomUiState,
@@ -491,7 +495,9 @@ private fun ControlPanel(
                 onClick = { onAction(RoomAction.StartGame) },
                 style = ChuButtonStyle.PRIMARY,
                 enabled = uiState.canStartGame,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(ComposeTestTags.START_GAME_BUTTON),
             )
         } else {
             val localSlot = uiState.slots.firstOrNull { it.isLocalPlayer }

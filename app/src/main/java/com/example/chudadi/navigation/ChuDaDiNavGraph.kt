@@ -45,9 +45,6 @@ fun ChuDaDiNavGraph(
     ) {
         composable(HOME_ROUTE) {
             HomeScreen(
-                onStartLocalMatch = {
-                    viewModel.dispatch(LocalGameAction.StartLocalMatch())
-                },
                 onCreateRoom = {
                     roomViewModel.dispatch(RoomAction.ResetRoom)
                     navController.navigate(ROOM_ROUTE)

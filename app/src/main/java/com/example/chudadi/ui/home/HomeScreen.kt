@@ -51,7 +51,6 @@ private val DividerColor = Color(0x33C8A96A)
 
 @Composable
 fun HomeScreen(
-    onStartLocalMatch: () -> Unit,
     onCreateRoom: () -> Unit = {},
     onJoinRoom: () -> Unit = {},
     onOnlineGame: () -> Unit = {},
@@ -94,7 +93,6 @@ fun HomeScreen(
                     onOnlineGame = onOnlineGame,
                     onSettings = onSettings,
                     onRules = onRules,
-                    onStartLocalMatch = onStartLocalMatch,
                     modifier = Modifier
                         .weight(0.58f)
                         .fillMaxHeight(),
@@ -179,7 +177,7 @@ private fun PlayerInfoBlock() {
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = "玩家",
+                text = "默认玩家",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextPrimary,
             )
@@ -199,7 +197,6 @@ private fun RightPanel(
     onOnlineGame: () -> Unit,
     onSettings: () -> Unit,
     onRules: () -> Unit,
-    onStartLocalMatch: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -228,15 +225,6 @@ private fun RightPanel(
             style = ChuButtonStyle.SECONDARY,
             enabled = false,
             modifier = Modifier.fillMaxWidth(),
-        )
-        Spacer(modifier = Modifier.height(10.dp))
-        ChuButton(
-            text = "本地对局（测试）",
-            onClick = onStartLocalMatch,
-            style = ChuButtonStyle.SECONDARY,
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(ComposeTestTags.START_MATCH_BUTTON),
         )
         Spacer(modifier = Modifier.height(10.dp))
         ChuButton(
