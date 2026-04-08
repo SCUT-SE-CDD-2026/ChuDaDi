@@ -116,15 +116,26 @@ private fun ResultLeftPanel(
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(
-            modifier = Modifier
-                .size(72.dp)
-                .clip(CircleShape)
-                .background(Color(0x33C8A96A))
-                .border(1.5.dp, Color(0x88C8A96A), CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("🏆", fontSize = 32.sp)
+        Box(contentAlignment = Alignment.Center) {
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(Color(0x20D4A85A), Color.Transparent),
+                        ),
+                    ),
+            )
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x33C8A96A))
+                    .border(1.5.dp, Color(0x88C8A96A), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text("🏆", fontSize = 32.sp)
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -256,6 +267,7 @@ private fun ScoreRow(rank: Int, score: RoundScore) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(2.dp, RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
             .background(RowBg)
             .border(1.dp, RowBorder, RoundedCornerShape(10.dp))

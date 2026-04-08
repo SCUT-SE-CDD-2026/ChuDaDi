@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.example.chudadi.ui.room
 
 import androidx.compose.foundation.Image
@@ -257,9 +259,18 @@ private fun SlotCard(
         else -> SlotFilledBorder
     }
     val bgColor = if (isEmpty) SlotEmptyBg else SlotFilledBg
+    val handleClick = {
+        if (isEmpty) {
+            if (isHost) onAction(RoomAction.OpenAiDialog(slot.seatIndex))
+            else onAction(RoomAction.RequestSwapWithSlot(slot.seatIndex))
+        } else {
+            onAction(RoomAction.OpenSlotActionMenu(slot.seatIndex))
+        }
+    }
 
     Box(
         modifier = modifier
+            .shadow(if (isEmpty) 2.dp else 6.dp, RoundedCornerShape(14.dp))
             .clip(RoundedCornerShape(14.dp))
             .background(bgColor)
             .border(
@@ -267,14 +278,7 @@ private fun SlotCard(
                 color = borderColor,
                 shape = RoundedCornerShape(14.dp),
             )
-            .clickable {
-                if (isEmpty) {
-                    if (isHost) onAction(RoomAction.OpenAiDialog(slot.seatIndex))
-                    else onAction(RoomAction.RequestSwapWithSlot(slot.seatIndex))
-                } else {
-                    onAction(RoomAction.OpenSlotActionMenu(slot.seatIndex))
-                }
-            },
+            .clickable { handleClick() },
         contentAlignment = Alignment.Center,
     ) {
         if (isEmpty) {
@@ -285,33 +289,38 @@ private fun SlotCard(
 
         if (showActionMenu && !isEmpty) {
             Box(modifier = Modifier.align(Alignment.TopEnd)) {
-                DropdownMenu(
-                    expanded = true,
-                    onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
-                    containerColor = Color(0xFF2A1F14),
-                ) {
-                    if (!slot.isLocalPlayer) {
-                        DropdownMenuItem(
-                            text = { Text("请求换位", color = GoldAccent) },
-                            onClick = {
-                                onAction(RoomAction.DismissSlotActionMenu)
-                                onAction(RoomAction.RequestSwapWithSlot(slot.seatIndex))
-                            },
-                        )
-                    }
-                    if (isHost && !slot.isLocalPlayer) {
-                        DropdownMenuItem(
-                            text = { Text("移除", color = Color(0xFFE57373)) },
-                            onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.seatIndex)) },
-                        )
-                    }
-                    DropdownMenuItem(
-                        text = { Text("取消", color = TextSecondary) },
-                        onClick = { onAction(RoomAction.DismissSlotActionMenu) },
-                    )
-                }
+                SlotActionMenu(slot = slot, isHost = isHost, onAction = onAction)
             }
         }
+    }
+}
+
+@Composable
+private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomAction) -> Unit) {
+    DropdownMenu(
+        expanded = true,
+        onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
+        containerColor = Color(0xFF2A1F14),
+    ) {
+        if (!slot.isLocalPlayer) {
+            DropdownMenuItem(
+                text = { Text("请求换位", color = GoldAccent) },
+                onClick = {
+                    onAction(RoomAction.DismissSlotActionMenu)
+                    onAction(RoomAction.RequestSwapWithSlot(slot.seatIndex))
+                },
+            )
+        }
+        if (isHost && !slot.isLocalPlayer) {
+            DropdownMenuItem(
+                text = { Text("移除", color = Color(0xFFE57373)) },
+                onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.seatIndex)) },
+            )
+        }
+        DropdownMenuItem(
+            text = { Text("取消", color = TextSecondary) },
+            onClick = { onAction(RoomAction.DismissSlotActionMenu) },
+        )
     }
 }
 
@@ -435,6 +444,7 @@ private fun ControlPanel(
     // weight(1f) interaction issues that cause button height distortion
     Column(
         modifier = modifier
+            .shadow(4.dp, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(SectionBg)
             .border(1.dp, SectionBorder, RoundedCornerShape(16.dp))

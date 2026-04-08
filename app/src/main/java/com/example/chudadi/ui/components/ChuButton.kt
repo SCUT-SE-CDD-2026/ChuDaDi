@@ -2,6 +2,8 @@
 
 package com.example.chudadi.ui.components
 
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,6 +25,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 
@@ -53,46 +56,20 @@ fun ChuButton(
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.97f else 1f,
+        animationSpec = tween(durationMillis = 80),
+        label = "buttonScale",
+    )
 
     val shape = RoundedCornerShape(10.dp)
     val alpha = if (!enabled) 0.45f else if (isPressed) 0.82f else 1f
-
-    val bgModifier: Modifier = when (style) {
-        ChuButtonStyle.PRIMARY -> Modifier
-            .shadow(if (enabled) 6.dp else 0.dp, shape)
-            .clip(shape)
-            .background(
-                Brush.verticalGradient(
-                    colors = if (enabled) listOf(GoldLight, GoldMid, GoldDark)
-                    else listOf(Color(0xFF4A3A20), Color(0xFF3A2A10)),
-                ),
-            )
-            .border(1.dp, if (enabled) GoldHighlight else Color(0x22C8A96A), shape)
-
-        ChuButtonStyle.SECONDARY -> Modifier
-            .clip(shape)
-            .background(SecondaryBg.copy(alpha = alpha))
-            .border(1.dp, SecondaryBorder.copy(alpha = alpha), shape)
-
-        ChuButtonStyle.GHOST -> Modifier
-            .clip(shape)
-            .background(GhostBg.copy(alpha = alpha))
-            .border(1.dp, GhostBorder.copy(alpha = alpha), shape)
-
-        ChuButtonStyle.DANGER -> Modifier
-            .clip(shape)
-            .background(DangerBg.copy(alpha = alpha))
-            .border(1.dp, DangerBorder.copy(alpha = alpha), shape)
-    }
-
-    val textColor = when {
-        !enabled -> TextDisabled
-        style == ChuButtonStyle.PRIMARY -> TextPrimary
-        else -> TextSecondary
-    }
+    val bgModifier = chuButtonBgModifier(style, shape, enabled, alpha)
+    val textColor = chuButtonTextColor(style, enabled)
 
     Box(
         modifier = modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
             .height(44.dp)
             .then(bgModifier)
             .clickable(
@@ -111,4 +88,46 @@ fun ChuButton(
             color = textColor,
         )
     }
+}
+
+private fun chuButtonBgModifier(
+    style: ChuButtonStyle,
+    shape: RoundedCornerShape,
+    enabled: Boolean,
+    alpha: Float,
+): Modifier = when (style) {
+    ChuButtonStyle.PRIMARY -> Modifier
+        .shadow(if (enabled) 6.dp else 0.dp, shape)
+        .clip(shape)
+        .background(
+            Brush.verticalGradient(
+                colors = if (enabled) listOf(GoldLight, GoldMid, GoldDark)
+                else listOf(Color(0xFF4A3A20), Color(0xFF3A2A10)),
+            ),
+        )
+        .border(1.dp, if (enabled) GoldHighlight else Color(0x22C8A96A), shape)
+
+    ChuButtonStyle.SECONDARY -> Modifier
+        .shadow(if (enabled) 4.dp else 0.dp, shape)
+        .clip(shape)
+        .background(SecondaryBg.copy(alpha = alpha))
+        .border(1.dp, SecondaryBorder.copy(alpha = alpha), shape)
+
+    ChuButtonStyle.GHOST -> Modifier
+        .shadow(if (enabled) 2.dp else 0.dp, shape)
+        .clip(shape)
+        .background(GhostBg.copy(alpha = alpha))
+        .border(1.dp, GhostBorder.copy(alpha = alpha), shape)
+
+    ChuButtonStyle.DANGER -> Modifier
+        .shadow(if (enabled) 4.dp else 0.dp, shape)
+        .clip(shape)
+        .background(DangerBg.copy(alpha = alpha))
+        .border(1.dp, DangerBorder.copy(alpha = alpha), shape)
+}
+
+private fun chuButtonTextColor(style: ChuButtonStyle, enabled: Boolean): Color = when {
+    !enabled -> TextDisabled
+    style == ChuButtonStyle.PRIMARY -> TextPrimary
+    else -> TextSecondary
 }

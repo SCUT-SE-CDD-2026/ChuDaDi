@@ -154,6 +154,7 @@ private fun PlayerInfoBlock() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .shadow(3.dp, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
             .background(PlayerInfoBg)
             .border(1.dp, PlayerInfoBorder, RoundedCornerShape(12.dp))
