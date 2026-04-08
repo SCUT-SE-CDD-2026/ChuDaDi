@@ -1,4 +1,4 @@
-@file:Suppress("ReturnCount")
+@file:Suppress("ReturnCount", "TooManyFunctions")
 
 package com.example.chudadi.model.game.engine
 
@@ -37,10 +37,25 @@ open class GameEngine(
             createSeat(2, "AI 2", SeatControllerType.RULE_BASED_AI, shuffledDeck.subList(26, 39)),
             createSeat(3, "AI 3", SeatControllerType.RULE_BASED_AI, shuffledDeck.subList(39, 52)),
         )
+        return buildMatch(ruleSet, seats)
+    }
 
+    open fun startLocalMatch(
+        ruleSet: GameRuleSet = defaultRuleSet,
+        seatConfigs: List<Triple<Int, String, SeatControllerType>>,
+    ): Match {
+        require(seatConfigs.size == 4) { "seatConfigs must have exactly 4 entries" }
+        val shuffledDeck = Card.standardDeck().shuffled(random)
+        val sorted = seatConfigs.sortedBy { it.first }
+        val seats = sorted.mapIndexed { listIndex, (seatId, name, controllerType) ->
+            createSeat(seatId, name, controllerType, shuffledDeck.subList(listIndex * 13, (listIndex + 1) * 13))
+        }
+        return buildMatch(ruleSet, seats)
+    }
+
+    private fun buildMatch(ruleSet: GameRuleSet, seats: List<Seat>): Match {
         val openingCard = Card(suit = CardSuit.DIAMONDS, rank = CardRank.THREE)
         val openingSeat = seats.first { seat -> seat.hand.any { it.id == openingCard.id } }
-
         return Match(
             matchId = UUID.randomUUID().toString(),
             ruleSet = ruleSet,

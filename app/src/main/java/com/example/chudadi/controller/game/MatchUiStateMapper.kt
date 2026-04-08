@@ -18,12 +18,13 @@ class MatchUiStateMapper(
         match: Match?,
         selectedCardIds: Set<String>,
         lastActionMessage: String?,
+        localSeatId: Int = DEFAULT_LOCAL_SEAT_ID,
     ): MatchUiState {
         if (match == null) {
             return MatchUiState()
         }
 
-        val humanSeat = match.seats.first { it.seatId == HUMAN_SEAT_ID }
+        val humanSeat = match.seats.first { it.seatId == localSeatId }
         val selectedCards = humanSeat.hand.filter { it.id in selectedCardIds }.map(Card::id).toSet()
         val tablePlays = match.trickState.tablePlays.entries
             .sortedBy { it.key }
@@ -42,7 +43,7 @@ class MatchUiStateMapper(
             playerHand = humanSeat.hand.sortedWith(Card.gameComparator),
             selectedCards = selectedCards,
             opponentSummaries = match.seats
-                .filterNot { it.seatId == HUMAN_SEAT_ID }
+                .filterNot { it.seatId == localSeatId }
                 .map { seat ->
                     OpponentSummary(
                         seatId = seat.seatId,
@@ -67,24 +68,25 @@ class MatchUiStateMapper(
             lastActionMessage = lastActionMessage,
             canSubmitPlay = engine.canSubmitSelectedCards(
                 match = match,
-                seatIndex = HUMAN_SEAT_ID,
+                seatIndex = localSeatId,
                 selectedCardIds = selectedCardIds,
             ),
             canPass = engine.canPass(
                 match = match,
-                seatIndex = HUMAN_SEAT_ID,
+                seatIndex = localSeatId,
             ),
             resultSummary = match.result?.let { result ->
                 ResultSummary(
                     winnerName = match.seats.first { it.seatId == result.winnerSeatIndex }.displayName,
                     rankingLines = result.scoreSummary.summaryLines,
+                    roundScores = result.scoreSummary.roundScores,
                 )
             },
-            isHumanTurn = match.phase != MatchPhase.FINISHED && match.activeSeatIndex == HUMAN_SEAT_ID,
+            isHumanTurn = match.phase != MatchPhase.FINISHED && match.activeSeatIndex == localSeatId,
         )
     }
 
     companion object {
-        const val HUMAN_SEAT_ID = 0
+        const val DEFAULT_LOCAL_SEAT_ID = 0
     }
 }

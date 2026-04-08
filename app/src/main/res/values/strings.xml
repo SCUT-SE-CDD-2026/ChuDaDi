@@ -23,4 +23,15 @@
     <string name="result_winner">胜者：%1$s</string>
     <string name="restart_match">再来一局</string>
     <string name="exit_to_home">返回入口</string>
+    <string name="room_title_host">我的房间（房主）</string>
+    <string name="room_title_member">房间（成员）</string>
+    <string name="room_create">创建房间</string>
+    <string name="room_join">加入房间</string>
+    <string name="room_start_game">开始游戏</string>
+    <string name="room_toggle_ready">准备</string>
+    <string name="room_cancel_ready">取消准备</string>
+    <string name="room_return">返回房间</string>
+    <string name="online_game_placeholder">联网游戏（开发中）</string>
+    <string name="settings">设置</string>
+    <string name="rules">规则说明</string>
 </resources>

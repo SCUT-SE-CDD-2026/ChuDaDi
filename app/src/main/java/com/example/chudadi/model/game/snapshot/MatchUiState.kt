@@ -3,6 +3,7 @@ package com.example.chudadi.model.game.snapshot
 import androidx.annotation.DrawableRes
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.model.game.entity.RoundScore
 
 data class OpponentSummary(
     val seatId: Int,
@@ -23,6 +24,7 @@ data class TablePlaySummary(
 data class ResultSummary(
     val winnerName: String,
     val rankingLines: List<String>,
+    val roundScores: List<RoundScore> = emptyList(),
 )
 
 data class MatchUiState(

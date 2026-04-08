@@ -3,6 +3,7 @@ package com.example.chudadi.controller.server
 import com.example.chudadi.model.game.engine.ActionResult
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Match
+import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.network.protocol.GameCommand
 
@@ -12,6 +13,9 @@ class LocalAuthoritativeController(
     fun startLocalMatch(): Match = engine.startLocalMatch()
 
     fun startLocalMatch(ruleSet: GameRuleSet): Match = engine.startLocalMatch(ruleSet)
+
+    fun startLocalMatch(ruleSet: GameRuleSet, seatConfigs: List<Triple<Int, String, SeatControllerType>>): Match =
+        engine.startLocalMatch(ruleSet, seatConfigs)
 
     fun handleCommand(
         match: Match,
