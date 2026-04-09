@@ -48,3 +48,7 @@ docs/develop
 
 # scripts
 opencode-webui.cmd
+
+# agent
+.claude/settings.local.json
+.claude/skills
