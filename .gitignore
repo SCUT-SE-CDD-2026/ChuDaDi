@@ -50,5 +50,8 @@ docs/develop
 opencode-webui.cmd
 
 # agent
-.claude/settings.local.json
 .claude/skills
+
+# Local Claude config
+.claude/settings.local.json
+CLAUDE.local.md
