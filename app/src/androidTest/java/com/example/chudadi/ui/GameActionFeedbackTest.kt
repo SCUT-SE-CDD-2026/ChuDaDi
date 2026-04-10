@@ -4,6 +4,7 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
@@ -33,6 +34,7 @@ class GameActionFeedbackTest {
                                 OpponentSummary(
                                     seatId = 1,
                                     displayName = "AI 1",
+                                    avatarResId = R.drawable.avatar,
                                     remainingCards = 5,
                                     isCurrentActor = false,
                                     hasPassed = true,
