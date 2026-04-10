@@ -29,10 +29,22 @@ class LocalPlayerController(
     private var selectedCardIds: Set<String> = emptySet()
     private var lastActionMessage: String? = null
     private var aiTurnJob: Job? = null
+    private var localSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
 
-    fun onRequestStartLocalMatch() {
+    fun onRequestStartLocalMatch(
+        seatConfigs: List<Triple<Int, String, com.example.chudadi.model.game.entity.SeatControllerType>>? = null,
+        localSeatId: Int = 0,
+    ) {
         aiTurnJob?.cancel()
-        currentMatch = serverController.startLocalMatch()
+        this.localSeatId = localSeatId
+        currentMatch = if (seatConfigs != null) {
+            serverController.startLocalMatch(
+                ruleSet = com.example.chudadi.model.game.rule.GameRuleSet.SOUTHERN,
+                seatConfigs = seatConfigs,
+            )
+        } else {
+            serverController.startLocalMatch()
+        }
         selectedCardIds = emptySet()
         lastActionMessage = null
         pushUiState()
@@ -65,7 +77,7 @@ class LocalPlayerController(
         val match = currentMatch ?: return
         val result = serverController.handleCommand(
             match = match,
-            seatIndex = HUMAN_SEAT_ID,
+            seatIndex = localSeatId,
             command = PlayCardCommand(selectedCardIds),
         )
         currentMatch = result.match
@@ -83,7 +95,7 @@ class LocalPlayerController(
         val match = currentMatch ?: return
         val result = serverController.handleCommand(
             match = match,
-            seatIndex = HUMAN_SEAT_ID,
+            seatIndex = localSeatId,
             command = PassCommand,
         )
         currentMatch = result.match
@@ -119,7 +131,7 @@ class LocalPlayerController(
             scope.launch {
                 repeat(MAX_AI_CHAIN) {
                     val match = currentMatch ?: return@launch
-                    if (match.phase == MatchPhase.FINISHED || match.activeSeatIndex == HUMAN_SEAT_ID) {
+                    if (match.phase == MatchPhase.FINISHED || match.activeSeatIndex == localSeatId) {
                         return@launch
                     }
 
@@ -157,11 +169,11 @@ class LocalPlayerController(
             match = currentMatch,
             selectedCardIds = selectedCardIds,
             lastActionMessage = lastActionMessage,
+            localSeatId = localSeatId,
         )
     }
 
     companion object {
-        private const val HUMAN_SEAT_ID = 0
         private const val MAX_AI_CHAIN = 32
     }
 }

@@ -73,6 +73,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -629,6 +630,7 @@ private fun OpponentInfoBadge(
             color = nameColor,
             style = MaterialTheme.typography.labelMedium,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
         )
         Text(
