@@ -21,6 +21,7 @@ import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomScreen
 import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.RoomViewModel
+import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
 
 private const val HOME_ROUTE = "home"
@@ -60,8 +61,10 @@ fun ChuDaDiNavGraph(
                 onAction = { action ->
                     when (action) {
                         is RoomAction.StartGame -> {
-                            val action = buildStartMatchAction(roomUiState)
-                            viewModel.dispatch(action)
+                            val startAction = buildStartMatchAction(roomUiState)
+                            if (startAction != null) {
+                                viewModel.dispatch(startAction)
+                            }
                         }
                         is RoomAction.ExitRoom -> {
                             navController.popBackStack()
@@ -113,20 +116,32 @@ private fun GameScreenRoute(viewModel: LocalMatchViewModel, uiState: MatchUiStat
     )
 }
 
-private fun buildStartMatchAction(roomUiState: RoomUiState): LocalGameAction.StartLocalMatch {
+private fun buildStartMatchAction(roomUiState: RoomUiState): LocalGameAction.StartLocalMatch? {
+    if (!roomUiState.canStartMatch()) {
+        return null
+    }
+
     val seatConfigs = roomUiState.slots
-        .sortedBy { it.seatIndex }
         .map { slot ->
-            val name = slot.displayName.ifEmpty { "玩家${slot.seatIndex + 1}" }
+            val name = slot.displayName.ifEmpty { "玩家${slot.slotIndex + 1}" }
             val controllerType = if (slot.occupantType == SlotOccupantType.AI) {
                 SeatControllerType.RULE_BASED_AI
             } else {
                 SeatControllerType.HUMAN
             }
-            Triple(slot.seatIndex, name, controllerType)
+            Triple(slot.seatId, name, controllerType)
         }
-    val localSeatId = roomUiState.slots.firstOrNull { it.isLocalPlayer }?.seatIndex ?: 0
+    val localSeatId = roomUiState.slots.firstOrNull { it.isLocalPlayer }?.seatId ?: return null
     return LocalGameAction.StartLocalMatch(seatConfigs, localSeatId)
+}
+
+private fun RoomUiState.canStartMatch(): Boolean {
+    val allFilled = slots.all { it.occupantType != null }
+    val allReady = slots.all { it.connectionStatus == MemberConnectionStatus.READY }
+    val slotIndexesStable = slots.withIndex().all { (index, slot) -> slot.slotIndex == index }
+    val seatIdsDistinct = slots.map { it.seatId }.distinct().size == slots.size
+    val localPlayerExists = slots.any { it.isLocalPlayer }
+    return allFilled && allReady && slotIndexesStable && seatIdsDistinct && localPlayerExists
 }
 
 @Composable

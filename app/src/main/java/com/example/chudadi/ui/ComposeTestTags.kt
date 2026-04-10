@@ -11,6 +11,5 @@ object ComposeTestTags {
     const val SUBMIT_BUTTON = "submit_button"
     const val PLAYER_CARD_PREFIX = "player_card_"
     const val RESULT_SCREEN = "result_screen"
-    const val RESTART_BUTTON = "restart_button"
-    const val EXIT_BUTTON = "exit_button"
+    const val RETURN_TO_ROOM_BUTTON = "return_to_room_button"
 }

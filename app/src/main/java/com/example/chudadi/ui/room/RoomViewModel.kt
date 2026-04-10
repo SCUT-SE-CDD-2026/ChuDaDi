@@ -18,18 +18,18 @@ class RoomViewModel : ViewModel() {
             hostDeviceName = "本机",
             slots = listOf(
                 SlotState(
-                    seatIndex = 0,
+                    slotIndex = 0,
                     occupantType = SlotOccupantType.HUMAN_HOST,
                     displayName = "默认玩家",
                     avatarResId = R.drawable.avatar,
                     connectionStatus = MemberConnectionStatus.READY,
                     isLocalPlayer = true,
                 ),
-                SlotState(seatIndex = 1),
-                SlotState(seatIndex = 2),
-                SlotState(seatIndex = 3),
+                SlotState(slotIndex = 1),
+                SlotState(slotIndex = 2),
+                SlotState(slotIndex = 3),
             ),
-        ),
+        ).recalcCanStart(),
     )
     val uiState: StateFlow<RoomUiState> = _uiState.asStateFlow()
 
@@ -82,8 +82,10 @@ class RoomViewModel : ViewModel() {
                 .toSet()
             val aiNumber = generateSequence(1) { it + 1 }.first { it !in usedNumbers }
             val newSlots = state.slots.toMutableList()
+            val originalSlot = state.slots[slotIndex]
             newSlots[slotIndex] = SlotState(
-                seatIndex = slotIndex,
+                slotIndex = slotIndex,
+                seatId = originalSlot.seatId,
                 occupantType = SlotOccupantType.AI,
                 displayName = "AI(${difficulty.label}) $aiNumber",
                 avatarResId = R.drawable.avatar,
@@ -101,7 +103,7 @@ class RoomViewModel : ViewModel() {
     private fun removeSlotOccupant(slotIndex: Int) {
         _uiState.update { state ->
             val newSlots = state.slots.toMutableList()
-            newSlots[slotIndex] = SlotState(seatIndex = slotIndex)
+            newSlots[slotIndex] = SlotState(slotIndex = slotIndex, seatId = state.slots[slotIndex].seatId)
             state.copy(
                 slots = newSlots,
                 showSlotActionMenu = false,
@@ -117,17 +119,17 @@ class RoomViewModel : ViewModel() {
 
         if (targetSlot.occupantType == SlotOccupantType.AI) {
             // AI swap is immediate
-            swapSlots(localSlot.seatIndex, targetSlotIndex)
+            swapSlots(localSlot.slotIndex, targetSlotIndex)
         } else if (targetSlot.occupantType == null) {
             // Move to empty slot
-            swapSlots(localSlot.seatIndex, targetSlotIndex)
+            swapSlots(localSlot.slotIndex, targetSlotIndex)
         } else {
             // Request swap with human
             _uiState.update {
                 it.copy(
                     pendingSwapRequest = SwapRequest(
-                        requesterSeatIndex = localSlot.seatIndex,
-                        targetSeatIndex = targetSlotIndex,
+                        requesterSlotIndex = localSlot.slotIndex,
+                        targetSlotIndex = targetSlotIndex,
                         requesterName = localSlot.displayName,
                     ),
                     showSlotActionMenu = false,
@@ -137,20 +139,18 @@ class RoomViewModel : ViewModel() {
     }
 
     private fun confirmSwap(request: SwapRequest) {
-        swapSlots(request.requesterSeatIndex, request.targetSeatIndex)
+        swapSlots(request.requesterSlotIndex, request.targetSlotIndex)
         _uiState.update { it.copy(pendingSwapRequest = null) }
     }
 
-    private fun swapSlots(seatIndexA: Int, seatIndexB: Int) {
+    private fun swapSlots(slotIndexA: Int, slotIndexB: Int) {
         _uiState.update { state ->
             val newSlots = state.slots.toMutableList()
-            val posA = newSlots.indexOfFirst { it.seatIndex == seatIndexA }
-            val posB = newSlots.indexOfFirst { it.seatIndex == seatIndexB }
-            if (posA < 0 || posB < 0) return@update state
-            val tmp = newSlots[posA]
-            newSlots[posA] = newSlots[posB]
-            newSlots[posB] = tmp
-            state.copy(slots = newSlots, showSlotActionMenu = false)
+            val slotA = newSlots.getOrNull(slotIndexA) ?: return@update state
+            val slotB = newSlots.getOrNull(slotIndexB) ?: return@update state
+            newSlots[slotIndexA] = slotA.copyOccupantFrom(slotB)
+            newSlots[slotIndexB] = slotB.copyOccupantFrom(slotA)
+            state.copy(slots = newSlots, showSlotActionMenu = false).recalcCanStart()
         }
     }
 
@@ -180,7 +180,7 @@ class RoomViewModel : ViewModel() {
     private fun accumulateScores(scores: List<RoundScore>) {
         _uiState.update { state ->
             val newSlots = state.slots.map { slot ->
-                val match = scores.firstOrNull { it.seatId == slot.seatIndex }
+                val match = scores.firstOrNull { it.seatId == slot.seatId }
                 if (match != null) slot.copy(cumulativeScore = slot.cumulativeScore + match.roundScore)
                 else slot
             }
@@ -195,23 +195,38 @@ class RoomViewModel : ViewModel() {
             hostDeviceName = "本机",
             slots = listOf(
                 SlotState(
-                    seatIndex = 0,
+                    slotIndex = 0,
                     occupantType = SlotOccupantType.HUMAN_HOST,
                     displayName = "默认玩家",
                     avatarResId = R.drawable.avatar,
                     connectionStatus = MemberConnectionStatus.READY,
                     isLocalPlayer = true,
                 ),
-                SlotState(seatIndex = 1),
-                SlotState(seatIndex = 2),
-                SlotState(seatIndex = 3),
+                SlotState(slotIndex = 1),
+                SlotState(slotIndex = 2),
+                SlotState(slotIndex = 3),
             ),
-        )
+        ).recalcCanStart()
     }
 
     private fun RoomUiState.recalcCanStart(): RoomUiState {
         val allFilled = slots.all { it.occupantType != null }
         val allReady = slots.all { it.connectionStatus == MemberConnectionStatus.READY }
-        return copy(canStartGame = allFilled && allReady)
+        val slotIndexesStable = slots.withIndex().all { (index, slot) -> slot.slotIndex == index }
+        val seatIdsDistinct = slots.map { it.seatId }.distinct().size == slots.size
+        return copy(canStartGame = allFilled && allReady && slotIndexesStable && seatIdsDistinct)
+    }
+
+    private fun SlotState.copyOccupantFrom(source: SlotState): SlotState {
+        return copy(
+            occupantType = source.occupantType,
+            displayName = source.displayName,
+            avatarResId = source.avatarResId,
+            connectionStatus = source.connectionStatus,
+            aiDifficulty = source.aiDifficulty,
+            cumulativeScore = source.cumulativeScore,
+            isLocalPlayer = source.isLocalPlayer,
+            seatId = source.seatId,
+        )
     }
 }

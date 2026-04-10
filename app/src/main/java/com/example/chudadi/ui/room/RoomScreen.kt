@@ -264,10 +264,10 @@ private fun SlotCard(
     val bgColor = if (isEmpty) SlotEmptyBg else SlotFilledBg
     val handleClick = {
         if (isEmpty) {
-            if (isHost) onAction(RoomAction.OpenAiDialog(slot.seatIndex))
-            else onAction(RoomAction.RequestSwapWithSlot(slot.seatIndex))
+            if (isHost) onAction(RoomAction.OpenAiDialog(slot.slotIndex))
+            else onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
         } else {
-            onAction(RoomAction.OpenSlotActionMenu(slot.seatIndex))
+            onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex))
         }
     }
 
@@ -285,7 +285,7 @@ private fun SlotCard(
         contentAlignment = Alignment.Center,
     ) {
         if (isEmpty) {
-            EmptySlotContent(seatIndex = slot.seatIndex)
+            EmptySlotContent(slotIndex = slot.slotIndex)
         } else {
             FilledSlotContent(slot = slot)
         }
@@ -310,14 +310,14 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
                 text = { Text("请求换位", color = GoldAccent) },
                 onClick = {
                     onAction(RoomAction.DismissSlotActionMenu)
-                    onAction(RoomAction.RequestSwapWithSlot(slot.seatIndex))
+                    onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
                 },
             )
         }
         if (isHost && !slot.isLocalPlayer) {
             DropdownMenuItem(
                 text = { Text("移除", color = Color(0xFFE57373)) },
-                onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.seatIndex)) },
+                onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },
             )
         }
         DropdownMenuItem(
@@ -328,7 +328,7 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
 }
 
 @Composable
-private fun EmptySlotContent(seatIndex: Int) {
+private fun EmptySlotContent(slotIndex: Int) {
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -344,7 +344,7 @@ private fun EmptySlotContent(seatIndex: Int) {
             Icon(Icons.Default.Add, contentDescription = null, tint = TextMuted, modifier = Modifier.size(24.dp))
         }
         Text(
-            text = "位置 ${seatIndex + 1}",
+            text = "位置 ${slotIndex + 1}",
             style = MaterialTheme.typography.labelMedium,
             color = TextMuted,
         )

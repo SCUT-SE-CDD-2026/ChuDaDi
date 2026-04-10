@@ -215,7 +215,9 @@ private fun ResultRightPanel(
             text = "返回房间",
             onClick = onReturnToRoom,
             style = ChuButtonStyle.PRIMARY,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .testTag(ComposeTestTags.RETURN_TO_ROOM_BUTTON),
         )
     }
 }

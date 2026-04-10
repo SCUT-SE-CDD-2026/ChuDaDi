@@ -16,7 +16,8 @@ enum class MemberConnectionStatus {
 }
 
 data class SlotState(
-    val seatIndex: Int,
+    val slotIndex: Int,
+    val seatId: Int = slotIndex,
     val occupantType: SlotOccupantType? = null,
     val displayName: String = "",
     @DrawableRes val avatarResId: Int? = null,
@@ -40,11 +41,10 @@ data class RoomUiState(
     val roomName: String = "",
     val hostDeviceName: String = "",
     val currentRule: GameRuleDisplay = GameRuleDisplay.SOUTHERN,
-    val slots: List<SlotState> = List(4) { SlotState(seatIndex = it) },
+    val slots: List<SlotState> = List(4) { SlotState(slotIndex = it) },
     val bluetoothVisible: Boolean = false,
     val connectionHint: String = "",
     val canStartGame: Boolean = false,
-    val localPlayerSeatIndex: Int = 0,
     val pendingSwapRequest: SwapRequest? = null,
     val showAiDifficultyDialog: Boolean = false,
     val aiDialogTargetSlot: Int = -1,
@@ -53,7 +53,7 @@ data class RoomUiState(
 )
 
 data class SwapRequest(
-    val requesterSeatIndex: Int,
-    val targetSeatIndex: Int,
+    val requesterSlotIndex: Int,
+    val targetSlotIndex: Int,
     val requesterName: String,
 )
