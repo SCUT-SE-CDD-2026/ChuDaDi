@@ -47,10 +47,32 @@ class RoomViewModel : ViewModel() {
             is RoomAction.ResetScores -> resetScores()
             is RoomAction.AccumulateScores -> accumulateScores(action.scores)
             is RoomAction.OpenAiDialog -> _uiState.update {
-                it.copy(showAiDifficultyDialog = true, aiDialogTargetSlot = action.slotIndex)
+                it.copy(
+                    showRoomAiDifficultyDialog = true,
+                    aiDialogTargetSlot = action.slotIndex,
+                    aiSelectionStep = AiSelectionStep.SELECT_TYPE,
+                    selectedAiType = null,
+                )
             }
             is RoomAction.DismissAiDialog -> _uiState.update {
-                it.copy(showAiDifficultyDialog = false, aiDialogTargetSlot = -1)
+                it.copy(
+                    showRoomAiDifficultyDialog = false,
+                    aiDialogTargetSlot = -1,
+                    aiSelectionStep = AiSelectionStep.SELECT_TYPE,
+                    selectedAiType = null,
+                )
+            }
+            is RoomAction.SelectAiType -> _uiState.update {
+                it.copy(
+                    aiSelectionStep = AiSelectionStep.SELECT_DIFFICULTY,
+                    selectedAiType = action.aiType,
+                )
+            }
+            is RoomAction.BackToAiTypeSelection -> _uiState.update {
+                it.copy(
+                    aiSelectionStep = AiSelectionStep.SELECT_TYPE,
+                    selectedAiType = null,
+                )
             }
             is RoomAction.OpenSlotActionMenu -> _uiState.update {
                 it.copy(showSlotActionMenu = true, slotActionMenuTarget = action.slotIndex)
@@ -74,11 +96,11 @@ class RoomViewModel : ViewModel() {
         }
     }
 
-    private fun addAiToSlot(slotIndex: Int, difficulty: AiDifficulty) {
+    private fun addAiToSlot(slotIndex: Int, difficulty: RoomAiDifficulty) {
         _uiState.update { state ->
             val usedNumbers = state.slots
                 .filter { it.occupantType == SlotOccupantType.AI }
-                .mapNotNull { it.displayName.substringAfterLast(' ').toIntOrNull() }
+                .mapNotNull { extractAiNumber(it.displayName) }
                 .toSet()
             val aiNumber = generateSequence(1) { it + 1 }.first { it !in usedNumbers }
             val newSlots = state.slots.toMutableList()
@@ -87,14 +109,15 @@ class RoomViewModel : ViewModel() {
                 slotIndex = slotIndex,
                 seatId = originalSlot.seatId,
                 occupantType = SlotOccupantType.AI,
-                displayName = "AI(${difficulty.label}) $aiNumber",
+                displayName = generateAiDisplayName(difficulty, aiNumber),
                 avatarResId = R.drawable.avatar,
                 connectionStatus = MemberConnectionStatus.READY,
                 aiDifficulty = difficulty,
+                aiType = difficulty.aiType,
             )
             state.copy(
                 slots = newSlots,
-                showAiDifficultyDialog = false,
+                showRoomAiDifficultyDialog = false,
                 aiDialogTargetSlot = -1,
             ).recalcCanStart()
         }
@@ -110,6 +133,11 @@ class RoomViewModel : ViewModel() {
                 slotActionMenuTarget = -1,
             ).recalcCanStart()
         }
+    }
+
+    private fun extractAiNumber(displayName: String): Int? {
+        val suffix = displayName.takeLastWhile { it.isDigit() }
+        return suffix.toIntOrNull()
     }
 
     private fun requestSwap(targetSlotIndex: Int) {
@@ -228,5 +256,23 @@ class RoomViewModel : ViewModel() {
             isLocalPlayer = source.isLocalPlayer,
             seatId = source.seatId,
         )
+    }
+
+    companion object {
+        /**
+         * 生成AI显示名称
+         * - 规则型AI: AIN1, AIN2, AIN3 (固定N)
+         * - RL训练AI: RLE1, RLN2, RLH3 (保留难度E/N/H)
+         * - 数字 = AI序号(1-3)
+         */
+        fun generateAiDisplayName(difficulty: RoomAiDifficulty, aiNumber: Int): String {
+            return when (difficulty.aiType) {
+                AIType.RULE_BASED -> "AIN$aiNumber"
+                AIType.ONNX_RL -> {
+                    val difficultySymbol = difficulty.difficultyLevel.symbol
+                    "RL${difficultySymbol}$aiNumber"
+                }
+            }
+        }
     }
 }

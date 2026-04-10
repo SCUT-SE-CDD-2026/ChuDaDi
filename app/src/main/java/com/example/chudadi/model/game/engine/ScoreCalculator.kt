@@ -54,7 +54,13 @@ object ScoreCalculator {
 
     private fun calculateNorthernPenalty(remainingCards: Int): Int {
         return when {
-            remainingCards == FULL_HAND_CARD_COUNT -> remainingCards * 3
+            remainingCards >= FULL_HAND_CARD_COUNT -> {
+                if (remainingCards == FULL_HAND_CARD_COUNT) {
+                    NO_PLAY_PENALTY
+                } else {
+                    remainingCards * 3
+                }
+            }
             remainingCards >= DOUBLE_PENALTY_THRESHOLD -> remainingCards * 2
             else -> remainingCards
         }
@@ -62,4 +68,5 @@ object ScoreCalculator {
 
     private const val DOUBLE_PENALTY_THRESHOLD = 10
     private const val FULL_HAND_CARD_COUNT = 13
+    private const val NO_PLAY_PENALTY = 39
 }

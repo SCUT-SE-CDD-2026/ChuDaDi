@@ -3,10 +3,10 @@ package com.example.chudadi.controller.client
 import com.example.chudadi.ai.rulebased.AiDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.controller.game.MatchUiStateMapper
+import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
-import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.network.protocol.PassCommand
@@ -32,21 +32,34 @@ class LocalPlayerController(
     private var lastActionMessage: String? = null
     private var aiTurnJob: Job? = null
     private var localSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
+    private var lastSeatConfigs: List<SeatConfig>? = null
+    private var lastLocalSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
+    private var lastRuleSet: GameRuleSet = GameRuleSet.SOUTHERN
 
     fun onRequestStartLocalMatch(
-        seatConfigs: List<Triple<Int, String, SeatControllerType>>? = null,
+        seatConfigs: List<SeatConfig>? = null,
         localSeatId: Int = 0,
         ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
     ) {
         aiTurnJob?.cancel()
-        this.localSeatId = localSeatId
-        currentMatch = if (seatConfigs != null) {
+        val effectiveSeatConfigs = seatConfigs ?: lastSeatConfigs
+        val effectiveLocalSeatId = if (seatConfigs != null) localSeatId else lastLocalSeatId
+        val effectiveRuleSet = if (seatConfigs != null) ruleSet else lastRuleSet
+        this.localSeatId = effectiveLocalSeatId
+        lastSeatConfigs = effectiveSeatConfigs
+        lastLocalSeatId = effectiveLocalSeatId
+        lastRuleSet = effectiveRuleSet
+        currentMatch = if (effectiveSeatConfigs != null) {
+            // 转换SeatConfig为Triple格式
+            val tripleConfigs = effectiveSeatConfigs.map {
+                Triple(it.seatIndex, it.name, it.controllerType)
+            }
             serverController.startLocalMatch(
-                ruleSet = ruleSet,
-                seatConfigs = seatConfigs,
+                ruleSet = effectiveRuleSet,
+                seatConfigs = tripleConfigs,
             )
         } else {
-            serverController.startLocalMatch(ruleSet)
+            serverController.startLocalMatch(ruleSet = effectiveRuleSet)
         }
         selectedCardIds = emptySet()
         lastActionMessage = null
@@ -113,7 +126,11 @@ class LocalPlayerController(
     }
 
     fun onRequestRestartMatch() {
-        onRequestStartLocalMatch()
+        onRequestStartLocalMatch(
+            seatConfigs = lastSeatConfigs,
+            localSeatId = lastLocalSeatId,
+            ruleSet = lastRuleSet,
+        )
     }
 
     fun onExitToHome() {

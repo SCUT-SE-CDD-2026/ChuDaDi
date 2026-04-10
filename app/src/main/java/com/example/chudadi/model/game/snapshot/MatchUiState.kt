@@ -27,6 +27,12 @@ data class ResultSummary(
     val roundScores: List<RoundScore> = emptyList(),
 )
 
+data class DebugHandSummary(
+    val seatId: Int,
+    val displayName: String,
+    val cards: List<String>,
+)
+
 data class MatchUiState(
     val phase: MatchPhase = MatchPhase.NOT_STARTED,
     val playerHand: List<Card> = emptyList(),
@@ -40,4 +46,5 @@ data class MatchUiState(
     val canPass: Boolean = false,
     val resultSummary: ResultSummary? = null,
     val isHumanTurn: Boolean = false,
+    val debugOpponentHands: List<DebugHandSummary> = emptyList(),
 )

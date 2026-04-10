@@ -55,3 +55,7 @@ opencode-webui.cmd
 # Local Claude config
 .claude/settings.local.json
 CLAUDE.local.md
+
+# AI Model files (large binary files)
+*.onnx
+app/src/main/assets/models/

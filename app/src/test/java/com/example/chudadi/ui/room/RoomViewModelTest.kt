@@ -11,7 +11,7 @@ class RoomViewModelTest {
     fun swapWithAi_keepsSlotIndexStableAndMovesSeatIdWithOccupant() {
         val viewModel = RoomViewModel()
 
-        viewModel.dispatch(RoomAction.AddAiToSlot(1, AiDifficulty.RULE_BASED))
+        viewModel.dispatch(RoomAction.AddAiToSlot(1, RoomAiDifficulty.RULE_NORMAL))
         viewModel.dispatch(RoomAction.RequestSwapWithSlot(1))
 
         val slots = viewModel.uiState.value.slots
@@ -30,7 +30,7 @@ class RoomViewModelTest {
     fun accumulateScores_afterSwap_updatesMatchingSeatId() {
         val viewModel = RoomViewModel()
 
-        viewModel.dispatch(RoomAction.AddAiToSlot(1, AiDifficulty.RULE_BASED))
+        viewModel.dispatch(RoomAction.AddAiToSlot(1, RoomAiDifficulty.RULE_NORMAL))
         viewModel.dispatch(RoomAction.RequestSwapWithSlot(1))
         viewModel.dispatch(
             RoomAction.AccumulateScores(
@@ -56,9 +56,9 @@ class RoomViewModelTest {
 
         assertFalse(viewModel.uiState.value.canStartGame)
 
-        viewModel.dispatch(RoomAction.AddAiToSlot(1, AiDifficulty.RULE_BASED))
-        viewModel.dispatch(RoomAction.AddAiToSlot(2, AiDifficulty.RULE_BASED))
-        viewModel.dispatch(RoomAction.AddAiToSlot(3, AiDifficulty.RULE_BASED))
+        viewModel.dispatch(RoomAction.AddAiToSlot(1, RoomAiDifficulty.RULE_NORMAL))
+        viewModel.dispatch(RoomAction.AddAiToSlot(2, RoomAiDifficulty.RULE_NORMAL))
+        viewModel.dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
 
         assertTrue(viewModel.uiState.value.canStartGame)
     }

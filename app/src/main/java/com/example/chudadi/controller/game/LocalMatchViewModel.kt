@@ -1,11 +1,11 @@
-package com.example.chudadi.controller.game
+﻿package com.example.chudadi.controller.game
 
 import androidx.lifecycle.ViewModel
-import com.example.chudadi.ai.rulebased.AiDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.controller.client.LocalPlayerController
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.engine.GameEngine
+import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,6 +25,7 @@ class LocalMatchViewModel(
         aiPlayer = RuleBasedAiPlayer(),
         mapper = MatchUiStateMapper(engine),
     )
+
     private val viewModelScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val controller =
         LocalPlayerController(
@@ -38,12 +39,31 @@ class LocalMatchViewModel(
 
     fun dispatch(action: LocalGameAction) {
         when (action) {
-            is LocalGameAction.StartLocalMatch ->
+            is LocalGameAction.StartLocalMatch -> {
+                // 为空的 AI 座位生成显示名（AIN1, AIN2, AIN3）
+                val populatedConfigs = action.seatConfigs?.map { config ->
+                    if (config.controllerType == SeatControllerType.RULE_BASED_AI &&
+                        config.name.isBlank()
+                    ) {
+                        val seatNumber = config.seatIndex + 1
+                        config.copy(name = "AIN$seatNumber")
+                    } else {
+                        config
+                    }
+                }
+
+                // 过滤掉 ONNX AI 座位，仅规则型 AI + HUMAN 交给 LocalMatch
+                val ruleBasedConfigs = populatedConfigs?.filter {
+                    it.controllerType == SeatControllerType.RULE_BASED_AI ||
+                        it.controllerType == SeatControllerType.HUMAN
+                }
                 controller.onRequestStartLocalMatch(
-                    seatConfigs = action.seatConfigs,
+                    seatConfigs = ruleBasedConfigs,
                     localSeatId = action.localSeatId,
                     ruleSet = action.ruleSet,
                 )
+            }
+
             LocalGameAction.ClearSelection -> controller.onClearSelection()
             LocalGameAction.SubmitSelectedCards -> controller.onRequestPlayCards()
             LocalGameAction.PassTurn -> controller.onRequestPass()

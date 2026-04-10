@@ -25,9 +25,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -48,6 +51,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -76,10 +80,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import android.graphics.BlurMaskFilter
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.toArgb
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.Card as GameCard
 import com.example.chudadi.model.game.snapshot.MatchUiState
@@ -191,7 +197,66 @@ fun GameScreen(
                             .testTag(ComposeTestTags.ACTION_MESSAGE),
                     )
                 }
+                // Debug 按钮：显示AI手牌
+                if (BuildConfig.DEBUG && uiState.debugOpponentHands.isNotEmpty()) {
+                    DebugAiHandsButton(uiState = uiState)
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun DebugAiHandsButton(uiState: MatchUiState) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    if (showDialog && uiState.debugOpponentHands.isNotEmpty()) {
+        val allHandsText = uiState.debugOpponentHands.joinToString("\n\n") { summary ->
+            buildString {
+                append("${summary.displayName} [seat=${summary.seatId}] (${summary.cards.size}):\n")
+                append(summary.cards.joinToString(" "))
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text("DEBUG - Opponent Hands") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                ) {
+                    Text("You (${uiState.playerHand.size}):", color = Color.Red)
+                    Text(
+                        uiState.playerHand.map { it.displayName }.joinToString(" "),
+                        color = Color.Red,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(allHandsText)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showDialog = false }) {
+                    Text("Close")
+                }
+            },
+        )
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(end = 4.dp, bottom = 4.dp),
+        contentAlignment = Alignment.BottomEnd,
+    ) {
+        OutlinedButton(
+            onClick = { showDialog = true },
+            modifier = Modifier.size(36.dp),
+            contentPadding = PaddingValues(0.dp),
+            border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.6f)),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = Color.Black.copy(alpha = 0.5f),
+            ),
+        ) {
+            Text("D", color = Color.Red, fontSize = 12.sp)
         }
     }
 }

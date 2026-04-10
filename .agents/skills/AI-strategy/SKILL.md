@@ -1,29 +1,38 @@
 ---
-title: ai:strategy
-description: Guidance for modifying, explaining, and extending this project's rule-based Big Two AI while preserving
-    the existing southern/northern rule system and current strategy-object structure.
+title: AI-strategy
+description: Guidance for modifying, explaining, and extending this project's Big Two AI (Rule-based + ONNX RL) while preserving the southern/northern rule system, engine authority, and current controller abstraction.
 ---
 
-## AI 实现说明
+## 目标
 
-本项目当前本地人机对战使用的是**规则型启发式 AI（Rule-Based Heuristic AI）**。
-当前 AI 不是 ONNX 推理 AI，也不是强化学习 AI。
+在不破坏现有规则体系与对局主循环的前提下，安全修改 AI 行为、扩展 AI 类型，或解释 AI 决策链路。
 
-AI 相关代码位于：
+## 当前实现状态（以代码为准）
 
-- `app/src/main/java/com/example/chudadi/ai/rulebased/`
+当前项目不是单一规则型 AI，而是“双轨 AI 架构”:
 
-## 规则依赖说明
+- 规则型 AI：`app/src/main/java/com/example/chudadi/ai/rulebased/`
+- ONNX RL AI：`app/src/main/java/com/example/chudadi/ai/onnx/`
+- 统一抽象：
+  - `app/src/main/java/com/example/chudadi/ai/base/AIPlayerController.kt`
+  - `app/src/main/java/com/example/chudadi/ai/base/AIDecision.kt`
+  - `app/src/main/java/com/example/chudadi/ai/base/AIDifficulty.kt`
+- 工厂与降级入口：`app/src/main/java/com/example/chudadi/ai/AIFactory.kt`
+- 模型拷贝与路径管理：`app/src/main/java/com/example/chudadi/utils/AssetCopier.kt`
+- ONNX 对局调度：`app/src/main/java/com/example/chudadi/controller/game/OnnxMatchViewModel.kt`
 
-AI 决策建立在项目当前已实现的南北规则系统之上。
-涉及 AI 行为时，应优先参考以下规则文档与规则实现：
+补充：`SeatControllerType` 已包含 `ONNX_RL_AI`，房间页可选择 `RULE_*` 与 `ONNX_*` 难度。
 
-规则文档：
+## 规则权威与边界
 
-- `docs/游戏规则（中文版）.md`
-- `docs/GameRule（English）.md`
+AI 修改必须遵守以下边界：
 
-规则实现：
+- 规则权威层是 `GameEngine` + `GameRules` + `CombinationEvaluator`，AI 不能绕过它们自定义一套判定。
+- AI 只负责“提出动作”，最终合法性由服务端权威流（本地房主控制器）裁决。
+- 任何 ONNX 输出都必须经过合法性验证；不合法时必须可降级到规则型 AI。
+- 不要让 UI 或 ViewModel 直接改 `Match` 结构体字段，必须通过 command -> engine 流程。
+
+关键规则文件：
 
 - `app/src/main/java/com/example/chudadi/model/game/rule/GameRuleSet.kt`
 - `app/src/main/java/com/example/chudadi/model/game/rule/GameRules.kt`
@@ -32,74 +41,92 @@ AI 决策建立在项目当前已实现的南北规则系统之上。
 - `app/src/main/java/com/example/chudadi/model/game/rule/CombinationEvaluator.kt`
 - `app/src/main/java/com/example/chudadi/model/game/engine/GameEngine.kt`
 
-说明：
+## 调用链路（房间到对局）
 
-- 当前项目已实现南方规则（`SOUTHERN`）与北方规则（`NORTHERN`）。
-- AI 不应绕开 `GameRules`、`CombinationEvaluator` 或 `GameEngine` 单独定义一套规则。
-- 若文档与代码实现存在差异，修改前应先确认当前项目阶段以哪一方为准。
+1. 房间配置 AI 类型/难度：`ui/room/*`
+2. 导航组装 `SeatConfig`：`navigation/ChuDaDiNavGraph.kt`
+3. 对局分流：
+   - 无 ONNX 座位 -> `LocalMatchViewModel`
+   - 有 ONNX 座位 -> `OnnxMatchViewModel`
+4. ONNX 分支由 `AIFactory.createAIPlayerWithStatus` 创建控制器并处理模型不可用时降级。
+5. AI 决策最终通过 `PlayCardCommand/PassCommand` 走 `GameEngine` 判定。
 
-## 当前 AI 结构
+## 规则型 AI 结构约束
 
-当前 AI 结构包括：
+规则型 AI 仍采用“策略对象 + 评分对象”结构，不应随意打平到单大类：
 
-- `RuleBasedAiPlayer.kt`
-    - AI 主入口与决策流程调度层
-- `RuleBasedAiContext.kt`
-    - AI 决策所需上下文
-- `RuleBasedAiPolicies.kt`
-    - 策略对象聚合
-- `HandProfile.kt`
-    - 手牌结构分析
-- `RuleBasedAiScoringConstants.kt`
-    - 启发式评分常量
+- 主流程与上下文：
+  - `RuleBasedAiPlayer.kt`
+  - `RuleBasedAiContext.kt`
+  - `RuleBasedAiPolicies.kt`
+- policy 层：`policy/`（候选生成、约束、过牌、选择）
+- scoring 层：`scoring/`（领出/响应/惩罚/概率/调度）
 
-策略层位于：
+修改建议：
 
-- `policy/CandidatePolicy.kt`
-    - 候选生成与合法响应过滤
-- `policy/TurnConstraintPolicy.kt`
-    - 规则硬约束判断
-- `policy/PassPolicy.kt`
-    - 过牌策略判断
-- `policy/SelectionPolicy.kt`
-    - 高分候选的加权随机选择
+- 规则判定变化优先改 rule/engine，不在 policy/scoring 里硬编码补丁。
+- 评分参数调优优先改常量和 scorer，不改 turn constraint 的硬约束逻辑。
 
-评分层位于：
+## ONNX AI 结构约束
 
-- `scoring/LeadScorer.kt`
-    - 领出评分
-- `scoring/ResponseScorer.kt`
-    - 响应评分
-- `scoring/PenaltyEvaluator.kt`
-    - 拆牌惩罚、控牌损失、残局奖励等评估
-- `scoring/PassProbabilityEvaluator.kt`
-    - 过牌概率评估
-- `scoring/ScoringPolicy.kt`
-    - 评分调度入口
+ONNX 关键链路：
 
-## 当前 AI 的实现特点
+- 编码：`GameStateEncoder`
+- 推理：`OnnxInferenceEngine` / `OnnxModel`
+- 解码：`ActionDecoder`
+- 控制器：`OnnxAIPlayerController`
 
-当前 AI 的决策流程可以概括为：
+修改 ONNX 逻辑时必须同时检查：
 
-1. 读取当前规则集、桌面牌型、手牌与局面信息
-2. 枚举当前手牌中的合法候选组合
-3. 根据南北规则过滤出允许动作集合
-4. 对候选动作进行启发式评分
-5. 在规则允许的前提下判断是否过牌
-6. 在高分候选中通过加权随机选择最终动作
+- 输入维度与模型输入名是否匹配。
+- 解码动作是否与 `validActions` 一致。
+- `Pass` 行为是否满足南北方规则。
+- 推理失败、超时、非法输出时是否有可靠 fallback。
+- 资源释放是否安全（session 生命周期）。
 
-当前 AI 的特点：
+## 常见任务指南
 
-- 依赖现有南北规则系统进行合法性判断
-- 先筛选规则允许的动作集合，再进行策略决策
-- 对候选动作进行启发式评分，并结合过牌策略决定最终动作
-- 在高分候选中通过加权随机进行选择，避免行为完全僵化
-- 更偏规则型、结构保护型与资源保留型，而不是搜索型或学习型 AI
+### 1) 调整 AI 难度体验
 
-## 修改建议
+- 规则型：优先改 `RuleBasedAiScoringConstants.kt` / scorer 权重。
+- ONNX：优先改 `DifficultyConfig.kt`（temperature、explorationRate、topK、mistakeProbability）。
+- 不要直接在 ViewModel 里塞随机行为逻辑。
 
-- 修改 AI 时，应尽量保持当前的策略对象结构，不要将职责重新集中回单一类中。
-- 修改 AI 行为时，应区分“规则约束”和“策略决策”：
-    - 规则是否合法、是否允许过牌，属于规则层
-    - 候选评分、是否主动过牌、最终动作选择，属于策略层
-- 若后续扩展 ONNX AI、学习型 AI 或不同难度 AI，应优先复用现有规则层、上下文对象和策略边界。
+### 2) 新增 AI 类型
+
+建议复用现有抽象：
+
+- 新增 `AIPlayerController` 实现。
+- 在 `AIFactory` 增加创建与状态返回逻辑。
+- 扩展 `SeatControllerType` 与房间选择 UI。
+- 在导航层保证 `SeatConfig` 能正确映射到控制器类型。
+
+### 3) 修复 AI 卡局/异常
+
+优先排查：
+
+- AI 动作被 `GameEngine` 拒绝后的处理是否继续推进。
+- fallback 后是否还能提交合法 command。
+- `MAX_AI_CHAIN` 是否导致提前退出。
+
+## 提交前检查清单
+
+至少执行：
+
+- `./gradlew.bat :app:compileDebugKotlin --no-daemon --console=plain`
+- `./gradlew.bat test --no-daemon --console=plain`
+
+若改了 AI 核心逻辑，建议补测试：
+
+- 规则型：policy/scoring 行为测试。
+- ONNX：解码合法性、fallback、错误恢复测试。
+- 对局：AI 回合推进与结束条件回归测试。
+
+## 文档维护要求
+
+每次改动以下任一内容时，应同步更新本技能文档：
+
+- AI 架构分层（base/rulebased/onnx）
+- AI 创建与降级机制（`AIFactory`）
+- 房间到对局的控制器映射路径
+- 关键约束（规则权威、fallback、资源释放）

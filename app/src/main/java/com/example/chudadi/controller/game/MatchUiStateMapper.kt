@@ -1,11 +1,13 @@
 package com.example.chudadi.controller.game
 
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.SeatStatus
+import com.example.chudadi.model.game.snapshot.DebugHandSummary
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.ResultSummary
@@ -13,6 +15,7 @@ import com.example.chudadi.model.game.snapshot.TablePlaySummary
 
 class MatchUiStateMapper(
     private val engine: GameEngine,
+    private val enableDebugHands: Boolean = BuildConfig.DEBUG,
 ) {
     fun map(
         match: Match?,
@@ -83,6 +86,20 @@ class MatchUiStateMapper(
                 )
             },
             isHumanTurn = match.phase != MatchPhase.FINISHED && match.activeSeatIndex == localSeatId,
+            debugOpponentHands = if (enableDebugHands) {
+                match.seats
+                    .filterNot { it.seatId == localSeatId }
+                    .sortedBy { it.seatId }
+                    .map { seat ->
+                        DebugHandSummary(
+                            seatId = seat.seatId,
+                            displayName = seat.displayName,
+                            cards = seat.hand.sortedWith(Card.gameComparator).map(Card::displayName),
+                        )
+                    }
+            } else {
+                emptyList()
+            },
         )
     }
 

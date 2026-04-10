@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -129,9 +131,25 @@ fun RoomScreen(
             }
         }
 
-        if (uiState.showAiDifficultyDialog) {
-            AiDifficultyDialog(
-                onSelect = { diff -> onAction(RoomAction.AddAiToSlot(uiState.aiDialogTargetSlot, diff)) },
+        if (uiState.showRoomAiDifficultyDialog) {
+            RoomAiDifficultyDialog(
+                step = uiState.aiSelectionStep,
+                onSelectType = { aiType ->
+                    when (aiType) {
+                        AIType.RULE_BASED -> {
+                            // 规则型 AI 直接添加，使用默认 NORMAL 难度
+                            onAction(
+                                RoomAction.AddAiToSlot(
+                                    uiState.aiDialogTargetSlot,
+                                    RoomAiDifficulty.RULE_NORMAL,
+                                ),
+                            )
+                        }
+                        AIType.ONNX_RL -> onAction(RoomAction.SelectAiType(AIType.ONNX_RL))
+                    }
+                },
+                onSelectDifficulty = { diff -> onAction(RoomAction.AddAiToSlot(uiState.aiDialogTargetSlot, diff)) },
+                onBack = { onAction(RoomAction.BackToAiTypeSelection) },
                 onDismiss = { onAction(RoomAction.DismissAiDialog) },
             )
         }
@@ -145,6 +163,7 @@ fun RoomScreen(
         }
     }
 }
+
 
 @Composable
 private fun RoomTopBar(
@@ -194,6 +213,7 @@ private fun RoomTopBar(
         }
     }
 }
+
 
 @Composable
 private fun SlotsGrid(
@@ -245,6 +265,7 @@ private fun SlotsGrid(
         }
     }
 }
+
 
 @Composable
 private fun SlotCard(
@@ -298,6 +319,7 @@ private fun SlotCard(
     }
 }
 
+
 @Composable
 private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomAction) -> Unit) {
     DropdownMenu(
@@ -327,6 +349,7 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
     }
 }
 
+
 @Composable
 private fun EmptySlotContent(slotIndex: Int) {
     Column(
@@ -350,6 +373,7 @@ private fun EmptySlotContent(slotIndex: Int) {
         )
     }
 }
+
 
 @Suppress("CyclomaticComplexMethod")
 @Composable
@@ -394,7 +418,7 @@ private fun FilledSlotContent(slot: SlotState) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val typeLabel = when (slot.occupantType) {
-                SlotOccupantType.AI -> "AI"
+                SlotOccupantType.AI -> slot.aiType?.label ?: "AI"
                 SlotOccupantType.HUMAN_HOST -> "房主"
                 SlotOccupantType.HUMAN_MEMBER -> "成员"
                 null -> ""
@@ -436,6 +460,7 @@ private fun FilledSlotContent(slot: SlotState) {
         )
     }
 }
+
 
 @Suppress("LongMethod")
 @Composable
@@ -535,6 +560,7 @@ private fun ControlPanel(
     }
 }
 
+
 @Composable
 private fun InfoRow(
     label: String,
@@ -551,30 +577,84 @@ private fun InfoRow(
     }
 }
 
+
+
 @Composable
-private fun AiDifficultyDialog(
-    onSelect: (AiDifficulty) -> Unit,
+private fun RoomAiDifficultyDialog(
+    step: AiSelectionStep,
+    onSelectType: (AIType) -> Unit,
+    onSelectDifficulty: (RoomAiDifficulty) -> Unit,
+    onBack: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val title = when (step) {
+        AiSelectionStep.SELECT_TYPE -> "选择 AI 类型"
+        AiSelectionStep.SELECT_DIFFICULTY -> "选择难度"
+    }
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择 AI 类型", style = MaterialTheme.typography.titleMedium, color = TextPrimary) },
+        title = { Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary) },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AiDifficulty.entries.forEach { diff ->
-                    ChuButton(
-                        text = diff.label,
-                        onClick = { onSelect(diff) },
-                        style = ChuButtonStyle.SECONDARY,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+            Column(
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                when (step) {
+                    AiSelectionStep.SELECT_TYPE -> {
+                        // 第一步：选择AI类型
+                        ChuButton(
+                            text = "规则型 AI",
+                            onClick = { onSelectType(AIType.RULE_BASED) },
+                            style = ChuButtonStyle.SECONDARY,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        ChuButton(
+                            text = "RL训练 AI",
+                            onClick = { onSelectType(AIType.ONNX_RL) },
+                            style = ChuButtonStyle.SECONDARY,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    AiSelectionStep.SELECT_DIFFICULTY -> {
+                        // 第二步：选择难度
+                        
+                        
+                        Text(
+                            "已选择: RL训练 AI",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextSecondary,
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        RoomAiDifficulty.entries
+                            .filter { it.aiType == AIType.ONNX_RL }
+                            .forEach { diff ->
+                                ChuButton(
+                                    text = diff.difficultyLevel.displayName,
+                                    onClick = { onSelectDifficulty(diff) },
+                                    style = ChuButtonStyle.SECONDARY,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+                    }
                 }
             }
         },
         confirmButton = {},
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消", color = TextSecondary)
+            when (step) {
+                AiSelectionStep.SELECT_TYPE -> {
+                    TextButton(onClick = onDismiss) {
+                        Text("取消", color = TextSecondary)
+                    }
+                }
+                AiSelectionStep.SELECT_DIFFICULTY -> {
+                    TextButton(onClick = onBack) {
+                        Text("返回", color = TextSecondary)
+                    }
+                }
             }
         },
         containerColor = Color(0xFF2A1F14),
@@ -583,7 +663,6 @@ private fun AiDifficultyDialog(
         shape = RoundedCornerShape(16.dp),
     )
 }
-
 @Composable
 private fun SwapRequestDialog(
     request: SwapRequest,
@@ -610,3 +689,17 @@ private fun SwapRequestDialog(
         shape = RoundedCornerShape(16.dp),
     )
 }
+
+
+private val DifficultyLevel.displayName: String
+    get() = when (this) {
+        DifficultyLevel.EASY -> "简单"
+        DifficultyLevel.NORMAL -> "普通"
+        DifficultyLevel.HARD -> "困难"
+    }
+
+private val AIType.label: String
+    get() = when (this) {
+        AIType.RULE_BASED -> "规则AI"
+        AIType.ONNX_RL -> "RL AI"
+    }
