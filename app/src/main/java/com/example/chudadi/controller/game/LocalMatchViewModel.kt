@@ -39,7 +39,11 @@ class LocalMatchViewModel(
     fun dispatch(action: LocalGameAction) {
         when (action) {
             is LocalGameAction.StartLocalMatch ->
-                controller.onRequestStartLocalMatch(action.seatConfigs, action.localSeatId)
+                controller.onRequestStartLocalMatch(
+                    seatConfigs = action.seatConfigs,
+                    localSeatId = action.localSeatId,
+                    ruleSet = action.ruleSet,
+                )
             LocalGameAction.ClearSelection -> controller.onClearSelection()
             LocalGameAction.SubmitSelectedCards -> controller.onRequestPlayCards()
             LocalGameAction.PassTurn -> controller.onRequestPass()
