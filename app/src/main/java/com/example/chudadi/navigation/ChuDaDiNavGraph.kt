@@ -12,11 +12,13 @@ import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.LocalMatchViewModel
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.SeatControllerType
+import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.ui.game.GameScreen
 import com.example.chudadi.ui.game.GameScreenActions
 import com.example.chudadi.ui.home.HomeScreen
 import com.example.chudadi.ui.result.ResultScreen
+import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomScreen
 import com.example.chudadi.ui.room.RoomUiState
@@ -132,7 +134,15 @@ private fun buildStartMatchAction(roomUiState: RoomUiState): LocalGameAction.Sta
             Triple(slot.seatId, name, controllerType)
         }
     val localSeatId = roomUiState.slots.firstOrNull { it.isLocalPlayer }?.seatId ?: return null
-    return LocalGameAction.StartLocalMatch(seatConfigs, localSeatId)
+    val ruleSet = when (roomUiState.currentRule) {
+        GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
+        GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
+    }
+    return LocalGameAction.StartLocalMatch(
+        seatConfigs = seatConfigs,
+        localSeatId = localSeatId,
+        ruleSet = ruleSet,
+    )
 }
 
 private fun RoomUiState.canStartMatch(): Boolean {

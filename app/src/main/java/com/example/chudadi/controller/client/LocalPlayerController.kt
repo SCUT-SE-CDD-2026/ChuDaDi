@@ -6,6 +6,8 @@ import com.example.chudadi.controller.game.MatchUiStateMapper
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.model.game.entity.SeatControllerType
+import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.network.protocol.PassCommand
 import com.example.chudadi.network.protocol.PlayCardCommand
@@ -32,18 +34,19 @@ class LocalPlayerController(
     private var localSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
 
     fun onRequestStartLocalMatch(
-        seatConfigs: List<Triple<Int, String, com.example.chudadi.model.game.entity.SeatControllerType>>? = null,
+        seatConfigs: List<Triple<Int, String, SeatControllerType>>? = null,
         localSeatId: Int = 0,
+        ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
     ) {
         aiTurnJob?.cancel()
         this.localSeatId = localSeatId
         currentMatch = if (seatConfigs != null) {
             serverController.startLocalMatch(
-                ruleSet = com.example.chudadi.model.game.rule.GameRuleSet.SOUTHERN,
+                ruleSet = ruleSet,
                 seatConfigs = seatConfigs,
             )
         } else {
-            serverController.startLocalMatch()
+            serverController.startLocalMatch(ruleSet)
         }
         selectedCardIds = emptySet()
         lastActionMessage = null
