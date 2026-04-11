@@ -45,7 +45,7 @@ class LocalMatchViewModel(
                     if (config.controllerType == SeatControllerType.RULE_BASED_AI &&
                         config.name.isBlank()
                     ) {
-                        val seatNumber = config.seatIndex + 1
+                        val seatNumber = config.seatId + 1
                         config.copy(name = "AIN$seatNumber")
                     } else {
                         config
@@ -61,6 +61,7 @@ class LocalMatchViewModel(
                     seatConfigs = ruleBasedConfigs,
                     localSeatId = action.localSeatId,
                     ruleSet = action.ruleSet,
+                    aiMoveDelayMillis = action.aiMoveDelayMillis,
                 )
             }
 

@@ -27,8 +27,8 @@ class MatchUiStateMapper(
             return MatchUiState()
         }
 
-        val humanSeat = match.seats.first { it.seatId == localSeatId }
-        val selectedCards = humanSeat.hand.filter { it.id in selectedCardIds }.map(Card::id).toSet()
+        val localSeat = match.seats.firstOrNull { it.seatId == localSeatId }
+        val selectedCards = localSeat?.hand?.filter { it.id in selectedCardIds }?.map(Card::id)?.toSet().orEmpty()
         val tablePlays = match.trickState.tablePlays.entries
             .sortedBy { it.key }
             .map { (seatId, combination) ->
@@ -43,20 +43,9 @@ class MatchUiStateMapper(
 
         return MatchUiState(
             phase = match.phase,
-            playerHand = humanSeat.hand.sortedWith(Card.gameComparator),
+            playerHand = localSeat?.hand?.sortedWith(Card.gameComparator).orEmpty(),
             selectedCards = selectedCards,
-            opponentSummaries = match.seats
-                .filterNot { it.seatId == localSeatId }
-                .map { seat ->
-                    OpponentSummary(
-                        seatId = seat.seatId,
-                        displayName = seat.displayName,
-                        avatarResId = R.drawable.avatar,
-                        remainingCards = seat.hand.size,
-                        isCurrentActor = seat.seatId == match.activeSeatIndex,
-                        hasPassed = seat.status == SeatStatus.PASSED,
-                    )
-                },
+            opponentSummaries = buildOpponentSummaries(match, localSeatId, localSeat != null),
             currentActorName = match.seats.first { it.seatId == match.activeSeatIndex }.displayName,
             tablePlays = tablePlays,
             currentTablePlay = match.trickState.currentCombination?.let { combination ->
@@ -71,12 +60,12 @@ class MatchUiStateMapper(
             lastActionMessage = lastActionMessage,
             canSubmitPlay = engine.canSubmitSelectedCards(
                 match = match,
-                seatIndex = localSeatId,
+                seatIndex = localSeat?.seatId ?: NO_LOCAL_SEAT_ID,
                 selectedCardIds = selectedCardIds,
             ),
             canPass = engine.canPass(
                 match = match,
-                seatIndex = localSeatId,
+                seatIndex = localSeat?.seatId ?: NO_LOCAL_SEAT_ID,
             ),
             resultSummary = match.result?.let { result ->
                 ResultSummary(
@@ -85,25 +74,54 @@ class MatchUiStateMapper(
                     roundScores = result.scoreSummary.roundScores,
                 )
             },
-            isHumanTurn = match.phase != MatchPhase.FINISHED && match.activeSeatIndex == localSeatId,
-            debugOpponentHands = if (enableDebugHands) {
-                match.seats
-                    .filterNot { it.seatId == localSeatId }
-                    .sortedBy { it.seatId }
-                    .map { seat ->
-                        DebugHandSummary(
-                            seatId = seat.seatId,
-                            displayName = seat.displayName,
-                            cards = seat.hand.sortedWith(Card.gameComparator).map(Card::displayName),
-                        )
-                    }
-            } else {
-                emptyList()
-            },
+            isHumanTurn = localSeat != null &&
+                match.phase != MatchPhase.FINISHED &&
+                match.activeSeatIndex == localSeatId,
+            debugOpponentHands = buildDebugHands(match, localSeatId, localSeat != null),
         )
+    }
+
+    private fun buildOpponentSummaries(
+        match: Match,
+        localSeatId: Int,
+        hasLocalSeat: Boolean,
+    ): List<OpponentSummary> {
+        return match.seats
+            .filterNot { it.seatId == localSeatId && hasLocalSeat }
+            .map { seat ->
+                OpponentSummary(
+                    seatId = seat.seatId,
+                    displayName = seat.displayName,
+                    avatarResId = R.drawable.avatar,
+                    remainingCards = seat.hand.size,
+                    isCurrentActor = seat.seatId == match.activeSeatIndex,
+                    hasPassed = seat.status == SeatStatus.PASSED,
+                )
+            }
+    }
+
+    private fun buildDebugHands(
+        match: Match,
+        localSeatId: Int,
+        hasLocalSeat: Boolean,
+    ): List<DebugHandSummary> {
+        if (!enableDebugHands) {
+            return emptyList()
+        }
+        return match.seats
+            .filterNot { it.seatId == localSeatId && hasLocalSeat }
+            .sortedBy { it.seatId }
+            .map { seat ->
+                DebugHandSummary(
+                    seatId = seat.seatId,
+                    displayName = seat.displayName,
+                    cards = seat.hand.sortedWith(Card.gameComparator).map(Card::displayName),
+                )
+            }
     }
 
     companion object {
         const val DEFAULT_LOCAL_SEAT_ID = 0
+        const val NO_LOCAL_SEAT_ID = -1
     }
 }

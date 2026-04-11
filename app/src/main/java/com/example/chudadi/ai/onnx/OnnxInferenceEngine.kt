@@ -1,11 +1,11 @@
-package com.example.chudadi.ai.onnx
+﻿package com.example.chudadi.ai.onnx
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.util.Log
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -15,17 +15,29 @@ import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.nio.FloatBuffer
 
+data class OnnxModelIoContract(
+    val obsInputName: String,
+    val actionsInputName: String,
+    val outputName: String,
+    val obsDim: Int,
+    val actionDim: Int,
+    val outputDim: Int,
+)
+
 /**
- * ONNX推理引擎
+ * ONNX 推理引擎。
  *
- * 负责ONNX模型的加载和推理执行。
- * 提供线程安全的推理接口，支持超时控制和异常处理。
+ * 负责模型加载与推理执行，提供线程安全调用、超时控制与统一异常封装。
  */
 class OnnxInferenceEngine(modelPath: String) {
 
     companion object {
         private const val TAG = "OnnxInferenceEngine"
         private const val INFERENCE_TIMEOUT_MS = 5000L
+        private const val EXPECTED_OBS_INPUT_DIM = GameStateEncoder.INPUT_DIM
+        private const val EXPECTED_ACTION_INPUT_DIM = ActionFeatureEncoder.ACTION_FEATURE_DIM
+        private const val EXPECTED_OUTPUT_DIM = 1
+
         // OrtEnvironment is process-wide singleton; do not close it per engine instance.
         private val sharedEnvironment: OrtEnvironment by lazy { OrtEnvironment.getEnvironment() }
     }
@@ -33,11 +45,19 @@ class OnnxInferenceEngine(modelPath: String) {
     private val environment: OrtEnvironment = sharedEnvironment
     private val sessionLock = Mutex()
     private var session: OrtSession? = null
+
     @Volatile
     private var isInitialized = false
-    private var inputNames: List<String> = listOf("obs")
-    private var outputName: String = "Q"
-    private var actionsInputDim: Int = 138
+
+    var ioContract: OnnxModelIoContract = OnnxModelIoContract(
+        obsInputName = "obs",
+        actionsInputName = "actions",
+        outputName = "Q",
+        obsDim = EXPECTED_OBS_INPUT_DIM,
+        actionDim = EXPECTED_ACTION_INPUT_DIM,
+        outputDim = EXPECTED_OUTPUT_DIM,
+    )
+        private set
 
     init {
         try {
@@ -55,36 +75,93 @@ class OnnxInferenceEngine(modelPath: String) {
             session = environment.createSession(modelPath, sessionOptions)
             isInitialized = true
 
-            // 动态读取输入输出名称
             val modelInputNames = session?.inputInfo?.keys?.toList()
-            val outputNames = session?.outputInfo?.keys?.toList()
+                ?: throw IllegalStateException("Model input names are empty")
+            val modelOutputNames = session?.outputInfo?.keys?.toList()
+                ?: throw IllegalStateException("Model output names are empty")
 
-            inputNames = modelInputNames ?: listOf("obs")
-            outputName = outputNames?.firstOrNull() ?: "Q"
+            val obsInputName = modelInputNames.find { it.contains("obs", ignoreCase = true) }
+                ?: throw IllegalStateException(
+                    "Model input names $modelInputNames do not contain required 'obs' input",
+                )
+            val actionsInputName = modelInputNames.find { it.contains("action", ignoreCase = true) }
+                ?: throw IllegalStateException(
+                    "Model input names $modelInputNames do not contain required 'actions' input",
+                )
+            val outputName = modelOutputNames.first()
 
-            try {
-                val actionsInputName = inputNames.find { it.contains("action", ignoreCase = true) }
-                if (actionsInputName != null) {
-                    val nodeInfo = session?.inputInfo?.get(actionsInputName)
-                    val tensorInfo = nodeInfo?.info as? ai.onnxruntime.TensorInfo
-                    val shape = tensorInfo?.shape
-                    if (shape != null && shape.size >= 2 && shape[1] > 0) {
-                        actionsInputDim = shape[1].toInt()
-                        Log.i(TAG, "Dynamic actions input dim detected: $actionsInputDim")
-                    } else {
-                        Log.w(TAG, "Could not detect actions input dim, using default: $actionsInputDim")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.w(
-                    TAG,
-                    "Failed to read actions input dim dynamically: ${e.message}, using default: $actionsInputDim",
+            val obsNodeInfo = session?.inputInfo?.get(obsInputName)
+                ?: throw IllegalStateException("Missing node info for obs input '$obsInputName'")
+            val obsTensorInfo = obsNodeInfo.info as? ai.onnxruntime.TensorInfo
+                ?: throw IllegalStateException("Obs input '$obsInputName' is not a tensor")
+            val obsShape = obsTensorInfo.shape
+                ?: throw IllegalStateException("Obs input '$obsInputName' shape is null")
+            if (obsShape.size < 2 || obsShape[1] <= 0) {
+                throw IllegalStateException(
+                    "Invalid obs input shape for '$obsInputName': ${obsShape.contentToString()}",
+                )
+            }
+            val detectedObsDim = obsShape[1].toInt()
+            if (detectedObsDim != EXPECTED_OBS_INPUT_DIM) {
+                throw IllegalStateException(
+                    "Obs input dim mismatch: expected=$EXPECTED_OBS_INPUT_DIM, " +
+                        "detected=$detectedObsDim, shape=${obsShape.contentToString()}",
                 )
             }
 
+            val actionsNodeInfo = session?.inputInfo?.get(actionsInputName)
+                ?: throw IllegalStateException("Missing node info for actions input '$actionsInputName'")
+            val actionsTensorInfo = actionsNodeInfo.info as? ai.onnxruntime.TensorInfo
+                ?: throw IllegalStateException("Actions input '$actionsInputName' is not a tensor")
+            val actionsShape = actionsTensorInfo.shape
+                ?: throw IllegalStateException("Actions input '$actionsInputName' shape is null")
+            if (actionsShape.size < 2 || actionsShape[1] <= 0) {
+                throw IllegalStateException(
+                    "Invalid actions input shape for '$actionsInputName': ${actionsShape.contentToString()}",
+                )
+            }
+            val detectedActionsDim = actionsShape[1].toInt()
+            if (detectedActionsDim != EXPECTED_ACTION_INPUT_DIM) {
+                throw IllegalStateException(
+                    "Actions input dim mismatch: expected=$EXPECTED_ACTION_INPUT_DIM, " +
+                        "detected=$detectedActionsDim, shape=${actionsShape.contentToString()}",
+                )
+            }
+
+            val outputNodeInfo = session?.outputInfo?.get(outputName)
+                ?: throw IllegalStateException("Missing node info for output '$outputName'")
+            val outputTensorInfo = outputNodeInfo.info as? ai.onnxruntime.TensorInfo
+                ?: throw IllegalStateException("Output '$outputName' is not a tensor")
+            val outputShape = outputTensorInfo.shape
+                ?: throw IllegalStateException("Output '$outputName' shape is null")
+            val detectedOutputDim = when {
+                outputShape.size >= 2 && outputShape[1] > 0 -> outputShape[1].toInt()
+                outputShape.size == 1 && outputShape[0] > 0 -> outputShape[0].toInt()
+                outputShape.size == 1 -> EXPECTED_OUTPUT_DIM
+                else -> throw IllegalStateException(
+                    "Invalid output shape for '$outputName': ${outputShape.contentToString()}",
+                )
+            }
+            if (detectedOutputDim != EXPECTED_OUTPUT_DIM) {
+                throw IllegalStateException(
+                    "Output dim mismatch: expected=$EXPECTED_OUTPUT_DIM, " +
+                        "detected=$detectedOutputDim, shape=${outputShape.contentToString()}",
+                )
+            }
+
+            ioContract = OnnxModelIoContract(
+                obsInputName = obsInputName,
+                actionsInputName = actionsInputName,
+                outputName = outputName,
+                obsDim = detectedObsDim,
+                actionDim = detectedActionsDim,
+                outputDim = detectedOutputDim,
+            )
+            Log.i(TAG, "Validated model I/O contract: $ioContract")
+
             Log.i(TAG, "ONNX model loaded successfully from $modelPath")
-            Log.i(TAG, "Input names: $inputNames")
-            Log.i(TAG, "Output names: $outputNames, using: $outputName")
+            Log.i(TAG, "Input names: $modelInputNames")
+            Log.i(TAG, "Output names: $modelOutputNames, using: ${ioContract.outputName}")
             logModelInfo()
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load ONNX model", e)
@@ -93,67 +170,31 @@ class OnnxInferenceEngine(modelPath: String) {
     }
 
     /**
-     * 执行推理
+     * 执行推理。
      *
-     * @param obsTensor 观察值输入张量（FloatArray）- 对应 "obs" 输入
-     * @param actionsTensor 动作输入张量（FloatArray）- 对应 "actions" 输入（可选）
-     * @return 模型输出（FloatArray）
-     * @throws OnnxInferenceException 推理失败时抛出
-     * @throws OnnxTimeoutException 推理超时时抛出
+     * @param obsTensor 观测输入扁平数组
+     * @param actionsTensor 动作特征输入扁平数组（可空）
+     * @param batchSize 批大小
+     * @param obsDim 单条观测向量维度
      */
     suspend fun infer(
         obsTensor: FloatArray,
         actionsTensor: FloatArray? = null,
+        batchSize: Int = 1,
+        obsDim: Int = if (batchSize > 0) (obsTensor.size / batchSize) else obsTensor.size,
     ): FloatArray = withContext(Dispatchers.IO) {
         sessionLock.withLock {
             if (!isInitialized || session == null) {
                 throw OnnxInferenceException("ONNX session not initialized")
             }
-
             try {
                 withTimeout(INFERENCE_TIMEOUT_MS) {
-                    val inputs = mutableMapOf<String, OnnxTensor>()
-
-                    val obsShape = longArrayOf(1, obsTensor.size.toLong())
-                    val obsBuffer = FloatBuffer.wrap(obsTensor)
-                    val obsOnnxTensor = OnnxTensor.createTensor(environment, obsBuffer, obsShape)
-
-                    val obsInputName =
-                        inputNames.find { it.contains("obs", ignoreCase = true) }
-                            ?: inputNames.firstOrNull()
-                            ?: "obs"
-                    inputs[obsInputName] = obsOnnxTensor
-
-                    val actionsInputName = inputNames.find { it.contains("action", ignoreCase = true) }
-                    if (actionsInputName != null) {
-                        val actionsData = actionsTensor ?: FloatArray(actionsInputDim)
-                        val paddedActionsData = if (actionsData.size < actionsInputDim) {
-                            FloatArray(actionsInputDim) { i -> actionsData.getOrElse(i) { 0f } }
-                        } else {
-                            actionsData.take(actionsInputDim).toFloatArray()
-                        }
-                        val actionsShape = longArrayOf(1, actionsInputDim.toLong())
-                        val actionsBuffer = FloatBuffer.wrap(paddedActionsData)
-                        val actionsOnnxTensor = OnnxTensor.createTensor(environment, actionsBuffer, actionsShape)
-                        inputs[actionsInputName] = actionsOnnxTensor
-                    }
-
-                    try {
-                        val results = session!!.run(inputs)
-                        results.use { result ->
-                            val outputTensor = result.get(0) as? OnnxTensor
-                                ?: throw OnnxInferenceException("Failed to get output tensor")
-
-                            val outputBuffer = outputTensor.floatBuffer
-                            val outputArray = FloatArray(outputBuffer.remaining())
-                            outputBuffer.get(outputArray)
-                            Log.d(TAG, "Inference completed, output size: ${outputArray.size}")
-
-                            outputArray
-                        }
-                    } finally {
-                        inputs.values.forEach { it.close() }
-                    }
+                    runInference(
+                        obsTensor = obsTensor,
+                        actionsTensor = actionsTensor,
+                        batchSize = batchSize,
+                        obsDim = obsDim,
+                    )
                 }
             } catch (e: TimeoutCancellationException) {
                 Log.e(TAG, "Inference timeout after ${INFERENCE_TIMEOUT_MS}ms")
@@ -167,14 +208,103 @@ class OnnxInferenceEngine(modelPath: String) {
         }
     }
 
-    /**
-     * 检查引擎是否可用
-     */
+    private fun runInference(
+        obsTensor: FloatArray,
+        actionsTensor: FloatArray?,
+        batchSize: Int,
+        obsDim: Int,
+    ): FloatArray {
+        val normalizedBatchSize = batchSize.coerceAtLeast(1)
+        val normalizedObsDim = obsDim.coerceAtLeast(1)
+        val expectedObsSize = normalizedBatchSize * normalizedObsDim
+        if (obsTensor.size != expectedObsSize) {
+            throw OnnxInferenceException(
+                "obs tensor size mismatch: got=${obsTensor.size}, expected=$expectedObsSize",
+            )
+        }
+
+        val inputs = mutableMapOf<String, OnnxTensor>()
+        try {
+            val (obsInputName, obsInputTensor) = createObsInput(
+                obsTensor = obsTensor,
+                normalizedBatchSize = normalizedBatchSize,
+                normalizedObsDim = normalizedObsDim,
+            )
+            inputs[obsInputName] = obsInputTensor
+
+            val (actionsInputName, actionsInputTensor) = createActionsInput(
+                actionsTensor = actionsTensor,
+                normalizedBatchSize = normalizedBatchSize,
+            )
+            inputs[actionsInputName] = actionsInputTensor
+
+            return runSession(inputs)
+        } finally {
+            inputs.values.forEach { it.close() }
+        }
+    }
+
+    private fun createObsInput(
+        obsTensor: FloatArray,
+        normalizedBatchSize: Int,
+        normalizedObsDim: Int,
+    ): Pair<String, OnnxTensor> {
+        val obsInputName = ioContract.obsInputName
+        val obsShape = longArrayOf(normalizedBatchSize.toLong(), normalizedObsDim.toLong())
+        val obsBuffer = FloatBuffer.wrap(obsTensor)
+        val obsOnnxTensor = OnnxTensor.createTensor(environment, obsBuffer, obsShape)
+        return obsInputName to obsOnnxTensor
+    }
+
+    private fun createActionsInput(
+        actionsTensor: FloatArray?,
+        normalizedBatchSize: Int,
+    ): Pair<String, OnnxTensor> {
+        val actionsInputName = ioContract.actionsInputName
+        val expectedActionSize = normalizedBatchSize * ioContract.actionDim
+        val actionsData = actionsTensor ?: FloatArray(expectedActionSize)
+        val normalizedActionsData = when {
+            actionsData.size < expectedActionSize ->
+                FloatArray(expectedActionSize) { index -> actionsData.getOrElse(index) { 0f } }
+
+            actionsData.size > expectedActionSize -> actionsData.copyOf(expectedActionSize)
+            else -> actionsData
+        }
+        val actionsShape = longArrayOf(normalizedBatchSize.toLong(), ioContract.actionDim.toLong())
+        val actionsBuffer = FloatBuffer.wrap(normalizedActionsData)
+        val actionsOnnxTensor = OnnxTensor.createTensor(environment, actionsBuffer, actionsShape)
+        return actionsInputName to actionsOnnxTensor
+    }
+
+    private fun runSession(inputs: Map<String, OnnxTensor>): FloatArray {
+        val activeSession = session ?: throw OnnxInferenceException("ONNX session not initialized")
+        val requestedOutputName = ioContract.outputName
+        val results = activeSession.run(inputs, setOf(requestedOutputName))
+        return results.use { result ->
+            val outputValue = result.get(requestedOutputName).orElseThrow {
+                val availableOutputs = result.map { it.key }
+                OnnxInferenceException(
+                    "Missing output '$requestedOutputName' in inference result, " +
+                        "available=$availableOutputs",
+                )
+            }
+            val outputTensor = outputValue as? OnnxTensor
+                ?: throw OnnxInferenceException(
+                    "Output '$requestedOutputName' is not a tensor: ${outputValue.javaClass.simpleName}",
+                )
+
+            val outputBuffer = outputTensor.floatBuffer
+            val outputArray = FloatArray(outputBuffer.remaining())
+            outputBuffer.get(outputArray)
+            Log.d(TAG, "Inference completed, output size: ${outputArray.size}")
+            outputArray
+        }
+    }
+
+    /** 检查引擎是否可用。 */
     fun isAvailable(): Boolean = isInitialized && session != null
 
-    /**
-     * 释放资源
-     */
+    /** 释放会话资源。 */
     fun close() {
         try {
             val oldSession = runBlocking {
@@ -198,19 +328,6 @@ class OnnxInferenceEngine(modelPath: String) {
         }
     }
 
-    /**
-     * 获取模型输入维度
-     * 注意：ONNX Runtime Java API 限制了直接访问 shape 信息
-     * 暂时返回默认值，实际维度由模型运行时决定
-     */
-    fun getInputDim(): Int {
-        return GameStateEncoder.INPUT_DIM
-    }
-
-    fun getOutputDim(): Int {
-        return 0
-    }
-
     private fun logModelInfo() {
         try {
             val inputInfo = session?.inputInfo
@@ -222,7 +339,6 @@ class OnnxInferenceEngine(modelPath: String) {
             Log.w(TAG, "Failed to log model info", e)
         }
     }
-
 }
 
 class OnnxInitializationException(message: String, cause: Throwable? = null) : Exception(message, cause)

@@ -39,6 +39,11 @@ class OnnxAIPlayerController(
         private const val TAG = "OnnxAIPlayerController"
     }
 
+    internal data class ActionCandidate(
+        val actionId: Long,
+        val feature: FloatArray,
+    )
+
     private val model: OnnxModel? = if (modelPath.isNotBlank() && File(modelPath).exists()) {
         Log.i(TAG, "[AI-$seatIndex] Loading ONNX model from: $modelPath")
         try {
@@ -57,6 +62,7 @@ class OnnxAIPlayerController(
         null
     }
     private val decoder: ActionDecoder = ActionDecoder()
+    private val actionFeatureEncoder: ActionFeatureEncoder = ActionFeatureEncoder()
 
     // 降级用的规则基础AI
     private val fallbackAI: RuleBasedAiPlayer = RuleBasedAiPlayer()
@@ -89,13 +95,22 @@ class OnnxAIPlayerController(
         // 获取有效动作列表（用于验证和降级）
         val validActions = getValidActions(seat.hand, match, ruleSet)
         Log.d(TAG, "[AI-$seatIndex] Valid actions count: ${validActions.size}")
-
-        val validActionMask = generateValidActionMask(validActions)
+        val actionCandidates = buildActionCandidates(
+            handCards = seat.hand,
+            validActions = validActions,
+            match = match,
+            ruleSet = ruleSet,
+        )
+        val validActionMask = actionCandidates.map { it.actionId }.toLongArray()
 
         if (model?.isAvailable() == true) {
             try {
                 val startTime = System.currentTimeMillis()
-                val prediction = model.predict(match, seatIndex)
+                val prediction = model.predictActionValues(
+                    match = match,
+                    seatIndex = seatIndex,
+                    actionFeatures = actionCandidates.map { it.feature },
+                )
                 val inferenceTime = System.currentTimeMillis() - startTime
 
                 if (prediction != null) {
@@ -129,17 +144,76 @@ class OnnxAIPlayerController(
         return fallbackToRuleBasedAI(match, validActions)
     }
 
-    /**
-     * 生成有效动作掩码（LongArray，每个元素是52位掩码）
-     */
-    private fun generateValidActionMask(validActions: List<List<Card>>): LongArray {
-        return validActions.map { cards ->
-            var mask = 0L
-            for (card in cards) {
-                mask = mask or (1L shl GameStateEncoder.cardToIndex(card))
+    internal fun buildActionCandidates(
+        handCards: List<Card>,
+        validActions: List<List<Card>>,
+        match: Match,
+        ruleSet: GameRuleSet,
+    ): List<ActionCandidate> {
+        val candidates = mutableListOf<ActionCandidate>()
+        val seenActionIds = mutableSetOf<Long>()
+        val rules = GameRules.forRuleSet(ruleSet)
+        val parser = CombinationParser(rules)
+
+        for (cards in validActions) {
+            val actionId = actionIdFromCards(cards)
+            if (!seenActionIds.add(actionId)) {
+                continue
             }
-            mask
-        }.distinct().toLongArray() // 去重，避免相同掩码重复
+            val parsedType = parser.parse(cards)?.type
+            val feature = actionFeatureEncoder.encodeActionFeature(
+                handCards = handCards,
+                actionCards = cards,
+                actionType = parsedType,
+            )
+            candidates += ActionCandidate(actionId = actionId, feature = feature)
+        }
+
+        if (isPassLegal(match, ruleSet, validActions)) {
+            val passId = 0L
+            if (seenActionIds.add(passId)) {
+                val passFeature = actionFeatureEncoder.encodeActionFeature(
+                    handCards = handCards,
+                    actionCards = emptyList(),
+                    actionType = null,
+                )
+                candidates += ActionCandidate(actionId = passId, feature = passFeature)
+            }
+        }
+
+        // Guarantee at least one candidate to avoid empty-batch inference.
+        if (candidates.isEmpty()) {
+            val passFeature = actionFeatureEncoder.encodeActionFeature(
+                handCards = handCards,
+                actionCards = emptyList(),
+                actionType = null,
+            )
+            candidates += ActionCandidate(actionId = 0L, feature = passFeature)
+        }
+
+        return candidates
+    }
+
+    private fun isPassLegal(
+        match: Match,
+        ruleSet: GameRuleSet,
+        validActions: List<List<Card>>,
+    ): Boolean {
+        return when (ruleSet) {
+            GameRuleSet.SOUTHERN -> match.trickState.currentCombination != null
+            GameRuleSet.NORTHERN -> validActions.isEmpty()
+        }
+    }
+
+    private fun actionIdFromCards(cards: List<Card>): Long {
+        var mask = 0L
+        for (card in cards) {
+            val index = GameStateEncoder.cardToIndex(card)
+            if (index in 0 until Long.SIZE_BITS) {
+                mask = mask or (1L shl index)
+            }
+        }
+        return mask
     }
 
     /**

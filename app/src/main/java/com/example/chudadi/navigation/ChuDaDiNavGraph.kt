@@ -3,15 +3,20 @@ package com.example.chudadi.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.LocalMatchViewModel
+import com.example.chudadi.controller.game.MatchUiStateMapper
 import com.example.chudadi.controller.game.OnnxMatchViewModel
 import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.model.game.entity.MatchPhase
@@ -26,6 +31,7 @@ import com.example.chudadi.ui.room.AIType
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomAiDifficulty
+import com.example.chudadi.ui.room.AiPlaySpeed
 import com.example.chudadi.ui.room.RoomScreen
 import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.RoomViewModel
@@ -35,6 +41,13 @@ private const val HOME_ROUTE = "home"
 private const val ROOM_ROUTE = "room"
 private const val GAME_ROUTE = "game"
 private const val RESULT_ROUTE = "result"
+private const val TOTAL_AUTO_ROUNDS = 100
+
+private data class AutoRoundState(
+    val isActive: Boolean = false,
+    val roundsRemaining: Int = 0,
+    val isStartPending: Boolean = false,
+)
 
 private enum class GameViewModelType {
     LOCAL,
@@ -47,12 +60,31 @@ private data class MatchViewModelContext(
     val onnxViewModel: OnnxMatchViewModel?,
 )
 
+private data class RoomRouteContext(
+    val navController: NavHostController,
+    val roomViewModel: RoomViewModel,
+    val roomUiState: RoomUiState,
+    val matchContext: MatchViewModelContext,
+    val autoRoundState: AutoRoundState,
+    val onAutoRoundStateChange: (AutoRoundState) -> Unit,
+)
+
+private data class ResultRouteContext(
+    val navController: NavHostController,
+    val roomViewModel: RoomViewModel,
+    val matchContext: MatchViewModelContext,
+    val uiState: MatchUiState,
+    val autoRoundState: AutoRoundState,
+    val onAutoRoundStateChange: (AutoRoundState) -> Unit,
+)
+
 @Composable
 fun ChuDaDiNavGraph(
     roomViewModel: RoomViewModel = viewModel(),
 ) {
     val navController = rememberNavController()
     val roomUiState by roomViewModel.uiState.collectAsStateWithLifecycle()
+    var autoRoundState by remember { mutableStateOf(AutoRoundState()) }
 
     val hasOnnxAI = roomUiState.slots.any { it.aiType == AIType.ONNX_RL }
     val viewModelType = if (hasOnnxAI) GameViewModelType.ONNX else GameViewModelType.LOCAL
@@ -98,10 +130,14 @@ fun ChuDaDiNavGraph(
 
         composable(ROOM_ROUTE) {
             RoomRoute(
-                navController = navController,
-                roomViewModel = roomViewModel,
-                roomUiState = roomUiState,
-                matchContext = matchContext,
+                RoomRouteContext(
+                    navController = navController,
+                    roomViewModel = roomViewModel,
+                    roomUiState = roomUiState,
+                    matchContext = matchContext,
+                    autoRoundState = autoRoundState,
+                    onAutoRoundStateChange = { autoRoundState = it },
+                ),
             )
         }
 
@@ -114,10 +150,14 @@ fun ChuDaDiNavGraph(
 
         composable(RESULT_ROUTE) {
             ResultRoute(
-                navController = navController,
-                roomViewModel = roomViewModel,
-                matchContext = matchContext,
-                uiState = uiState,
+                ResultRouteContext(
+                    navController = navController,
+                    roomViewModel = roomViewModel,
+                    matchContext = matchContext,
+                    uiState = uiState,
+                    autoRoundState = autoRoundState,
+                    onAutoRoundStateChange = { autoRoundState = it },
+                ),
             )
         }
     }
@@ -141,16 +181,45 @@ private fun HomeRoute(
 
 @Composable
 private fun RoomRoute(
-    navController: NavHostController,
-    roomViewModel: RoomViewModel,
-    roomUiState: RoomUiState,
-    matchContext: MatchViewModelContext,
+    context: RoomRouteContext,
 ) {
+    val navController = context.navController
+    val roomViewModel = context.roomViewModel
+    val roomUiState = context.roomUiState
+    val matchContext = context.matchContext
+    val autoRoundState = context.autoRoundState
+    val onAutoRoundStateChange = context.onAutoRoundStateChange
+
+    LaunchedEffect(autoRoundState.isStartPending, roomUiState.canStartGame) {
+        if (autoRoundState.isStartPending && roomUiState.canStartGame) {
+            onAutoRoundStateChange(autoRoundState.copy(isStartPending = false))
+            startMatchFromRoom(
+                roomUiState = roomUiState,
+                matchContext = matchContext,
+            )
+        }
+    }
+
     RoomScreen(
         uiState = roomUiState,
         onAction = { roomAction ->
             when (roomAction) {
                 RoomAction.StartGame -> {
+                    val enableAutoRoundMode = shouldEnableAutoRoundMode(roomUiState)
+                    if (enableAutoRoundMode) {
+                        onAutoRoundStateChange(
+                            AutoRoundState(
+                                isActive = true,
+                                roundsRemaining = TOTAL_AUTO_ROUNDS - 1,
+                                isStartPending = false,
+                            ),
+                        )
+                    } else if (autoRoundState.isActive ||
+                        autoRoundState.roundsRemaining != 0 ||
+                        autoRoundState.isStartPending
+                    ) {
+                        onAutoRoundStateChange(AutoRoundState())
+                    }
                     startMatchFromRoom(
                         roomUiState = roomUiState,
                         matchContext = matchContext,
@@ -158,6 +227,7 @@ private fun RoomRoute(
                 }
 
                 RoomAction.ExitRoom -> {
+                    onAutoRoundStateChange(AutoRoundState())
                     if (roomUiState.isHost) {
                         roomViewModel.dispatch(RoomAction.ResetRoom)
                     }
@@ -168,6 +238,7 @@ private fun RoomRoute(
             }
         },
         onNavigateBack = {
+            onAutoRoundStateChange(AutoRoundState())
             if (roomUiState.isHost) {
                 roomViewModel.dispatch(RoomAction.ResetRoom)
             }
@@ -194,34 +265,57 @@ private fun GameRoute(
 
 @Composable
 private fun ResultRoute(
-    navController: NavHostController,
-    roomViewModel: RoomViewModel,
-    matchContext: MatchViewModelContext,
-    uiState: MatchUiState,
+    context: ResultRouteContext,
 ) {
+    val navController = context.navController
+    val roomViewModel = context.roomViewModel
+    val matchContext = context.matchContext
+    val uiState = context.uiState
+    val autoRoundState = context.autoRoundState
+    val onAutoRoundStateChange = context.onAutoRoundStateChange
+
+    fun returnToRoom() {
+        when (matchContext.type) {
+            GameViewModelType.LOCAL -> {
+                matchContext.localViewModel?.dispatch(LocalGameAction.ExitToHome)
+            }
+
+            GameViewModelType.ONNX -> {
+                matchContext.onnxViewModel?.onExitToHome()
+            }
+        }
+
+        navController.navigate(ROOM_ROUTE) {
+            popUpTo(HOME_ROUTE)
+        }
+    }
+
     val roundScores = uiState.resultSummary?.roundScores.orEmpty()
-    LaunchedEffect(roundScores) {
+    LaunchedEffect(uiState.phase, roundScores) {
         if (roundScores.isNotEmpty()) {
             roomViewModel.dispatch(RoomAction.AccumulateScores(roundScores))
+        }
+
+        if (uiState.phase == MatchPhase.FINISHED && autoRoundState.isActive) {
+            if (autoRoundState.roundsRemaining > 0) {
+                onAutoRoundStateChange(
+                    autoRoundState.copy(
+                        roundsRemaining = autoRoundState.roundsRemaining - 1,
+                        isStartPending = true,
+                    ),
+                )
+            } else {
+                onAutoRoundStateChange(AutoRoundState())
+            }
+            returnToRoom()
         }
     }
 
     ResultScreen(
         uiState = uiState,
         onReturnToRoom = {
-            when (matchContext.type) {
-                GameViewModelType.LOCAL -> {
-                    matchContext.localViewModel?.dispatch(LocalGameAction.ExitToHome)
-                }
-
-                GameViewModelType.ONNX -> {
-                    matchContext.onnxViewModel?.onExitToHome()
-                }
-            }
-
-            navController.navigate(ROOM_ROUTE) {
-                popUpTo(HOME_ROUTE)
-            }
+            onAutoRoundStateChange(AutoRoundState())
+            returnToRoom()
         },
     )
 }
@@ -240,6 +334,7 @@ private fun startMatchFromRoom(
                     seatConfigs = payload.seatConfigs,
                     localSeatId = payload.localSeatId,
                     ruleSet = payload.ruleSet,
+                    aiMoveDelayMillis = payload.aiMoveDelayMillis,
                 ),
             )
         }
@@ -249,6 +344,7 @@ private fun startMatchFromRoom(
                 seatConfigs = payload.seatConfigs,
                 localSeatId = payload.localSeatId,
                 ruleSet = payload.ruleSet,
+                aiMoveDelayMillis = payload.aiMoveDelayMillis,
             )
         }
     }
@@ -288,6 +384,7 @@ private data class StartMatchPayload(
     val seatConfigs: List<SeatConfig>,
     val localSeatId: Int,
     val ruleSet: GameRuleSet,
+    val aiMoveDelayMillis: Long,
 )
 
 private fun buildStartMatchPayload(roomUiState: RoomUiState): StartMatchPayload {
@@ -308,14 +405,17 @@ private fun buildStartMatchPayload(roomUiState: RoomUiState): StartMatchPayload 
             }
 
             SeatConfig(
-                seatIndex = slot.slotIndex,
+                seatId = slot.seatId,
                 name = name,
                 controllerType = controllerType,
                 aiDifficulty = slot.aiDifficulty?.toModelDifficulty(),
             )
         }
 
-    val localSeatId = roomUiState.slots.firstOrNull { it.isLocalPlayer }?.slotIndex ?: 0
+    val localSeatId = roomUiState.slots
+        .firstOrNull { it.isLocalPlayer }
+        ?.seatId
+        ?: MatchUiStateMapper.NO_LOCAL_SEAT_ID
     val ruleSet = when (roomUiState.currentRule) {
         GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
         GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
@@ -324,7 +424,15 @@ private fun buildStartMatchPayload(roomUiState: RoomUiState): StartMatchPayload 
         seatConfigs = seatConfigs,
         localSeatId = localSeatId,
         ruleSet = ruleSet,
+        aiMoveDelayMillis = roomUiState.aiPlaySpeed.delayMillis,
     )
+}
+
+private fun shouldEnableAutoRoundMode(roomUiState: RoomUiState): Boolean {
+    return BuildConfig.DEBUG &&
+        roomUiState.aiPlaySpeed == AiPlaySpeed.DEBUG_100_ROUNDS &&
+        roomUiState.slots.size == 4 &&
+        roomUiState.slots.all { it.occupantType == SlotOccupantType.AI }
 }
 
 private fun RoomAiDifficulty.toModelDifficulty(): AIDifficulty {

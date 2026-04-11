@@ -4,6 +4,7 @@ import com.example.chudadi.model.game.entity.RoundScore
 
 sealed interface RoomAction {
     data object ToggleRule : RoomAction
+    data object ToggleAiPlaySpeed : RoomAction
     data class AddAiToSlot(val slotIndex: Int, val difficulty: RoomAiDifficulty) : RoomAction
     data class RemoveSlotOccupant(val slotIndex: Int) : RoomAction
     data class RequestSwapWithSlot(val targetSlotIndex: Int) : RoomAction

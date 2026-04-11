@@ -1,15 +1,11 @@
-package com.example.chudadi.ai.onnx
+﻿package com.example.chudadi.ai.onnx
 
 import android.util.Log
 import com.example.chudadi.model.game.entity.Match
-import com.example.chudadi.model.game.rule.GameRuleSet
 import kotlinx.coroutines.CancellationException
 
 /**
- * ONNX模型管理器
- *
- * 封装ONNX推理引擎，提供高级别的游戏状态推理接口。
- * 管理模型生命周期，提供错误处理和降级机制。
+ * ONNX model wrapper for match-state inference.
  */
 class OnnxModel(modelPath: String) {
 
@@ -28,8 +24,7 @@ class OnnxModel(modelPath: String) {
 
             if (isLoaded) {
                 Log.i(TAG, "ONNX Model initialized successfully")
-                Log.i(TAG, "Input dim: ${inferenceEngine?.getInputDim()}")
-                Log.i(TAG, "Output dim: ${inferenceEngine?.getOutputDim()}")
+                Log.i(TAG, "I/O contract: ${inferenceEngine?.ioContract}")
             } else {
                 Log.e(TAG, "ONNX Model failed to initialize")
             }
@@ -56,15 +51,13 @@ class OnnxModel(modelPath: String) {
         }
 
         return try {
-            // 编码游戏状态
             val obsTensor = encoder.encode(match, seatIndex)
-
-            // 执行推理，传入obs和可选的actions
             val output = inferenceEngine?.infer(
                 obsTensor = obsTensor,
-                actionsTensor = null
+                actionsTensor = null,
+                batchSize = 1,
+                obsDim = obsTensor.size,
             )
-
             Log.d(TAG, "Prediction completed for seat $seatIndex")
             output
         } catch (e: OnnxInferenceException) {
@@ -79,36 +72,51 @@ class OnnxModel(modelPath: String) {
     }
 
     /**
-     * 批量推理（用于性能测试或批量评估）
-     *
-     * @param matches 游戏状态列表
-     * @param seatIndex AI玩家座位索引
-     * @return 推理结果列表
+     * Batch predict Q-values for legal actions.
+     * Output order aligns with [actionFeatures].
      */
+    suspend fun predictActionValues(
+        match: Match,
+        seatIndex: Int,
+        actionFeatures: List<FloatArray>,
+    ): FloatArray? {
+        if (!isLoaded || inferenceEngine == null || actionFeatures.isEmpty()) {
+            return null
+        }
+
+        return try {
+            val obs = encoder.encode(match, seatIndex)
+            val batchedInput = buildBatchedActionInput(obs = obs, actionFeatures = actionFeatures)
+            val rawValues = inferenceEngine?.infer(
+                obsTensor = batchedInput.obsBatch,
+                actionsTensor = batchedInput.actionsBatch,
+                batchSize = batchedInput.batchSize,
+                obsDim = batchedInput.obsDim,
+            )
+            rawValues?.let { alignActionValues(it, batchedInput.batchSize) }
+        } catch (e: OnnxInferenceException) {
+            Log.e(TAG, "Batch inference failed", e)
+            null
+        } catch (e: OnnxTimeoutException) {
+            Log.e(TAG, "Batch inference timeout", e)
+            null
+        } catch (e: CancellationException) {
+            throw e
+        }
+    }
+
     suspend fun predictBatch(matches: List<Match>, seatIndex: Int): List<FloatArray?> {
         return matches.map { match ->
             predict(match, seatIndex)
         }
     }
 
-    /**
-     * 检查模型是否已加载并可用
-     */
     fun isAvailable(): Boolean = isLoaded && inferenceEngine?.isAvailable() == true
 
-    /**
-     * 获取输入维度
-     */
-    fun getInputDim(): Int = inferenceEngine?.getInputDim() ?: encoder.getInputDim()
+    fun getInputDim(): Int = inferenceEngine?.ioContract?.obsDim ?: encoder.getInputDim()
 
-    /**
-     * 获取输出维度
-     */
-    fun getOutputDim(): Int = inferenceEngine?.getOutputDim() ?: 0
+    fun getOutputDim(): Int = inferenceEngine?.ioContract?.outputDim ?: 0
 
-    /**
-     * 释放模型资源
-     */
     fun release() {
         try {
             val engine = inferenceEngine
@@ -121,22 +129,78 @@ class OnnxModel(modelPath: String) {
         }
     }
 
-    /**
-     * 获取模型状态信息
-     */
     fun getStatus(): ModelStatus {
+        val contract = inferenceEngine?.ioContract
         return ModelStatus(
             isLoaded = isLoaded,
             isAvailable = inferenceEngine?.isAvailable() == true,
+            ioContract = contract,
             inputDim = getInputDim(),
+            actionDim = contract?.actionDim ?: ActionFeatureEncoder.ACTION_FEATURE_DIM,
             outputDim = getOutputDim(),
+            outputName = contract?.outputName.orEmpty(),
         )
     }
 
     data class ModelStatus(
         val isLoaded: Boolean,
         val isAvailable: Boolean,
+        val ioContract: OnnxModelIoContract?,
         val inputDim: Int,
+        val actionDim: Int,
         val outputDim: Int,
+        val outputName: String,
     )
+}
+
+internal data class BatchedActionInput(
+    val obsBatch: FloatArray,
+    val actionsBatch: FloatArray,
+    val batchSize: Int,
+    val obsDim: Int,
+)
+
+internal fun buildBatchedActionInput(
+    obs: FloatArray,
+    actionFeatures: List<FloatArray>,
+): BatchedActionInput {
+    require(actionFeatures.isNotEmpty()) { "actionFeatures must not be empty" }
+
+    val obsDim = obs.size
+    val batchSize = actionFeatures.size
+    val obsBatch = FloatArray(batchSize * obsDim)
+    for (i in 0 until batchSize) {
+        System.arraycopy(obs, 0, obsBatch, i * obsDim, obsDim)
+    }
+
+    val actionDim = actionFeatures.first().size
+    val actionsBatch = FloatArray(batchSize * actionDim)
+    for ((i, feature) in actionFeatures.withIndex()) {
+        val src = if (feature.size == actionDim) {
+            feature
+        } else {
+            FloatArray(actionDim) { idx -> feature.getOrElse(idx) { 0f } }
+        }
+        System.arraycopy(src, 0, actionsBatch, i * actionDim, actionDim)
+    }
+
+    return BatchedActionInput(
+        obsBatch = obsBatch,
+        actionsBatch = actionsBatch,
+        batchSize = batchSize,
+        obsDim = obsDim,
+    )
+}
+
+internal fun alignActionValues(values: FloatArray, expectedSize: Int): FloatArray {
+    val normalizedExpectedSize = expectedSize.coerceAtLeast(0)
+    val alignedValues = when {
+        normalizedExpectedSize == 0 -> FloatArray(0)
+        values.size == normalizedExpectedSize -> values
+        values.size > normalizedExpectedSize -> values.copyOf(normalizedExpectedSize)
+        else -> FloatArray(normalizedExpectedSize) { Float.NEGATIVE_INFINITY }.also { aligned ->
+            System.arraycopy(values, 0, aligned, 0, values.size)
+        }
+    }
+    return alignedValues
 }

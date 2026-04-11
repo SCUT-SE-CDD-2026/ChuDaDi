@@ -2,6 +2,7 @@
 
 package com.example.chudadi.ui.room
 import androidx.lifecycle.ViewModel
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.RoundScore
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -37,6 +38,7 @@ class RoomViewModel : ViewModel() {
     fun dispatch(action: RoomAction) {
         when (action) {
             is RoomAction.ToggleRule -> toggleRule()
+            is RoomAction.ToggleAiPlaySpeed -> toggleAiPlaySpeed()
             is RoomAction.AddAiToSlot -> addAiToSlot(action.slotIndex, action.difficulty)
             is RoomAction.RemoveSlotOccupant -> removeSlotOccupant(action.slotIndex)
             is RoomAction.RequestSwapWithSlot -> requestSwap(action.targetSlotIndex)
@@ -96,6 +98,34 @@ class RoomViewModel : ViewModel() {
         }
     }
 
+    private fun toggleAiPlaySpeed() {
+        _uiState.update { state ->
+            val speeds = availableAiPlaySpeeds()
+            val currentIndex = speeds.indexOf(state.aiPlaySpeed).takeIf { it >= 0 } ?: 0
+            val nextIndex = (currentIndex + 1) % speeds.size
+            state.copy(aiPlaySpeed = speeds[nextIndex])
+        }
+    }
+
+    private fun availableAiPlaySpeeds(): List<AiPlaySpeed> {
+        return if (BuildConfig.DEBUG) {
+            listOf(
+                AiPlaySpeed.NORMAL,
+                AiPlaySpeed.FAST,
+                AiPlaySpeed.VFAST,
+                AiPlaySpeed.DEBUG_100_ROUNDS,
+                AiPlaySpeed.SLOW,
+            )
+        } else {
+            listOf(
+                AiPlaySpeed.NORMAL,
+                AiPlaySpeed.FAST,
+                AiPlaySpeed.VFAST,
+                AiPlaySpeed.SLOW,
+            )
+        }
+    }
+
     private fun addAiToSlot(slotIndex: Int, difficulty: RoomAiDifficulty) {
         _uiState.update { state ->
             val usedNumbers = state.slots
@@ -125,6 +155,12 @@ class RoomViewModel : ViewModel() {
 
     private fun removeSlotOccupant(slotIndex: Int) {
         _uiState.update { state ->
+            if (!state.isHost) {
+                return@update state.copy(
+                    showSlotActionMenu = false,
+                    slotActionMenuTarget = -1,
+                )
+            }
             val newSlots = state.slots.toMutableList()
             newSlots[slotIndex] = SlotState(slotIndex = slotIndex, seatId = state.slots[slotIndex].seatId)
             state.copy(
@@ -212,7 +248,10 @@ class RoomViewModel : ViewModel() {
                 if (match != null) slot.copy(cumulativeScore = slot.cumulativeScore + match.roundScore)
                 else slot
             }
-            state.copy(slots = newSlots)
+            state.copy(
+                slots = newSlots,
+                totalGamesPlayed = if (scores.isNotEmpty()) state.totalGamesPlayed + 1 else state.totalGamesPlayed,
+            )
         }
     }
 

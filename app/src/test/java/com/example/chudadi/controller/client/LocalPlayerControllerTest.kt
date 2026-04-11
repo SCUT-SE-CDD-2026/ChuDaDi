@@ -1,6 +1,7 @@
 package com.example.chudadi.controller.client
 
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
+import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.controller.game.MatchUiStateMapper
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.engine.GameEngine
@@ -25,10 +26,10 @@ class LocalPlayerControllerTest {
             scope = CoroutineScope(Dispatchers.Unconfined),
         )
         val seatConfigs = listOf(
-            Triple(0, "You", SeatControllerType.HUMAN),
-            Triple(1, "AI 1", SeatControllerType.RULE_BASED_AI),
-            Triple(2, "AI 2", SeatControllerType.RULE_BASED_AI),
-            Triple(3, "AI 3", SeatControllerType.RULE_BASED_AI),
+            SeatConfig(0, "You", SeatControllerType.HUMAN),
+            SeatConfig(1, "AI 1", SeatControllerType.RULE_BASED_AI),
+            SeatConfig(2, "AI 2", SeatControllerType.RULE_BASED_AI),
+            SeatConfig(3, "AI 3", SeatControllerType.RULE_BASED_AI),
         )
 
         controller.onRequestStartLocalMatch(

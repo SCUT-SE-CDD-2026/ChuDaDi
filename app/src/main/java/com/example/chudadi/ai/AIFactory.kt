@@ -1,4 +1,4 @@
-package com.example.chudadi.ai
+﻿package com.example.chudadi.ai
 
 import android.content.Context
 import android.util.Log
@@ -95,16 +95,11 @@ object AIFactory {
     ): AICreationResult {
         Log.i(TAG, "Creating ONNX AI player for seat $seatIndex")
 
-        // 检查模型是否可用
-        val isModelAvailable = AssetCopier.isModelAvailable(context, MODEL_NAME)
-        Log.d(TAG, "Model available in private dir: $isModelAvailable")
-
         // 尝试复制模型文件到私有目录（如果存在）
-        if (!isModelAvailable) {
-            Log.i(TAG, "Model not found in private dir, attempting to copy from assets...")
-            val copySuccess = AssetCopier.copyModelsToPrivateDir(context)
-            Log.i(TAG, "Model copy result: $copySuccess")
-        }
+        val wasModelAvailable = AssetCopier.isModelAvailable(context, MODEL_NAME)
+        Log.d(TAG, "Model available in private dir before sync: $wasModelAvailable")
+        val copySuccess = AssetCopier.copyModelsToPrivateDir(context)
+        Log.i(TAG, "Model sync result: $copySuccess")
 
         // 获取模型路径
         val modelPath = AssetCopier.getModelPath(context, MODEL_NAME)
@@ -205,10 +200,10 @@ object AIFactory {
     ): List<AICreationResult> {
         require(difficulties.size == 3) { "Expected exactly 3 difficulty settings for 3 AI players" }
 
-        return difficulties.mapIndexed { index, difficulty ->
+        return difficulties.mapIndexed { index, diff ->
             val seatIndex = index + 1
             val isOnnxAI = seatIndex in onnxSeatIndices
-            createAIPlayerWithStatus(context, seatIndex = seatIndex, difficulty = difficulty, isOnnxAI = isOnnxAI)
+            createAIPlayerWithStatus(context, seatIndex = seatIndex, difficulty = diff, isOnnxAI = isOnnxAI)
         }
     }
 
@@ -220,9 +215,7 @@ object AIFactory {
      * @param context 应用上下文
      */
     fun preloadModels(context: Context) {
-        if (!AssetCopier.isModelAvailable(context, MODEL_NAME)) {
-            AssetCopier.copyModelsToPrivateDir(context)
-        }
+        AssetCopier.copyModelsToPrivateDir(context)
     }
 
     /**

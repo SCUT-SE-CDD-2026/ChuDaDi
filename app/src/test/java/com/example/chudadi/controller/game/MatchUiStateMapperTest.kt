@@ -3,6 +3,7 @@ package com.example.chudadi.controller.game
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.fixture.MatchFixtureFactory
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlin.random.Random
@@ -47,5 +48,25 @@ class MatchUiStateMapperTest {
         )
 
         assertTrue(uiState.debugOpponentHands.isEmpty())
+    }
+
+    @Test
+    fun map_withoutLocalSeatTreatsAsObserverAndDoesNotExposeHumanTurn() {
+        val match = MatchFixtureFactory.localMatch(activeSeatIndex = 0)
+        val mapper = MatchUiStateMapper(engine = engine, enableDebugHands = true)
+
+        val uiState = mapper.map(
+            match = match,
+            selectedCardIds = emptySet(),
+            lastActionMessage = null,
+            localSeatId = MatchUiStateMapper.NO_LOCAL_SEAT_ID,
+        )
+
+        assertTrue(uiState.playerHand.isEmpty())
+        assertTrue(uiState.selectedCards.isEmpty())
+        assertEquals(4, uiState.opponentSummaries.size)
+        assertFalse(uiState.isHumanTurn)
+        assertFalse(uiState.canSubmitPlay)
+        assertFalse(uiState.canPass)
     }
 }

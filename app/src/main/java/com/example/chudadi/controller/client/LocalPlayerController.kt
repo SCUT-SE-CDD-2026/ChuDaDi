@@ -13,6 +13,7 @@ import com.example.chudadi.network.protocol.PassCommand
 import com.example.chudadi.network.protocol.PlayCardCommand
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -35,24 +36,34 @@ class LocalPlayerController(
     private var lastSeatConfigs: List<SeatConfig>? = null
     private var lastLocalSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
     private var lastRuleSet: GameRuleSet = GameRuleSet.SOUTHERN
+    private var aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
+    private var lastAiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
 
     fun onRequestStartLocalMatch(
         seatConfigs: List<SeatConfig>? = null,
         localSeatId: Int = 0,
         ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
+        aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS,
     ) {
         aiTurnJob?.cancel()
         val effectiveSeatConfigs = seatConfigs ?: lastSeatConfigs
         val effectiveLocalSeatId = if (seatConfigs != null) localSeatId else lastLocalSeatId
         val effectiveRuleSet = if (seatConfigs != null) ruleSet else lastRuleSet
+        val effectiveAiMoveDelayMillis = if (seatConfigs != null) {
+            aiMoveDelayMillis.coerceAtLeast(0L)
+        } else {
+            lastAiMoveDelayMillis
+        }
         this.localSeatId = effectiveLocalSeatId
+        this.aiMoveDelayMillis = effectiveAiMoveDelayMillis
         lastSeatConfigs = effectiveSeatConfigs
         lastLocalSeatId = effectiveLocalSeatId
         lastRuleSet = effectiveRuleSet
+        lastAiMoveDelayMillis = effectiveAiMoveDelayMillis
         currentMatch = if (effectiveSeatConfigs != null) {
             // 转换SeatConfig为Triple格式
             val tripleConfigs = effectiveSeatConfigs.map {
-                Triple(it.seatIndex, it.name, it.controllerType)
+                Triple(it.seatId, it.name, it.controllerType)
             }
             serverController.startLocalMatch(
                 ruleSet = effectiveRuleSet,
@@ -130,6 +141,7 @@ class LocalPlayerController(
             seatConfigs = lastSeatConfigs,
             localSeatId = lastLocalSeatId,
             ruleSet = lastRuleSet,
+            aiMoveDelayMillis = lastAiMoveDelayMillis,
         )
     }
 
@@ -147,28 +159,40 @@ class LocalPlayerController(
 
     private fun maybeResolveAiTurns() {
         aiTurnJob?.cancel()
+        val maxChain = if (localSeatId == MatchUiStateMapper.NO_LOCAL_SEAT_ID) {
+            MAX_FULL_AI_CHAIN
+        } else {
+            MAX_AI_CHAIN
+        }
         aiTurnJob =
             scope.launch {
-                repeat(MAX_AI_CHAIN) {
+                repeat(maxChain) {
                     val match = currentMatch ?: return@launch
                     if (match.phase == MatchPhase.FINISHED || match.activeSeatIndex == localSeatId) {
                         return@launch
                     }
+                    if (aiMoveDelayMillis > 0L) {
+                        delay(aiMoveDelayMillis)
+                    }
+                    val latestMatch = currentMatch ?: return@launch
+                    if (latestMatch.phase == MatchPhase.FINISHED || latestMatch.activeSeatIndex == localSeatId) {
+                        return@launch
+                    }
 
-                    val decision = aiPlayer.decideAction(match, match.activeSeatIndex)
+                    val decision = aiPlayer.decideAction(latestMatch, latestMatch.activeSeatIndex)
                     val result =
                         when (decision) {
                             is AiDecision.Play ->
                                 serverController.handleCommand(
-                                    match = match,
-                                    seatIndex = match.activeSeatIndex,
+                                    match = latestMatch,
+                                    seatIndex = latestMatch.activeSeatIndex,
                                     command = PlayCardCommand(decision.cardIds),
                                 )
 
                             AiDecision.Pass ->
                                 serverController.handleCommand(
-                                    match = match,
-                                    seatIndex = match.activeSeatIndex,
+                                    match = latestMatch,
+                                    seatIndex = latestMatch.activeSeatIndex,
                                     command = PassCommand,
                                 )
                         }
@@ -194,6 +218,8 @@ class LocalPlayerController(
     }
 
     companion object {
+        private const val DEFAULT_AI_MOVE_DELAY_MILLIS = 450L
         private const val MAX_AI_CHAIN = 32
+        private const val MAX_FULL_AI_CHAIN = 512
     }
 }

@@ -69,11 +69,25 @@ enum class GameRuleDisplay(val label: String) {
     NORTHERN("北方规则"),
 }
 
+enum class AiPlaySpeed(
+    val label: String,
+    val delayMillis: Long,
+    val autoRounds: Int = 0,
+) {
+    DEBUG_100_ROUNDS(label = "100轮", delayMillis = 0L, autoRounds = 100),
+    VFAST(label = "极快", delayMillis = 1L),
+    FAST(label = "快", delayMillis = 200L),
+    NORMAL(label = "中", delayMillis = 450L),
+    SLOW(label = "慢", delayMillis = 800L),
+}
+
 data class RoomUiState(
     val isHost: Boolean = true,
     val roomName: String = "",
     val hostDeviceName: String = "",
+    val totalGamesPlayed: Int = 0,
     val currentRule: GameRuleDisplay = GameRuleDisplay.SOUTHERN,
+    val aiPlaySpeed: AiPlaySpeed = AiPlaySpeed.NORMAL,
     val slots: List<SlotState> = List(4) { SlotState(slotIndex = it) },
     val bluetoothVisible: Boolean = false,
     val connectionHint: String = "",

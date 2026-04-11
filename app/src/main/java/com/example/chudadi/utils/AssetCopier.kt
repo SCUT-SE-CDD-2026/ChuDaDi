@@ -5,6 +5,8 @@ import android.content.res.AssetManager
 import android.util.Log
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.security.MessageDigest
 
 /**
  * 资源文件复制工具
@@ -103,8 +105,17 @@ object AssetCopier {
         destFile: File,
     ): Boolean {
         if (destFile.exists()) {
-            Log.d(TAG, "Model file already exists: ${destFile.name}")
-            return false
+            val assetSha256 = calculateAssetSha256(assetManager, assetPath)
+            val fileSha256 = calculateFileSha256(destFile)
+            if (assetSha256.contentEquals(fileSha256)) {
+                Log.d(TAG, "Model unchanged by hash, skip copy: ${destFile.name}")
+                return false
+            }
+            if (!destFile.delete()) {
+                Log.w(TAG, "Failed to delete existing model file before overwrite: ${destFile.name}")
+            } else {
+                Log.d(TAG, "Deleted existing model file: ${destFile.name}")
+            }
         }
 
         assetManager.open(assetPath).use { input ->
@@ -114,5 +125,30 @@ object AssetCopier {
         }
         Log.i(TAG, "Copied model: $assetPath -> ${destFile.absolutePath}")
         return true
+    }
+
+    @Throws(IOException::class)
+    private fun calculateAssetSha256(assetManager: AssetManager, assetPath: String): ByteArray {
+        assetManager.open(assetPath).use { input ->
+            return calculateSha256(input)
+        }
+    }
+
+    @Throws(IOException::class)
+    private fun calculateFileSha256(file: File): ByteArray {
+        file.inputStream().use { input ->
+            return calculateSha256(input)
+        }
+    }
+
+    private fun calculateSha256(input: InputStream): ByteArray {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+        while (true) {
+            val read = input.read(buffer)
+            if (read <= 0) break
+            digest.update(buffer, 0, read)
+        }
+        return digest.digest()
     }
 }

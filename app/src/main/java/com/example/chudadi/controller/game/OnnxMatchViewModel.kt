@@ -26,6 +26,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -56,6 +57,8 @@ class OnnxMatchViewModel(
     private var lastActionMessage: String? = null
     private var localSeatId: Int = DEFAULT_LOCAL_SEAT_ID
     private var lastSeatConfigs: List<SeatConfig>? = null
+    private var aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
+    private var lastAiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
     private val inferenceFailureCountBySeat: MutableMap<Int, Int> = mutableMapOf()
     private val lastInferenceErrorReportAtBySeat: MutableMap<Int, Long> = mutableMapOf()
 
@@ -67,17 +70,20 @@ class OnnxMatchViewModel(
         seatConfigs: List<SeatConfig>? = null,
         localSeatId: Int = DEFAULT_LOCAL_SEAT_ID,
         ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
+        aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS,
     ) {
         releaseAiControllers()
         currentRuleSet = ruleSet
         this.localSeatId = localSeatId
         this.lastSeatConfigs = seatConfigs
+        this.aiMoveDelayMillis = aiMoveDelayMillis.coerceAtLeast(0L)
+        this.lastAiMoveDelayMillis = this.aiMoveDelayMillis
         inferenceFailureCountBySeat.clear()
         lastInferenceErrorReportAtBySeat.clear()
 
         val aiSeatConfigs = seatConfigs
             ?.filter { it.controllerType != SeatControllerType.HUMAN }
-            ?.sortedBy { it.seatIndex }
+            ?.sortedBy { it.seatId }
             ?: buildDefaultAiSeatConfigs(localSeatId)
 
         var loadError: AIErrorState? = null
@@ -85,11 +91,11 @@ class OnnxMatchViewModel(
             val creationResultsBySeat = aiSeatConfigs.associate { config ->
                 val result = AIFactory.createAIPlayerWithStatus(
                     context = context,
-                    seatIndex = config.seatIndex,
+                    seatIndex = config.seatId,
                     difficulty = config.aiDifficulty ?: AIDifficulty.NORMAL,
                     isOnnxAI = config.controllerType == SeatControllerType.ONNX_RL_AI,
                 )
-                config.seatIndex to result
+                config.seatId to result
             }
 
             val fallbackEntries = creationResultsBySeat.filterValues { it.isFallback }
@@ -121,7 +127,7 @@ class OnnxMatchViewModel(
         currentMatch = if (seatConfigs != null) {
             serverController.startLocalMatch(
                 ruleSet = currentRuleSet,
-                seatConfigs = seatConfigs.map { Triple(it.seatIndex, it.name, it.controllerType) },
+                seatConfigs = seatConfigs.map { Triple(it.seatId, it.name, it.controllerType) },
             )
         } else {
             serverController.startLocalMatch(ruleSet = currentRuleSet)
@@ -192,6 +198,7 @@ class OnnxMatchViewModel(
             seatConfigs = lastSeatConfigs,
             localSeatId = localSeatId,
             ruleSet = currentRuleSet,
+            aiMoveDelayMillis = lastAiMoveDelayMillis,
         )
     }
 
@@ -213,17 +220,30 @@ class OnnxMatchViewModel(
     private fun maybeResolveAiTurns() {
         aiScope.launch(Dispatchers.Default) {
             var chainCount = 0
-            while (chainCount < MAX_AI_CHAIN) {
+            val maxChain = if (localSeatId == MatchUiStateMapper.NO_LOCAL_SEAT_ID) {
+                MAX_FULL_AI_CHAIN
+            } else {
+                MAX_AI_CHAIN
+            }
+            while (chainCount < maxChain) {
                 val match = currentMatch ?: break
                 if (match.phase == MatchPhase.FINISHED) break
                 if (match.activeSeatIndex == localSeatId) break
 
-                val activeSeat = match.activeSeatIndex
+                if (aiMoveDelayMillis > 0L) {
+                    delay(aiMoveDelayMillis)
+                }
+
+                val latestMatch = currentMatch ?: break
+                if (latestMatch.phase == MatchPhase.FINISHED) break
+                if (latestMatch.activeSeatIndex == localSeatId) break
+
+                val activeSeat = latestMatch.activeSeatIndex
                 val aiPlayer = aiControllersBySeatId[activeSeat]
                 var aiErrorMessage: String? = null
                 val decision = if (aiPlayer != null) {
                     try {
-                        aiPlayer.requestDecision(match, currentRuleSet).also { onInferenceSuccess(activeSeat) }
+                        aiPlayer.requestDecision(latestMatch, currentRuleSet).also { onInferenceSuccess(activeSeat) }
                     } catch (e: OnnxTimeoutException) {
                         android.util.Log.e("OnnxMatchViewModel", "ONNX AI timeout, using fallback", e)
                         aiErrorMessage = "Seat $activeSeat ONNX timeout, fallback to rule-based AI"
@@ -257,7 +277,7 @@ class OnnxMatchViewModel(
                 val result = when (decision) {
                     is AIDecision.PlayCards -> {
                         serverController.handleCommand(
-                            match = match,
+                            match = latestMatch,
                             seatIndex = activeSeat,
                             command = com.example.chudadi.network.protocol.PlayCardCommand(
                                 decision.cards.map { it.id }.toSet(),
@@ -267,7 +287,7 @@ class OnnxMatchViewModel(
 
                     AIDecision.Pass -> {
                         serverController.handleCommand(
-                            match = match,
+                            match = latestMatch,
                             seatIndex = activeSeat,
                             command = com.example.chudadi.network.protocol.PassCommand,
                         )
@@ -284,11 +304,11 @@ class OnnxMatchViewModel(
                             exception = decision.exception,
                         )
                         aiErrorMessage = "Seat $activeSeat AI decision failed, fallback to rule-based AI"
-                        executeRuleBasedFallback(match = match, seatIndex = activeSeat)
+                        executeRuleBasedFallback(match = latestMatch, seatIndex = activeSeat)
                     }
 
                     else -> {
-                        executeRuleBasedFallback(match = match, seatIndex = activeSeat)
+                        executeRuleBasedFallback(match = latestMatch, seatIndex = activeSeat)
                     }
                 }
 
@@ -364,7 +384,7 @@ class OnnxMatchViewModel(
             .filter { it != localSeatId }
             .map { seatId ->
                 SeatConfig(
-                    seatIndex = seatId,
+                    seatId = seatId,
                     name = "AIN${seatId + 1}",
                     controllerType = SeatControllerType.RULE_BASED_AI,
                     aiDifficulty = AIDifficulty.NORMAL,
@@ -429,9 +449,11 @@ class OnnxMatchViewModel(
     }
 
     companion object {
+        private const val DEFAULT_AI_MOVE_DELAY_MILLIS = 450L
         private const val DEFAULT_LOCAL_SEAT_ID = 0
         private const val TOTAL_SEATS = 4
         private const val MAX_AI_CHAIN = 32
+        private const val MAX_FULL_AI_CHAIN = 512
         private const val INFERENCE_ERROR_REPORT_INTERVAL_MS = 3000L
     }
 }

@@ -127,6 +127,10 @@ android {
             ),
         )
     }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 val isReleaseTaskRequested =

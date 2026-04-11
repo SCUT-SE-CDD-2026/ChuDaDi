@@ -1,41 +1,38 @@
-package com.example.chudadi.ai.onnx
+﻿package com.example.chudadi.ai.onnx
 
 import com.example.chudadi.model.game.entity.Card
-import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.Seat
-import com.example.chudadi.model.game.entity.TrickState
+import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.rule.CombinationType
 import com.example.chudadi.model.game.rule.GameRuleSet
 
 /**
- * 游戏状态编码器
+ * 游戏状态编码器（与 RLCard ChuDaDi 观测格式对齐）。
  *
- * 将游戏状态转换为ONNX模型可接受的FloatArray输入张量。
- * 遵循RLCard ChuDaDi环境的332维状态表示规范。
- *
- * 状态向量组成（332维）：
- * - 0-51: current_hand (52) - 当前手牌 one-hot
- * - 52-103: last_action (52) - 上一手牌 one-hot
- * - 104-111: action_type_one_hot (8) - 上一手牌型
- * - 112-125: action_length_one_hot (14) - 上一手牌张数 (0..13)
- * - 126-128: leader_relative_pos (3) - 领出者相对位置
- * - 129-170: cards_left (42) - 三家剩牌数 one-hot (每人14维)
- * - 171-326: history (156) - 三家已出牌 one-hot (每人52维)
- * - 327: is_leader (1) - 是否自己领出
- * - 328-330: relative_pass_mask (3) - 三家是否已pass
- * - 331: is_next_warning (1) - 下家是否只剩1张
+ * 当前输出固定为 335 维，布局如下：
+ * - 0..51：current_hand（当前手牌 one-hot，52）
+ * - 52..103：last_action（上一手牌 one-hot，52）
+ * - 104..113：action_type_one_hot（上一手牌型 one-hot，10）
+ * - 114..127：action_length_one_hot（上一手牌张数 one-hot，14）
+ * - 128..130：leader_relative_pos（领出者相对位置，3）
+ * - 131..172：cards_left（三家剩余牌数 one-hot，42）
+ * - 173..328：history（三家历史已出牌 one-hot，156）
+ * - 329：is_leader（当前是否自己领出，1）
+ * - 330..332：relative_pass_mask（三家是否已 pass，3）
+ * - 333：is_next_warning（下家是否只剩 1 张，1）
+ * - 334：is_northern_rule（是否北方规则，1）
  */
 class GameStateEncoder {
 
     companion object {
-        const val INPUT_DIM = 332
+        const val INPUT_DIM = 335
         const val TOTAL_CARDS = 52
 
         /**
-         * 将卡牌转换为索引 (0-51)
-         * 编码顺序: [D, C, H, S] x [3, 4, 5, 6, 7, 8, 9, 10, J, Q, K, A, 2]
+         * 将牌映射到 0..51 索引。
+         * 编码顺序：[D, C, H, S] x [3,4,5,6,7,8,9,10,J,Q,K,A,2]。
          */
         fun cardToIndex(card: Card): Int {
             val suitIndex = when (card.suit) {
@@ -44,7 +41,7 @@ class GameStateEncoder {
                 CardSuit.HEARTS -> 2
                 CardSuit.SPADES -> 3
             }
-            val rankIndex = card.rank.ordinal // THREE=0, FOUR=1, ..., TWO=12
+            val rankIndex = card.rank.ordinal
             return suitIndex * 13 + rankIndex
         }
 
@@ -52,7 +49,7 @@ class GameStateEncoder {
          * 将卡牌列表编码为52维 one-hot 向量
          */
         fun encodeCards(cards: List<Card>): FloatArray {
-            val tensor = FloatArray(52) { 0f }
+            val tensor = FloatArray(TOTAL_CARDS)
             for (card in cards) {
                 val index = cardToIndex(card)
                 if (index in 0 until TOTAL_CARDS) {
@@ -64,66 +61,55 @@ class GameStateEncoder {
     }
 
     /**
-     * 将游戏状态编码为FloatArray
+     * 编码单个座位视角的观测向量（335 维）。
      *
-     * @param match 当前游戏状态
-     * @param seatIndex AI玩家座位索引 (0-3)
-     * @return 编码后的FloatArray (332维)
+     * @param match 当前对局状态
+     * @param seatIndex 视角座位（0..3）
      */
     fun encode(match: Match, seatIndex: Int): FloatArray {
-        val tensor = FloatArray(INPUT_DIM) { 0f }
-        var offset = 0
-
+        val tensor = FloatArray(INPUT_DIM)
         val seat = match.seats.getOrNull(seatIndex) ?: return tensor
+
+        var offset = 0
         val currentSeatPosition = seatIndex
 
-        // 0-51: current_hand (52) - 当前手牌
         encodeHandCards(seat.hand, tensor, offset)
         offset += 52
 
-        // 52-103: last_action (52) - 上一手牌
         val lastAction = getLastAction(match)
         encodeLastAction(lastAction, tensor, offset)
         offset += 52
 
-        // 104-111: action_type_one_hot (8) - 上一手牌型
         encodeActionType(lastAction?.type, tensor, offset)
-        offset += 8
+        offset += 10
 
-        // 112-125: action_length_one_hot (14) - 上一手牌张数
         encodeActionLength(lastAction?.cards?.size ?: 0, tensor, offset)
         offset += 14
 
-        // 126-128: leader_relative_pos (3) - 领出者相对位置
         val leaderSeat = getLeaderSeat(match)
         encodeLeaderRelativePosition(leaderSeat, currentSeatPosition, tensor, offset)
         offset += 3
 
-        // 129-170: cards_left (42) - 三家剩牌数 one-hot
         encodeCardsLeft(match.seats, currentSeatPosition, tensor, offset)
         offset += 42
 
-        // 171-326: history (156) - 三家已出牌 one-hot
         encodeHistory(match, currentSeatPosition, tensor, offset)
         offset += 156
 
-        // 327: is_leader (1) - 是否自己领出
         tensor[offset] = if (isLeader(match, currentSeatPosition)) 1f else 0f
         offset += 1
 
-        // 328-330: relative_pass_mask (3) - 三家是否已pass
         encodePassMask(match, currentSeatPosition, tensor, offset)
         offset += 3
 
-        // 331: is_next_warning (1) - 下家是否只剩1张
         tensor[offset] = if (isNextPlayerWarning(match, currentSeatPosition)) 1f else 0f
+        offset += 1
+
+        tensor[offset] = if (match.ruleSet == GameRuleSet.NORTHERN) 1f else 1f // 当前未实现南方（1表示北方，0表示南方）
 
         return tensor
     }
 
-    /**
-     * 编码手牌到 one-hot (52维)
-     */
     private fun encodeHandCards(handCards: List<Card>, tensor: FloatArray, offset: Int) {
         for (card in handCards) {
             val index = cardToIndex(card)
@@ -133,24 +119,14 @@ class GameStateEncoder {
         }
     }
 
-    /**
-     * 获取上一手动作（相对于当前玩家）
-     */
     private fun getLastAction(match: Match): LastActionInfo? {
         val currentCombination = match.trickState.currentCombination ?: return null
-        // 使用 lastWinningSeatIndex 作为最后出牌的座位
-        val lastSeatIndex = match.trickState.lastWinningSeatIndex
-
         return LastActionInfo(
             cards = currentCombination.cards,
             type = currentCombination.type,
-            fromSeatIndex = lastSeatIndex
         )
     }
 
-    /**
-     * 编码上一手牌 (52维)
-     */
     private fun encodeLastAction(lastAction: LastActionInfo?, tensor: FloatArray, offset: Int) {
         if (lastAction == null) return
 
@@ -163,30 +139,27 @@ class GameStateEncoder {
     }
 
     /**
-     * 编码动作类型 one-hot (8维)
-     * 顺序: none, single, pair, straight, flush, full_house, four_of_a_kind, straight_flush
+     * 上一手牌型编码（10 维）：
+     * none/single/pair/triple/straight/flush/full_house/four_of_a_kind/straight_flush/bomb
      */
     private fun encodeActionType(type: CombinationType?, tensor: FloatArray, offset: Int) {
         val index = when (type) {
             null -> 0
             CombinationType.SINGLE -> 1
             CombinationType.PAIR -> 2
-            CombinationType.STRAIGHT -> 3
-            CombinationType.FLUSH -> 4
-            CombinationType.FULL_HOUSE -> 5
-            CombinationType.FOUR_OF_A_KIND_BOMB,
+            CombinationType.TRIPLE -> 3
+            CombinationType.STRAIGHT -> 4
+            CombinationType.FLUSH -> 5
+            CombinationType.FULL_HOUSE -> 6
             CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_WITH_TWO -> 6
-            CombinationType.STRAIGHT_FLUSH -> 7
-            else -> 0 // TRIPLE 等未使用类型映射到 none
+            CombinationType.FOUR_WITH_TWO,
+            -> 7
+            CombinationType.STRAIGHT_FLUSH -> 8
+            CombinationType.FOUR_OF_A_KIND_BOMB -> 9
         }
         tensor[offset + index] = 1f
     }
 
-    /**
-     * 编码动作长度 one-hot (14维)
-     * 索引 0-13 表示牌张数
-     */
     private fun encodeActionLength(length: Int, tensor: FloatArray, offset: Int) {
         val clampedLength = length.coerceIn(0, 13)
         tensor[offset + clampedLength] = 1f
@@ -196,12 +169,9 @@ class GameStateEncoder {
      * 获取领出者座位索引
      */
     private fun getLeaderSeat(match: Match): Int? {
-        // 如果 trickState.currentCombination 为 null，表示新一轮开始
-        // 需要确定谁是领出者
         return if (match.trickState.currentCombination == null) {
             match.activeSeatIndex
         } else {
-            // 使用 leadSeatIndex 获取领出者
             match.trickState.leadSeatIndex
         }
     }
@@ -214,13 +184,11 @@ class GameStateEncoder {
         leaderSeat: Int?,
         currentSeat: Int,
         tensor: FloatArray,
-        offset: Int
+        offset: Int,
     ) {
         if (leaderSeat == null || leaderSeat == currentSeat) return
 
-        // 计算相对位置 (0-3)
         val relativePos = (leaderSeat - currentSeat + 4) % 4
-        // 映射到 one-hot: 1=下家, 2=对家, 3=上家
         when (relativePos) {
             1 -> tensor[offset] = 1f      // 下家
             2 -> tensor[offset + 1] = 1f  // 对家
@@ -236,11 +204,9 @@ class GameStateEncoder {
         seats: List<Seat>,
         currentSeat: Int,
         tensor: FloatArray,
-        offset: Int
+        offset: Int,
     ) {
-        // 按相对位置编码: 下家(1), 对家(2), 上家(3)
-        val relativePositions = listOf(1, 2, 3)
-        for ((i, relPos) in relativePositions.withIndex()) {
+        for ((i, relPos) in listOf(1, 2, 3).withIndex()) {
             val seatIndex = (currentSeat + relPos) % 4
             val seat = seats.getOrNull(seatIndex) ?: continue
             val cardCount = seat.hand.size.coerceIn(0, 13)
@@ -249,24 +215,18 @@ class GameStateEncoder {
     }
 
     /**
-     * 编码三家历史出牌 one-hot (156维 = 3 * 52)
-     * 顺序: 下家(52), 对家(52), 上家(52)
-     *
-     * 从 tablePlays 获取当前轮次已出的牌
+     * 历史已出牌编码（每家 52 维 one-hot）。
+     * 读取的是累计历史 playedCardHistory，不是当前轮次 tablePlays。
      */
     private fun encodeHistory(
         match: Match,
         currentSeat: Int,
         tensor: FloatArray,
-        offset: Int
+        offset: Int,
     ) {
-        // 按相对位置编码: 下家(1), 对家(2), 上家(3)
-        val relativePositions = listOf(1, 2, 3)
-        for ((i, relPos) in relativePositions.withIndex()) {
+        for ((i, relPos) in listOf(1, 2, 3).withIndex()) {
             val seatIndex = (currentSeat + relPos) % 4
-            val playedCards = match.trickState.tablePlays[seatIndex]?.cards ?: emptyList()
-
-            // 将已出牌编码到对应位置
+            val playedCards = match.trickState.playedCardHistory[seatIndex].orEmpty()
             for (card in playedCards) {
                 val cardIndex = cardToIndex(card)
                 if (cardIndex in 0 until TOTAL_CARDS) {
@@ -276,9 +236,6 @@ class GameStateEncoder {
         }
     }
 
-    /**
-     * 判断是否自己领出
-     */
     private fun isLeader(match: Match, currentSeat: Int): Boolean {
         return match.trickState.currentCombination == null ||
             match.trickState.leadSeatIndex == currentSeat
@@ -294,18 +251,12 @@ class GameStateEncoder {
         match: Match,
         currentSeat: Int,
         tensor: FloatArray,
-        offset: Int
+        offset: Int,
     ) {
-        // 按相对位置编码: 下家(1), 对家(2), 上家(3)
-        val relativePositions = listOf(1, 2, 3)
-
-        for ((i, relPos) in relativePositions.withIndex()) {
+        for ((i, relPos) in listOf(1, 2, 3).withIndex()) {
             val seatIndex = (currentSeat + relPos) % 4
             val seat = match.seats.getOrNull(seatIndex)
-
-            // 如果座位状态是 PASSED，或者该座位在当前轮次已 pass
-            val hasPassed = seat?.status == com.example.chudadi.model.game.entity.SeatStatus.PASSED
-            if (hasPassed) {
+            if (seat?.status == SeatStatus.PASSED) {
                 tensor[offset + i] = 1f
             }
         }
@@ -320,17 +271,10 @@ class GameStateEncoder {
         return nextPlayer?.hand?.size == 1
     }
 
-    /**
-     * 获取输入维度
-     */
     fun getInputDim(): Int = INPUT_DIM
 
-    /**
-     * 辅助数据类：上一手动作信息
-     */
     private data class LastActionInfo(
         val cards: List<Card>,
         val type: CombinationType?,
-        val fromSeatIndex: Int
     )
 }

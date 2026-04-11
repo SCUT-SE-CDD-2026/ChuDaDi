@@ -41,10 +41,11 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.R
 import com.example.chudadi.ui.ComposeTestTags
@@ -207,6 +208,12 @@ private fun RoomTopBar(
         )
         Spacer(modifier = Modifier.width(16.dp))
         if (uiState.isHost) {
+            Text(
+                text = "总局数 ${uiState.totalGamesPlayed}",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextMuted,
+            )
+            Spacer(modifier = Modifier.width(8.dp))
             TextButton(onClick = onResetScores) {
                 Text("重置分数", style = MaterialTheme.typography.labelMedium, color = TextMuted)
             }
@@ -336,7 +343,7 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
                 },
             )
         }
-        if (isHost && !slot.isLocalPlayer) {
+        if (isHost) {
             DropdownMenuItem(
                 text = { Text("移除", color = Color(0xFFE57373)) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },
@@ -378,14 +385,25 @@ private fun EmptySlotContent(slotIndex: Int) {
 @Suppress("CyclomaticComplexMethod")
 @Composable
 private fun FilledSlotContent(slot: SlotState) {
+    val configuration = LocalConfiguration.current
+    val compact = configuration.screenHeightDp <= 700 || configuration.screenWidthDp <= 360
+    val avatarSize = if (compact) 35.dp else 44.dp
+    val itemSpacing = if (compact) 2.dp else 4.dp
+    val statusDotSize = if (compact) 5.dp else 6.dp
+    val typeSpacing = if (compact) 4.dp else 6.dp
+    val contentPadding = if (compact) 6.dp else 8.dp
+    val nameStyle = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.bodyMedium
+    val scoreStyle = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium
+
     Column(
-        modifier = Modifier.fillMaxSize().padding(8.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(contentPadding),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
         Box(
             modifier = Modifier
-                .size(44.dp)
+                .size(avatarSize)
                 .clip(CircleShape)
                 .background(Color(0xFF3A2A1A))
                 .border(
@@ -405,16 +423,20 @@ private fun FilledSlotContent(slot: SlotState) {
             }
         }
 
+        Spacer(modifier = Modifier.height(itemSpacing))
+
         Text(
             text = slot.displayName,
-            style = MaterialTheme.typography.bodyMedium,
+            style = nameStyle,
             color = TextPrimary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
 
+        Spacer(modifier = Modifier.height(itemSpacing))
+
         Row(
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(typeSpacing),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val typeLabel = when (slot.occupantType) {
@@ -444,7 +466,7 @@ private fun FilledSlotContent(slot: SlotState) {
             if (statusText.isNotEmpty()) {
                 Box(
                     modifier = Modifier
-                        .size(6.dp)
+                        .size(statusDotSize)
                         .clip(CircleShape)
                         .background(statusDot),
                 )
@@ -452,11 +474,14 @@ private fun FilledSlotContent(slot: SlotState) {
             }
         }
 
+        Spacer(modifier = Modifier.weight(1f))
+
         val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
         Text(
             text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
-            style = MaterialTheme.typography.labelMedium,
+            style = scoreStyle,
             color = scoreColor,
+            maxLines = 1,
         )
     }
 }
@@ -503,7 +528,6 @@ private fun ControlPanel(
                 style = ChuButtonStyle.SECONDARY,
                 modifier = Modifier.fillMaxWidth(),
             )
-
             Spacer(modifier = Modifier.weight(1f))
 
             val filledCount = uiState.slots.count { it.occupantType != null }
@@ -515,15 +539,26 @@ private fun ControlPanel(
                 notReadyCount > 0 -> "等待 $notReadyCount 人准备"
                 else -> "开始游戏"
             }
-            ChuButton(
-                text = startButtonText,
-                onClick = { onAction(RoomAction.StartGame) },
-                style = ChuButtonStyle.PRIMARY,
-                enabled = uiState.canStartGame,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .testTag(ComposeTestTags.START_GAME_BUTTON),
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ChuButton(
+                    text = "AI速度: ${uiState.aiPlaySpeed.label}",
+                    onClick = { onAction(RoomAction.ToggleAiPlaySpeed) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier.weight(1f),
+                )
+                ChuButton(
+                    text = startButtonText,
+                    onClick = { onAction(RoomAction.StartGame) },
+                    style = ChuButtonStyle.PRIMARY,
+                    enabled = uiState.canStartGame,
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag(ComposeTestTags.START_GAME_BUTTON),
+                )
+            }
         } else {
             val localSlot = uiState.slots.firstOrNull { it.isLocalPlayer }
             val isReady = localSlot?.connectionStatus == MemberConnectionStatus.READY
@@ -620,8 +655,6 @@ private fun RoomAiDifficultyDialog(
                     }
                     AiSelectionStep.SELECT_DIFFICULTY -> {
                         // 第二步：选择难度
-                        
-                        
                         Text(
                             "已选择: RL训练 AI",
                             style = MaterialTheme.typography.bodyMedium,
@@ -663,6 +696,7 @@ private fun RoomAiDifficultyDialog(
         shape = RoundedCornerShape(16.dp),
     )
 }
+
 @Composable
 private fun SwapRequestDialog(
     request: SwapRequest,
