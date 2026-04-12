@@ -7,7 +7,6 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -66,13 +65,19 @@ class OnnxInferenceEngine(modelPath: String) {
                 throw IllegalStateException("Model file not found: $modelPath")
             }
 
-            val sessionOptions = OrtSession.SessionOptions().apply {
-                setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-                setIntraOpNumThreads(2)
-                setInterOpNumThreads(2)
+            val sessionOptions = OrtSession.SessionOptions()
+            try {
+                sessionOptions.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
+                sessionOptions.setIntraOpNumThreads(2)
+                sessionOptions.setInterOpNumThreads(2)
+                session = environment.createSession(modelPath, sessionOptions)
+            } finally {
+                try {
+                    sessionOptions.close()
+                } catch (closeError: Exception) {
+                    Log.w(TAG, "Failed to close SessionOptions", closeError)
+                }
             }
-
-            session = environment.createSession(modelPath, sessionOptions)
             isInitialized = true
 
             val modelInputNames = session?.inputInfo?.keys?.toList()
@@ -307,17 +312,11 @@ class OnnxInferenceEngine(modelPath: String) {
     /** 释放会话资源。 */
     fun close() {
         try {
-            val oldSession = runBlocking {
-                sessionLock.withLock {
-                    if (!isInitialized && session == null) {
-                        null
-                    } else {
-                        val s = session
-                        session = null
-                        isInitialized = false
-                        s
-                    }
-                }
+            val oldSession: OrtSession?
+            synchronized(this) {
+                oldSession = session
+                session = null
+                isInitialized = false
             }
             oldSession?.close()
             if (oldSession != null) {

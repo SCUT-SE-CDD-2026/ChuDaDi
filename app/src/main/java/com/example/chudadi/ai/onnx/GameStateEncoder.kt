@@ -111,12 +111,8 @@ class GameStateEncoder {
     }
 
     private fun encodeHandCards(handCards: List<Card>, tensor: FloatArray, offset: Int) {
-        for (card in handCards) {
-            val index = cardToIndex(card)
-            if (index in 0 until TOTAL_CARDS) {
-                tensor[offset + index] = 1f
-            }
-        }
+        val handTensor = encodeCards(handCards)
+        System.arraycopy(handTensor, 0, tensor, offset, TOTAL_CARDS)
     }
 
     private fun getLastAction(match: Match): LastActionInfo? {

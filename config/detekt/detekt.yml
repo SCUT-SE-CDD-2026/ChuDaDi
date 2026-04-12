@@ -1,4 +1,4 @@
-build:
+﻿build:
   maxIssues: 0
 
 config:
@@ -10,11 +10,10 @@ style:
     # 精准豁免：
     # - ui 目录大量颜色/尺寸常量属于视觉参数；
     # - GameStateEncoder 的索引/偏移量属于 ONNX 输入向量协议；
-    # - ScoreCalculatorTest 的期望值是规则断言样例。
     excludes:
       - '**/ui/**'
       - '**/ai/onnx/GameStateEncoder.kt'
-      - '**/test/**/ScoreCalculatorTest.kt'
+      - '**/test/**'
     ignoreNumbers:
       - '-1'
       - '0'

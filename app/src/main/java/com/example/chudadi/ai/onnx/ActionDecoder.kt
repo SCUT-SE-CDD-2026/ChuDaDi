@@ -35,7 +35,6 @@ class ActionDecoder {
      * @param handCards 当前手牌
      * @param validActionMask 有效动作掩码（哪些动作是合法的）
      * @param difficulty AI难度级别
-     * @param ruleSet 游戏规则设置
      * @return AI决策结果
      */
     fun decode(

@@ -15,6 +15,7 @@ class OnnxModel(modelPath: String) {
 
     private val encoder = GameStateEncoder()
     private var inferenceEngine: OnnxInferenceEngine? = null
+    @Volatile
     private var isLoaded = false
 
     init {

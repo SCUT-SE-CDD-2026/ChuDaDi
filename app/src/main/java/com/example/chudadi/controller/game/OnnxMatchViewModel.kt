@@ -241,6 +241,7 @@ class OnnxMatchViewModel(
                 val activeSeat = latestMatch.activeSeatIndex
                 val aiPlayer = aiControllersBySeatId[activeSeat]
                 var aiErrorMessage: String? = null
+                var usedRuleBasedFallback = false
                 val decision = if (aiPlayer != null) {
                     try {
                         aiPlayer.requestDecision(latestMatch, currentRuleSet).also { onInferenceSuccess(activeSeat) }
@@ -304,10 +305,12 @@ class OnnxMatchViewModel(
                             exception = decision.exception,
                         )
                         aiErrorMessage = "Seat $activeSeat AI decision failed, fallback to rule-based AI"
+                        usedRuleBasedFallback = true
                         executeRuleBasedFallback(match = latestMatch, seatIndex = activeSeat)
                     }
 
                     else -> {
+                        usedRuleBasedFallback = true
                         executeRuleBasedFallback(match = latestMatch, seatIndex = activeSeat)
                     }
                 }
@@ -315,28 +318,46 @@ class OnnxMatchViewModel(
                 val resolvedResult = if (result.success) {
                     result
                 } else {
-                    android.util.Log.w(
-                        "OnnxMatchViewModel",
-                        "Seat $activeSeat action failed, retrying with rule-based fallback. error=${result.error}",
-                    )
-                    aiErrorMessage = aiErrorMessage ?: "Seat $activeSeat AI action invalid, fallback to rule-based AI"
-                    val fallbackResult = executeRuleBasedFallback(match = result.match, seatIndex = activeSeat)
-                    if (fallbackResult.success) {
-                        fallbackResult
-                    } else {
+                    if (usedRuleBasedFallback) {
                         val fallbackErrorMessage = formatActionMessage(
                             message = null,
-                            error = fallbackResult.error,
+                            error = result.error,
                         )
                         val criticalMessage = "Seat $activeSeat fallback failed: $fallbackErrorMessage"
                         _errorState.value = AIErrorState.CriticalError(message = criticalMessage)
-                        currentMatch = fallbackResult.match
+                        currentMatch = result.match
                         lastActionMessage = criticalMessage
                         selectedCardIds = emptySet()
                         launch(Dispatchers.Main) {
                             pushUiState()
                         }
                         break
+                    } else {
+                        android.util.Log.w(
+                            "OnnxMatchViewModel",
+                            "Seat $activeSeat action failed, retrying with rule-based fallback. error=${result.error}",
+                        )
+                        aiErrorMessage = aiErrorMessage
+                            ?: "Seat $activeSeat AI action invalid, fallback to rule-based AI"
+                        usedRuleBasedFallback = true
+                        val fallbackResult = executeRuleBasedFallback(match = result.match, seatIndex = activeSeat)
+                        if (fallbackResult.success) {
+                            fallbackResult
+                        } else {
+                            val fallbackErrorMessage = formatActionMessage(
+                                message = null,
+                                error = fallbackResult.error,
+                            )
+                            val criticalMessage = "Seat $activeSeat fallback failed: $fallbackErrorMessage"
+                            _errorState.value = AIErrorState.CriticalError(message = criticalMessage)
+                            currentMatch = fallbackResult.match
+                            lastActionMessage = criticalMessage
+                            selectedCardIds = emptySet()
+                            launch(Dispatchers.Main) {
+                                pushUiState()
+                            }
+                            break
+                        }
                     }
                 }
 

@@ -4,11 +4,10 @@ import android.util.Log
 import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
-import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.model.game.entity.Card
-import com.example.chudadi.ai.rulebased.AiDecision as RuleBasedAiDecision
-import java.io.File
 import com.example.chudadi.model.game.entity.Match
+import kotlinx.coroutines.CancellationException
+import java.io.File
 import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.rule.CombinationComparator
 import com.example.chudadi.model.game.rule.CombinationEvaluator
@@ -17,7 +16,6 @@ import com.example.chudadi.model.game.rule.CombinationParser
 import com.example.chudadi.model.game.rule.CombinationType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.rule.GameRules
-import kotlinx.coroutines.CancellationException
 
 /**
  * ONNX AI玩家控制器
@@ -51,25 +49,22 @@ class OnnxAIPlayerController(
             Log.i(TAG, "[AI-$seatIndex] ONNX model loaded successfully, available=${m.isAvailable()}")
             m
         } catch (e: Exception) {
-            Log.e(TAG, "[AI-$seatIndex] Failed to load ONNX model, will use fallback", e)
+            Log.e(TAG, "[AI-$seatIndex] Failed to load ONNX model", e)
             null
         }
     } else {
         Log.w(
             TAG,
-            "[AI-$seatIndex] Model path empty or file not found (path='$modelPath'), will use fallback rule-based AI",
+            "[AI-$seatIndex] Model path empty or file not found (path='$modelPath')",
         )
         null
     }
     private val decoder: ActionDecoder = ActionDecoder()
     private val actionFeatureEncoder: ActionFeatureEncoder = ActionFeatureEncoder()
 
-    // 降级用的规则基础AI
-    private val fallbackAI: RuleBasedAiPlayer = RuleBasedAiPlayer()
-
     init {
         if (model?.isAvailable() != true) {
-            Log.w(TAG, "ONNX model not available, will use fallback rule-based AI")
+            Log.w(TAG, "ONNX model not available")
         }
     }
 
@@ -84,15 +79,12 @@ class OnnxAIPlayerController(
         val seat = match.seats.getOrNull(seatIndex)
             ?: return AIDecision.Error("Seat $seatIndex not found in match")
 
-        val handSize = seat.hand.size
-        val isFirstPlay = match.trickState.currentCombination == null
-
         Log.i(
-            TAG, "[AI-$seatIndex] Requesting decision: hand=$handSize cards, " +
-                "rule=$ruleSet, difficulty=$difficulty, firstPlay=$isFirstPlay"
+            TAG, "[AI-$seatIndex] Requesting decision: hand=${seat.hand.size} cards, " +
+                "rule=$ruleSet, difficulty=$difficulty, " +
+                "firstPlay=${match.trickState.currentCombination == null}"
         )
 
-        // 获取有效动作列表（用于验证和降级）
         val validActions = getValidActions(seat.hand, match, ruleSet)
         Log.d(TAG, "[AI-$seatIndex] Valid actions count: ${validActions.size}")
         val actionCandidates = buildActionCandidates(
@@ -103,45 +95,69 @@ class OnnxAIPlayerController(
         )
         val validActionMask = actionCandidates.map { it.actionId }.toLongArray()
 
-        if (model?.isAvailable() == true) {
-            try {
-                val startTime = System.currentTimeMillis()
-                val prediction = model.predictActionValues(
-                    match = match,
-                    seatIndex = seatIndex,
-                    actionFeatures = actionCandidates.map { it.feature },
-                )
-                val inferenceTime = System.currentTimeMillis() - startTime
+        val rawDecision = inferOnnxDecision(match, seat.hand, actionCandidates, validActionMask)
+        return validateDecision(rawDecision, match, ruleSet, validActions)
+    }
 
-                if (prediction != null) {
-                    Log.d(TAG, "[AI-$seatIndex] ONNX inference completed in ${inferenceTime}ms")
-
-                    val decision = decoder.decode(
-                        modelOutput = prediction,
-                        handCards = seat.hand,
-                        validActionMask = validActionMask,
-                        difficulty = difficulty,
-                    )
-
-                    // 验证决策合法性
-                    if (isValidDecision(decision, match, ruleSet, validActions)) {
-                        logDecision(decision, validActions, ruleSet, "ONNX")
-                        return decision
-                    } else {
-                        Log.w(TAG, "[AI-$seatIndex] ONNX decision invalid, using fallback")
-                    }
-                }
-            } catch (e: OnnxTimeoutException) {
-                Log.e(TAG, "[AI-$seatIndex] ONNX inference timeout, using fallback", e)
-            } catch (e: OnnxInferenceException) {
-                Log.e(TAG, "[AI-$seatIndex] ONNX inference failed, using fallback", e)
-            }
-        } else {
-            Log.w(TAG, "[AI-$seatIndex] ONNX model not available, using fallback")
+    private suspend fun inferOnnxDecision(
+        match: Match,
+        handCards: List<Card>,
+        actionCandidates: List<ActionCandidate>,
+        validActionMask: LongArray,
+    ): AIDecision {
+        if (model?.isAvailable() != true) {
+            Log.w(TAG, "[AI-$seatIndex] ONNX model not available")
+            return AIDecision.Error("ONNX model unavailable")
         }
 
-        // 降级到规则基础AI
-        return fallbackToRuleBasedAI(match, validActions)
+        val prediction = try {
+            val startTime = System.currentTimeMillis()
+            model.predictActionValues(
+                match = match,
+                seatIndex = seatIndex,
+                actionFeatures = actionCandidates.map { it.feature },
+            ).also {
+                Log.d(TAG, "[AI-$seatIndex] ONNX inference completed in ${System.currentTimeMillis() - startTime}ms")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val msg = when (e) {
+                is OnnxTimeoutException -> "ONNX inference timeout"
+                is OnnxInferenceException -> "ONNX inference failed"
+                else -> throw e
+            }
+            Log.e(TAG, "[AI-$seatIndex] $msg", e)
+            return AIDecision.Error(msg, e)
+        }
+
+        return if (prediction != null) {
+            decoder.decode(
+                modelOutput = prediction,
+                handCards = handCards,
+                validActionMask = validActionMask,
+                difficulty = difficulty,
+            )
+        } else {
+            AIDecision.Error("ONNX returned empty prediction")
+        }
+    }
+
+    private fun validateDecision(
+        decision: AIDecision,
+        match: Match,
+        ruleSet: GameRuleSet,
+        validActions: List<List<Card>>,
+    ): AIDecision = when {
+        decision is AIDecision.Error -> decision
+        isValidDecision(decision, match, ruleSet, validActions) -> {
+            logDecision(decision, validActions, ruleSet, "ONNX")
+            decision
+        }
+        else -> {
+            Log.w(TAG, "[AI-$seatIndex] ONNX decision invalid")
+            AIDecision.Error("ONNX decision invalid")
+        }
     }
 
     internal fun buildActionCandidates(
@@ -297,44 +313,6 @@ class OnnxAIPlayerController(
 
             is AIDecision.Error -> false
         }
-    }
-
-    private fun fallbackToRuleBasedAI(
-        match: Match,
-        validActions: List<List<Card>>
-    ): AIDecision {
-        Log.i(TAG, "[AI-$seatIndex] Using fallback rule-based AI")
-
-        return try {
-            val ruleDecision = fallbackAI.decideAction(match, seatIndex)
-
-            val decision = when (ruleDecision) {
-                is RuleBasedAiDecision.Play -> {
-                    val cards = ruleDecision.cardIds.mapNotNull { cardId ->
-                        findCardById(match, seatIndex, cardId)
-                    }
-                    if (cards.isNotEmpty()) {
-                        AIDecision.PlayCards(cards)
-                    } else {
-                        AIDecision.Pass
-                    }
-                }
-
-                RuleBasedAiDecision.Pass -> AIDecision.Pass
-            }
-
-            logDecision(decision, validActions, match.ruleSet, "FALLBACK")
-            decision
-
-        } catch (e: Exception) {
-            Log.e(TAG, "[AI-$seatIndex] Fallback AI also failed", e)
-            AIDecision.Error("Both ONNX and fallback AI failed: ${e.message}", e)
-        }
-    }
-
-    private fun findCardById(match: Match, seatIndex: Int, cardId: String): Card? {
-        val seat = match.seats.getOrNull(seatIndex) ?: return null
-        return seat.hand.find { it.id == cardId }
     }
 
     private fun logDecision(
