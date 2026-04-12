@@ -286,9 +286,7 @@ class BluetoothRoomRepository(
                         connectionHint = "正在连接 ${device.name}...",
                     )
                 }
-                if (adapter.isDiscovering) {
-                    adapter.cancelDiscovery()
-                }
+                stopDiscoveryIfNeeded(adapter)
                 val remoteDevice = adapter.getRemoteDevice(device.address)
                 val socket = remoteDevice.createRfcommSocketToServiceRecord(ROOM_UUID)
                 socket.connect()
@@ -1383,6 +1381,16 @@ class BluetoothRoomRepository(
         hostMatchController.clearCurrentMatch()
         clearActiveMatchState()
         matchLoopJob?.cancel()
+    }
+
+    private fun stopDiscoveryIfNeeded(adapter: BluetoothAdapter) {
+        if (!BluetoothPermissionUtils.hasScanPermission(appContext)) {
+            return
+        }
+        @SuppressLint("MissingPermission")
+        if (adapter.isDiscovering) {
+            adapter.cancelDiscovery()
+        }
     }
 
     private fun GameRuleDisplay.toGameRuleSet(): GameRuleSet {
