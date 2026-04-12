@@ -38,6 +38,7 @@ import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.DiscoveredDeviceUiState
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.RoomMatchRules
 import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.room.SlotState
@@ -1349,32 +1350,19 @@ class BluetoothRoomRepository(
     }
 
     private fun finishedMatchStatus(participant: ParticipantRecord): MemberConnectionStatus? {
-        return when (participant.occupantType) {
-            SlotOccupantType.HUMAN_HOST -> MemberConnectionStatus.READY
-            SlotOccupantType.AI -> MemberConnectionStatus.READY
-            SlotOccupantType.HUMAN_MEMBER -> {
-                if (participant.connectionStatus == MemberConnectionStatus.DISCONNECTED) {
-                    MemberConnectionStatus.DISCONNECTED
-                } else {
-                    MemberConnectionStatus.NOT_READY
-                }
-            }
-        }
+        return RoomMatchRules.finishedMatchStatus(
+            occupantType = participant.occupantType,
+            currentStatus = participant.connectionStatus,
+        )
     }
 
     private fun participantReconnectStatus(participantId: String): MemberConnectionStatus {
         val participant = authorityState.participants[participantId]
-        return when (participant?.occupantType) {
-            SlotOccupantType.HUMAN_HOST -> MemberConnectionStatus.READY
-            SlotOccupantType.AI -> MemberConnectionStatus.READY
-            SlotOccupantType.HUMAN_MEMBER, null -> {
-                if (hostMatchController.currentMatch()?.phase == MatchPhase.FINISHED || activeMatchSeatAssignments.isEmpty()) {
-                    MemberConnectionStatus.NOT_READY
-                } else {
-                    MemberConnectionStatus.CONNECTED
-                }
-            }
-        }
+        return RoomMatchRules.participantReconnectStatus(
+            occupantType = participant?.occupantType,
+            isFinishedMatch = hostMatchController.currentMatch()?.phase == MatchPhase.FINISHED,
+            hasActiveMatchSeatAssignments = activeMatchSeatAssignments.isNotEmpty(),
+        )
     }
 
     private fun clearCurrentNetworkMatch() {
@@ -1401,9 +1389,7 @@ class BluetoothRoomRepository(
     }
 
     private fun canStart(slots: List<SlotState>): Boolean {
-        val allFilled = slots.all { it.occupantType != null }
-        val allReady = slots.all { it.connectionStatus == MemberConnectionStatus.READY }
-        return allFilled && allReady
+        return RoomMatchRules.canStart(slots)
     }
 
     private fun buildActiveMatchSeatAssignments(): Map<String, Int> {
