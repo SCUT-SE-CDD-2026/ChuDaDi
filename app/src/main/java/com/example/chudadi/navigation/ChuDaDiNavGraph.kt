@@ -10,6 +10,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.LocalMatchViewModel
+import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.rule.GameRuleSet
@@ -25,8 +26,11 @@ import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.RoomViewModel
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
+import com.example.chudadi.ui.settings.SettingsScreen
+import com.example.chudadi.ui.settings.SettingsViewModel
 
 private const val HOME_ROUTE = "home"
+private const val SETTINGS_ROUTE = "settings"
 private const val ROOM_ROUTE = "room"
 private const val GAME_ROUTE = "game"
 private const val RESULT_ROUTE = "result"
@@ -34,11 +38,13 @@ private const val RESULT_ROUTE = "result"
 @Composable
 fun ChuDaDiNavGraph(
     viewModel: LocalMatchViewModel = viewModel(),
-    roomViewModel: RoomViewModel = viewModel(),
+    roomViewModel: RoomViewModel,
+    playerPreferencesRepository: PlayerPreferencesRepository,
 ) {
     val navController = rememberNavController()
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
     val roomUiState = roomViewModel.uiState.collectAsStateWithLifecycle().value
+    val playerName = roomViewModel.playerName.collectAsStateWithLifecycle().value
 
     HandlePhaseNavigation(navController = navController, phase = uiState.phase)
 
@@ -48,13 +54,26 @@ fun ChuDaDiNavGraph(
     ) {
         composable(HOME_ROUTE) {
             HomeScreen(
+                playerName = playerName,
                 onCreateRoom = {
-                    roomViewModel.dispatch(RoomAction.ResetRoom)
+                    roomViewModel.dispatch(RoomAction.ResetRoomAsHost)
                     navController.navigate(ROOM_ROUTE)
                 },
                 onJoinRoom = {
                     navController.navigate(ROOM_ROUTE)
                 },
+                onSettings = {
+                    navController.navigate(SETTINGS_ROUTE)
+                },
+            )
+        }
+        composable(SETTINGS_ROUTE) {
+            val settingsViewModel: SettingsViewModel = viewModel(
+                factory = SettingsViewModel.factory(playerPreferencesRepository),
+            )
+            SettingsScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = { navController.popBackStack() },
             )
         }
         composable(ROOM_ROUTE) {
@@ -68,9 +87,11 @@ fun ChuDaDiNavGraph(
                                 viewModel.dispatch(startAction)
                             }
                         }
+
                         is RoomAction.ExitRoom -> {
                             navController.popBackStack()
                         }
+
                         else -> roomViewModel.dispatch(action)
                     }
                 },

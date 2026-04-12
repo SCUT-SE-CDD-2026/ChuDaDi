@@ -1,37 +1,67 @@
 @file:Suppress("TooManyFunctions")
 
 package com.example.chudadi.ui.room
+
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
 import com.example.chudadi.R
+import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.model.game.entity.RoundScore
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
 
-class RoomViewModel : ViewModel() {
+class RoomViewModel(
+    private val playerPrefsRepository: PlayerPreferencesRepository,
+) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(
-        RoomUiState(
-            isHost = true,
-            roomName = "我的房间",
-            hostDeviceName = "本机",
-            slots = listOf(
-                SlotState(
-                    slotIndex = 0,
-                    occupantType = SlotOccupantType.HUMAN_HOST,
-                    displayName = "默认玩家",
-                    avatarResId = R.drawable.avatar,
-                    connectionStatus = MemberConnectionStatus.READY,
-                    isLocalPlayer = true,
-                ),
-                SlotState(slotIndex = 1),
-                SlotState(slotIndex = 2),
-                SlotState(slotIndex = 3),
-            ),
-        ).recalcCanStart(),
-    )
+    val playerName: StateFlow<String> = playerPrefsRepository.playerName
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = "默认玩家",
+        )
+
+    val avatarResId: StateFlow<Int> = playerPrefsRepository.avatarResId
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = R.drawable.avatar,
+        )
+
+    private val _uiState = MutableStateFlow(RoomUiState())
     val uiState: StateFlow<RoomUiState> = _uiState.asStateFlow()
+
+    init {
+        // 初始化时使用保存的玩家名称
+        viewModelScope.launch {
+            val name = playerPrefsRepository.playerName.first()
+            _uiState.value = buildDefaultHostState(name)
+        }
+
+        // 监听玩家名称变化，实时更新本地槽位
+        viewModelScope.launch {
+            playerPrefsRepository.playerName.collect { name ->
+                _uiState.update { state ->
+                    val newSlots = state.slots.map { slot ->
+                        if (slot.isLocalPlayer) {
+                            slot.copy(displayName = name)
+                        } else {
+                            slot
+                        }
+                    }
+                    state.copy(slots = newSlots)
+                }
+            }
+        }
+    }
 
     @Suppress("CyclomaticComplexMethod")
     fun dispatch(action: RoomAction) {
@@ -60,6 +90,7 @@ class RoomViewModel : ViewModel() {
             }
             is RoomAction.ExitRoom -> { /* handled by NavGraph */ }
             is RoomAction.ResetRoom -> resetRoom()
+            is RoomAction.ResetRoomAsHost -> resetRoomAsHost()
         }
     }
 
@@ -189,7 +220,17 @@ class RoomViewModel : ViewModel() {
     }
 
     private fun resetRoom() {
-        _uiState.value = RoomUiState(
+        val currentName = playerName.value
+        _uiState.value = buildDefaultHostState(currentName)
+    }
+
+    private fun resetRoomAsHost() {
+        val currentName = playerName.value
+        _uiState.value = buildDefaultHostState(currentName)
+    }
+
+    private fun buildDefaultHostState(playerName: String): RoomUiState {
+        return RoomUiState(
             isHost = true,
             roomName = "我的房间",
             hostDeviceName = "本机",
@@ -197,7 +238,7 @@ class RoomViewModel : ViewModel() {
                 SlotState(
                     slotIndex = 0,
                     occupantType = SlotOccupantType.HUMAN_HOST,
-                    displayName = "默认玩家",
+                    displayName = playerName,
                     avatarResId = R.drawable.avatar,
                     connectionStatus = MemberConnectionStatus.READY,
                     isLocalPlayer = true,
@@ -228,5 +269,16 @@ class RoomViewModel : ViewModel() {
             isLocalPlayer = source.isLocalPlayer,
             seatId = source.seatId,
         )
+    }
+
+    companion object {
+        fun factory(playerPrefsRepository: PlayerPreferencesRepository): ViewModelProvider.Factory {
+            return object : ViewModelProvider.Factory {
+                @Suppress("UNCHECKED_CAST")
+                override fun <T : ViewModel> create(modelClass: Class<T>): T {
+                    return RoomViewModel(playerPrefsRepository) as T
+                }
+            }
+        }
     }
 }

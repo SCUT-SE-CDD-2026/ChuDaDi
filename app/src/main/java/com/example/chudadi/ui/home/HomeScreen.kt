@@ -51,6 +51,7 @@ private val DividerColor = Color(0x33C8A96A)
 
 @Composable
 fun HomeScreen(
+    playerName: String = "默认玩家",
     onCreateRoom: () -> Unit = {},
     onJoinRoom: () -> Unit = {},
     onOnlineGame: () -> Unit = {},
@@ -76,6 +77,7 @@ fun HomeScreen(
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 LeftPanel(
+                    playerName = playerName,
                     modifier = Modifier
                         .weight(0.42f)
                         .fillMaxHeight(),
@@ -103,7 +105,10 @@ fun HomeScreen(
 }
 
 @Composable
-private fun LeftPanel(modifier: Modifier = Modifier) {
+private fun LeftPanel(
+    playerName: String,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .background(
@@ -143,12 +148,12 @@ private fun LeftPanel(modifier: Modifier = Modifier) {
                 letterSpacing = 2.sp,
             )
         }
-        PlayerInfoBlock()
+        PlayerInfoBlock(playerName = playerName)
     }
 }
 
 @Composable
-private fun PlayerInfoBlock() {
+private fun PlayerInfoBlock(playerName: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,7 +182,7 @@ private fun PlayerInfoBlock() {
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = "默认玩家",
+                text = playerName,
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextPrimary,
             )

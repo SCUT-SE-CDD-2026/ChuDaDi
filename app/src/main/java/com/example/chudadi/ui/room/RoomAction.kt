@@ -19,4 +19,5 @@ sealed interface RoomAction {
     data object DismissSlotActionMenu : RoomAction
     data object ExitRoom : RoomAction
     data object ResetRoom : RoomAction
+    data object ResetRoomAsHost : RoomAction
 }
