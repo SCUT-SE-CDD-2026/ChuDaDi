@@ -10,6 +10,7 @@ import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.ResultSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
+import com.example.chudadi.model.game.snapshot.ViewSeat
 
 class MatchUiStateMapper(
     private val engine: GameEngine,
@@ -27,18 +28,19 @@ class MatchUiStateMapper(
         val humanSeat = match.seats.first { it.seatId == localSeatId }
         val selectedCards = humanSeat.hand.filter { it.id in selectedCardIds }.map(Card::id).toSet()
         val tablePlays = match.trickState.tablePlays.entries
-            .sortedBy { it.key }
-            .map { (seatId, combination) ->
+            .mapIndexed { index, (seatId, combination) ->
                 val owner = match.seats.first { it.seatId == seatId }
                 TablePlaySummary(
-                    ownerSeatId = owner.seatId,
+                    ownerViewSeat = owner.seatId.toViewSeat(localSeatId),
                     ownerName = owner.displayName,
                     combinationLabel = combination.type.displayName,
                     cardLabels = combination.cards.sortedWith(Card.gameComparator).map(Card::displayName),
+                    stackOrder = index,
                 )
             }
 
         return MatchUiState(
+            matchId = match.matchId,
             phase = match.phase,
             playerHand = humanSeat.hand.sortedWith(Card.gameComparator),
             selectedCards = selectedCards,
@@ -46,12 +48,14 @@ class MatchUiStateMapper(
                 .filterNot { it.seatId == localSeatId }
                 .map { seat ->
                     OpponentSummary(
-                        seatId = seat.seatId,
+                        viewSeat = seat.seatId.toViewSeat(localSeatId),
+                        authoritySeatId = seat.seatId,
                         displayName = seat.displayName,
                         avatarResId = R.drawable.avatar,
                         remainingCards = seat.hand.size,
                         isCurrentActor = seat.seatId == match.activeSeatIndex,
                         hasPassed = seat.status == SeatStatus.PASSED,
+                        isDisconnected = false,
                     )
                 },
             currentActorName = match.seats.first { it.seatId == match.activeSeatIndex }.displayName,
@@ -59,10 +63,11 @@ class MatchUiStateMapper(
             currentTablePlay = match.trickState.currentCombination?.let { combination ->
                 val owner = match.seats.first { it.seatId == match.trickState.lastWinningSeatIndex }
                 TablePlaySummary(
-                    ownerSeatId = owner.seatId,
+                    ownerViewSeat = owner.seatId.toViewSeat(localSeatId),
                     ownerName = owner.displayName,
                     combinationLabel = combination.type.displayName,
                     cardLabels = combination.cards.sortedWith(Card.gameComparator).map(Card::displayName),
+                    stackOrder = tablePlays.size,
                 )
             },
             lastActionMessage = lastActionMessage,
@@ -75,6 +80,7 @@ class MatchUiStateMapper(
                 match = match,
                 seatIndex = localSeatId,
             ),
+            remainingTurnSeconds = null,
             resultSummary = match.result?.let { result ->
                 ResultSummary(
                     winnerName = match.seats.first { it.seatId == result.winnerSeatIndex }.displayName,
@@ -83,10 +89,22 @@ class MatchUiStateMapper(
                 )
             },
             isHumanTurn = match.phase != MatchPhase.FINISHED && match.activeSeatIndex == localSeatId,
+            isLocalDisconnected = false,
         )
     }
 
     companion object {
         const val DEFAULT_LOCAL_SEAT_ID = 0
+        private const val VIEW_SEAT_COUNT = 4
+    }
+
+    private fun Int.toViewSeat(localSeatId: Int): ViewSeat {
+        return when ((this - localSeatId).mod(VIEW_SEAT_COUNT)) {
+            0 -> ViewSeat.SELF
+            1 -> ViewSeat.LEFT
+            2 -> ViewSeat.TOP
+            3 -> ViewSeat.RIGHT
+            else -> error("Unexpected relative seat offset")
+        }
     }
 }

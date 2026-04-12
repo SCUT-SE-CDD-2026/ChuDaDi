@@ -1,5 +1,6 @@
 package com.example.chudadi.network.room
 
+import com.example.chudadi.network.game.GameWireMessage
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -63,6 +64,11 @@ sealed class RoomWireMessage {
     @Serializable
     data class RoomSnapshotMessage(
         val snapshot: RemoteRoomSnapshot,
+    ) : RoomWireMessage()
+
+    @Serializable
+    data class GameEnvelope(
+        val message: GameWireMessage,
     ) : RoomWireMessage()
 
     @Serializable

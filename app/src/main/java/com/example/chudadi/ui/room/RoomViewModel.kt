@@ -6,8 +6,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.chudadi.R
+import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
+import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.model.game.entity.RoundScore
+import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
 import com.example.chudadi.network.room.BluetoothRoomRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +18,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -22,6 +26,7 @@ import kotlinx.coroutines.launch
 class RoomViewModel(
     private val playerPrefsRepository: PlayerPreferencesRepository,
     private val bluetoothRoomRepository: BluetoothRoomRepository,
+    private val reconnectSessionRepository: ReconnectSessionRepository,
 ) : ViewModel() {
 
     val playerName: StateFlow<String> = playerPrefsRepository.playerName
@@ -39,6 +44,12 @@ class RoomViewModel(
         )
 
     private val scoreAdjustments = MutableStateFlow<Map<Int, Int>>(emptyMap())
+    val matchUiState: StateFlow<MatchUiState> = bluetoothRoomRepository.matchUiState
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = MatchUiState(),
+        )
 
     val uiState: StateFlow<RoomUiState> = combine(
         bluetoothRoomRepository.roomUiState,
@@ -77,8 +88,11 @@ class RoomViewModel(
                 }
             }
             RoomAction.ToggleReady -> bluetoothRoomRepository.handleToggleReady()
-            RoomAction.StartGame -> Unit
-            RoomAction.ResetScores -> scoreAdjustments.value = emptyMap()
+            RoomAction.StartGame -> bluetoothRoomRepository.startNetworkMatch()
+            RoomAction.ResetScores -> {
+                scoreAdjustments.value = emptyMap()
+                bluetoothRoomRepository.resetRoomScores()
+            }
             is RoomAction.AccumulateScores -> accumulateScores(action.scores)
             is RoomAction.OpenAiDialog -> bluetoothRoomRepository.openAiDialog(action.slotIndex)
             RoomAction.DismissAiDialog -> bluetoothRoomRepository.dismissMenus()
@@ -95,6 +109,16 @@ class RoomViewModel(
 
     fun loadJoinableDevices() {
         bluetoothRoomRepository.loadBondedDevices()
+    }
+
+    suspend fun tryReconnectLastSession(): Boolean {
+        val session = reconnectSessionRepository.session.first() ?: return false
+        val result = bluetoothRoomRepository.tryReconnectLastSession(
+            playerName = playerName.value,
+            avatarResId = avatarResId.value,
+            session = session,
+        )
+        return result.isSuccess
     }
 
     fun createHostRoom(hostDeviceName: String) {
@@ -131,6 +155,10 @@ class RoomViewModel(
         }
     }
 
+    fun dispatchGameAction(action: LocalGameAction) {
+        bluetoothRoomRepository.onLocalGameAction(action)
+    }
+
     override fun onCleared() {
         bluetoothRoomRepository.clear()
         super.onCleared()
@@ -140,11 +168,16 @@ class RoomViewModel(
         fun factory(
             playerPrefsRepository: PlayerPreferencesRepository,
             bluetoothRoomRepository: BluetoothRoomRepository,
+            reconnectSessionRepository: ReconnectSessionRepository,
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return RoomViewModel(playerPrefsRepository, bluetoothRoomRepository) as T
+                    return RoomViewModel(
+                        playerPrefsRepository = playerPrefsRepository,
+                        bluetoothRoomRepository = bluetoothRoomRepository,
+                        reconnectSessionRepository = reconnectSessionRepository,
+                    ) as T
                 }
             }
         }

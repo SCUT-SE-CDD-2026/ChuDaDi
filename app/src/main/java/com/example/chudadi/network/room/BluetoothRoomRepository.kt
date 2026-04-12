@@ -19,6 +19,19 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import com.example.chudadi.R
+import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
+import com.example.chudadi.controller.client.BluetoothRemoteMatchController
+import com.example.chudadi.controller.game.LocalGameAction
+import com.example.chudadi.controller.game.MatchUiStateMapper
+import com.example.chudadi.controller.server.BluetoothAuthoritativeMatchController
+import com.example.chudadi.data.repository.ReconnectSession
+import com.example.chudadi.data.repository.ReconnectSessionRepository
+import com.example.chudadi.model.game.engine.GameEngine
+import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.model.game.entity.SeatControllerType
+import com.example.chudadi.model.game.rule.GameRuleSet
+import com.example.chudadi.model.game.snapshot.MatchUiState
+import com.example.chudadi.network.game.GameWireMessage
 import com.example.chudadi.network.bluetooth.BluetoothPermissionUtils
 import com.example.chudadi.ui.room.AiDifficulty
 import com.example.chudadi.ui.room.BluetoothSearchState
@@ -33,6 +46,7 @@ import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
 import java.util.UUID
+import com.example.chudadi.network.game.toRemoteMatchSnapshot
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -101,16 +115,23 @@ private fun emptySlotAssignments(): Map<Int, String?> {
 
 class BluetoothRoomRepository(
     private val context: Context,
+    private val reconnectSessionRepository: ReconnectSessionRepository,
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
     private val frameCodec = RoomFrameCodec()
+    private val engine = GameEngine()
+    private val matchMapper = MatchUiStateMapper(engine)
+    private val aiPlayer = RuleBasedAiPlayer()
+    private val hostMatchController = BluetoothAuthoritativeMatchController(engine, matchMapper, aiPlayer)
+    private val localMatchController = BluetoothRemoteMatchController()
 
     private val participantConnections = linkedMapOf<String, RoomConnection>()
 
     private val _roomUiState = MutableStateFlow(RoomUiState())
     val roomUiState: StateFlow<RoomUiState> = _roomUiState.asStateFlow()
+    val matchUiState: StateFlow<MatchUiState> = localMatchController.uiState
 
     private var roomRole: RoomRole = RoomRole.Idle
     private var authorityState = RoomAuthorityState()
@@ -118,7 +139,10 @@ class BluetoothRoomRepository(
     private var acceptJob: Job? = null
     private var heartbeatJob: Job? = null
     private var clientHeartbeatJob: Job? = null
+    private var matchLoopJob: Job? = null
     private var lastHostHeartbeatAt: Long = 0L
+    private var activeMatchSeatAssignments: Map<String, Int> = emptyMap()
+    private var currentHostAddress: String? = null
     private var discoveryReceiverRegistered = false
 
     private val discoveryReceiver =
@@ -214,10 +238,12 @@ class BluetoothRoomRepository(
         hostDeviceName: String,
     ) {
         shutdownCurrentRole()
+        localMatchController.reset()
         roomRole = RoomRole.Host(
             localParticipantId = HOST_PARTICIPANT_ID,
             hostDeviceName = hostDeviceName,
         )
+        currentHostAddress = null
         participantConnections.clear()
         authorityState = RoomAuthorityState(
             roomName = "$playerName 的房间",
@@ -273,6 +299,7 @@ class BluetoothRoomRepository(
                     hostDeviceName = accepted.snapshot.hostDeviceName,
                     connection = connection,
                 )
+                currentHostAddress = device.address
                 lastHostHeartbeatAt = System.currentTimeMillis()
                 authorityState = accepted.snapshot.toAuthorityState()
                 publishUiState(
@@ -281,6 +308,12 @@ class BluetoothRoomRepository(
                     isHost = false,
                     searchState = BluetoothSearchState.IDLE,
                     selectedDeviceAddress = device.address,
+                )
+                persistReconnectSession(
+                    participantId = accepted.localParticipantId,
+                    hostAddress = device.address,
+                    hostDeviceName = accepted.snapshot.hostDeviceName,
+                    roomName = accepted.snapshot.roomName,
                 )
                 startClientReadLoop(connection)
                 startClientHeartbeatWatchdog()
@@ -297,6 +330,26 @@ class BluetoothRoomRepository(
         }
     }
 
+    suspend fun tryReconnectLastSession(
+        playerName: String,
+        avatarResId: Int?,
+        session: ReconnectSession,
+    ): Result<Unit> {
+        val result = connectToHost(
+            device = BluetoothDiscoveredDevice(
+                name = session.hostDeviceName,
+                address = session.hostAddress,
+                isBonded = true,
+            ),
+            playerName = playerName,
+            avatarResId = avatarResId,
+        )
+        if (result.isFailure) {
+            reconnectSessionRepository.clearSession()
+        }
+        return result
+    }
+
     fun handleToggleReady() {
         when (val role = roomRole) {
             is RoomRole.Host -> toggleReadyForParticipant(role.localParticipantId)
@@ -307,6 +360,42 @@ class BluetoothRoomRepository(
                     role.connection.send(RoomWireMessage.ReadyStateChangeMessage(nextReady))
                 }
             }
+            RoomRole.Idle -> Unit
+        }
+    }
+
+    fun startNetworkMatch() {
+        if (roomRole !is RoomRole.Host) return
+        activeMatchSeatAssignments = buildActiveMatchSeatAssignments()
+        val seatConfigs = buildSeatConfigs()
+        hostMatchController.startMatch(
+            seatConfigs = seatConfigs,
+            ruleSet = authorityState.currentRule.toGameRuleSet(),
+        )
+        val hostSeatId = localMatchSeatId(localParticipantId()) ?: return
+        val hostSnapshot = hostMatchController.buildSnapshotForSeat(localSeatId = hostSeatId)
+        localMatchController.onMatchStarted(
+            GameWireMessage.MatchStarted(
+                localSeatId = hostSeatId,
+                snapshot = hostSnapshot.toRemoteMatchSnapshot(hostMatchController.currentMatch()?.matchId.orEmpty()),
+            ),
+        )
+        activeMatchSeatAssignments.forEach { (participantId, seatId) ->
+            if (participantId == HOST_PARTICIPANT_ID) return@forEach
+            val connection = participantConnections[participantId] ?: return@forEach
+            connection.connection.sendSafely(
+                RoomWireMessage.GameEnvelope(
+                    hostMatchController.buildMatchStartedMessage(localSeatId = seatId),
+                ),
+            )
+        }
+        startMatchLoop()
+    }
+
+    fun onLocalGameAction(action: LocalGameAction) {
+        when (val role = roomRole) {
+            is RoomRole.Host -> handleHostGameAction(action)
+            is RoomRole.Client -> handleClientGameAction(role, action)
             RoomRole.Idle -> Unit
         }
     }
@@ -439,9 +528,16 @@ class BluetoothRoomRepository(
             }
             RoomRole.Idle -> Unit
         }
+        localMatchController.reset()
         shutdownCurrentRole()
         authorityState = RoomAuthorityState()
         _roomUiState.value = RoomUiState(homeNoticeMessage = _roomUiState.value.homeNoticeMessage)
+        scope.launch { reconnectSessionRepository.clearSession() }
+    }
+
+    fun exitMatchToRoom() {
+        localMatchController.reset()
+        clearCurrentNetworkMatch()
     }
 
     fun consumeRoomExitNotice() {
@@ -459,6 +555,17 @@ class BluetoothRoomRepository(
 
     fun consumeJoinError() {
         _roomUiState.update { it.copy(joinErrorMessage = null) }
+    }
+
+    fun resetRoomScores() {
+        if (roomRole !is RoomRole.Host) return
+        authorityState = authorityState.copy(
+            participants = authorityState.participants.mapValues { (_, participant) ->
+                participant.copy(cumulativeScore = 0)
+            },
+        )
+        publishUiState(connectionHint = "已重置房间分数")
+        broadcastSnapshot()
     }
 
     private fun startServer() {
@@ -511,6 +618,46 @@ class BluetoothRoomRepository(
         }
     }
 
+    private fun startMatchLoop() {
+        matchLoopJob?.cancel()
+        matchLoopJob = scope.launch {
+            while (isActive) {
+                delay(MATCH_LOOP_INTERVAL_MS)
+                val match = hostMatchController.currentMatch() ?: continue
+                if (match.phase == MatchPhase.FINISHED) {
+                    break
+                }
+                if (!hostMatchController.isCurrentTurnExpired()) {
+                    updateAllMatchSnapshots(lastActionMessage = null)
+                    continue
+                }
+                val seatId = match.activeSeatIndex
+                val seatName = seatDisplayName(seatId)
+                val result = when {
+                    hostMatchController.isCurrentActorAi() -> {
+                        val thinkingMessage = if (isSeatDisconnected(seatId)) "$seatName 托管中" else "$seatName 思考中"
+                        hostMatchController.resolveCurrentSeatByAi(thinkingMessage)
+                    }
+                    isSeatDisconnected(seatId) -> {
+                        hostMatchController.markDisconnected(seatId, disconnected = true)
+                        updateAllMatchSnapshots(lastActionMessage = "$seatName 托管中")
+                        continue
+                    }
+                    hostMatchController.canCurrentSeatPass() -> {
+                        val passResult = hostMatchController.handlePassRequest(seatId)
+                        passResult.copy(message = if (passResult.success) "$seatName 超时过牌" else passResult.message)
+                    }
+                    else -> {
+                        hostMatchController.resolveCurrentSeatByAi("$seatName 超时，系统已代出")
+                    }
+                }
+                if (result.success || result.message != null) {
+                    updateAllMatchSnapshots(lastActionMessage = result.message)
+                }
+            }
+        }
+    }
+
     private suspend fun handleIncomingConnection(connection: RoomSocketConnection) {
         try {
             when (val firstMessage = connection.read()) {
@@ -531,12 +678,6 @@ class BluetoothRoomRepository(
         val existingSlotIndex = slotIndexOfParticipant(participantId)
 
         if (existingParticipant != null && existingSlotIndex != null) {
-            if (existingParticipant.connectionStatus != MemberConnectionStatus.DISCONNECTED) {
-                connection.send(RoomWireMessage.JoinRoomRejected("该设备已在房间中，请勿重复加入"))
-                connection.close()
-                return
-            }
-
             participantConnections.remove(participantId)?.connection?.close()
             participantConnections[participantId] = RoomConnection(
                 participantId = participantId,
@@ -549,9 +690,10 @@ class BluetoothRoomRepository(
                 it.copy(
                     displayName = request.playerName,
                     avatarResId = request.avatarResId ?: R.drawable.avatar,
-                    connectionStatus = MemberConnectionStatus.CONNECTED,
+                    connectionStatus = participantReconnectStatus(participantId),
                 )
             }
+            hostMatchController.onSeatReconnected(matchSeatIdOfParticipant(participantId) ?: existingSlotIndex)
             publishUiState(connectionHint = "${request.playerName} 已重新连接")
             connection.send(
                 RoomWireMessage.JoinRoomAccepted(
@@ -559,6 +701,7 @@ class BluetoothRoomRepository(
                     snapshot = snapshotOfCurrentRoom(),
                 ),
             )
+            sendMatchRecoveryMessage(participantId)
             broadcastSnapshot()
             startHostReadLoop(participantId = participantId, connection = connection)
             return
@@ -605,6 +748,7 @@ class BluetoothRoomRepository(
                         is RoomWireMessage.ReadyStateChangeMessage -> setRemoteReady(participantId, message.ready)
                         is RoomWireMessage.SwapSeatRequestMessage -> handleHostSwapRequest(participantId, message.targetSlotIndex)
                         is RoomWireMessage.SwapSeatDecisionMessage -> handleRemoteSwapDecision(message)
+                        is RoomWireMessage.GameEnvelope -> handleHostGameEnvelope(participantId, message.message)
                         RoomWireMessage.LeaveRoomMessage -> {
                             handleRemoteLeave(participantId)
                             break
@@ -662,6 +806,7 @@ class BluetoothRoomRepository(
                             }
                         }
                         is RoomWireMessage.RemovedFromRoom -> {
+                            scope.launch { reconnectSessionRepository.clearSession() }
                             _roomUiState.update {
                                 it.copy(
                                     connectionHint = message.reason,
@@ -669,6 +814,7 @@ class BluetoothRoomRepository(
                                     homeNoticeMessage = message.reason,
                                 )
                             }
+                            localMatchController.reset()
                             shutdownCurrentRole()
                             authorityState = RoomAuthorityState()
                             _roomUiState.update {
@@ -680,6 +826,7 @@ class BluetoothRoomRepository(
                             break
                         }
                         is RoomWireMessage.RoomClosedByHost -> {
+                            scope.launch { reconnectSessionRepository.clearSession() }
                             _roomUiState.update {
                                 it.copy(
                                     connectionHint = message.reason,
@@ -687,6 +834,7 @@ class BluetoothRoomRepository(
                                     homeNoticeMessage = message.reason,
                                 )
                             }
+                            localMatchController.reset()
                             shutdownCurrentRole()
                             authorityState = RoomAuthorityState()
                             _roomUiState.update {
@@ -697,12 +845,137 @@ class BluetoothRoomRepository(
                             }
                             break
                         }
+                        is RoomWireMessage.GameEnvelope -> handleClientGameEnvelope(message.message)
                         else -> Unit
                     }
                 }
             } catch (_: IOException) {
                 handleHostConnectionLost("与房主连接中断，房间已关闭")
             }
+        }
+    }
+
+    private fun handleHostGameAction(action: LocalGameAction) {
+        when (action) {
+            is LocalGameAction.ToggleCardSelection -> localMatchController.onToggleCardSelection(action.cardId)
+            LocalGameAction.ClearSelection -> localMatchController.onClearSelection()
+            LocalGameAction.SubmitSelectedCards -> {
+                val selected = localMatchController.selectedCardIds()
+                val result = hostMatchController.handlePlayRequest(
+                    seatId = localMatchController.localSeatId(),
+                    selectedCardIds = selected,
+                )
+                if (!result.success) {
+                    localMatchController.onActionRejected(result.message ?: "出牌失败")
+                    return
+                }
+                updateAllMatchSnapshots(lastActionMessage = result.message)
+            }
+            LocalGameAction.PassTurn -> {
+                val result = hostMatchController.handlePassRequest(localMatchController.localSeatId())
+                if (!result.success) {
+                    localMatchController.onActionRejected(result.message ?: "过牌失败")
+                    return
+                }
+                updateAllMatchSnapshots(lastActionMessage = result.message)
+            }
+            LocalGameAction.ExitToHome -> exitMatchToRoom()
+            LocalGameAction.RestartMatch -> Unit
+            is LocalGameAction.StartLocalMatch -> Unit
+        }
+    }
+
+    private fun handleClientGameAction(role: RoomRole.Client, action: LocalGameAction) {
+        when (action) {
+            is LocalGameAction.ToggleCardSelection -> localMatchController.onToggleCardSelection(action.cardId)
+            LocalGameAction.ClearSelection -> localMatchController.onClearSelection()
+            LocalGameAction.SubmitSelectedCards -> {
+                role.connection.sendSafely(
+                    RoomWireMessage.GameEnvelope(
+                        GameWireMessage.PlayCardsRequest(localMatchController.selectedCardIds()),
+                    ),
+                )
+            }
+            LocalGameAction.PassTurn -> {
+                role.connection.sendSafely(RoomWireMessage.GameEnvelope(GameWireMessage.PassRequest))
+            }
+            LocalGameAction.ExitToHome -> exitMatchToRoom()
+            LocalGameAction.RestartMatch -> Unit
+            is LocalGameAction.StartLocalMatch -> Unit
+        }
+    }
+
+    private fun handleClientGameEnvelope(message: GameWireMessage) {
+        when (message) {
+            is GameWireMessage.MatchStarted -> localMatchController.onMatchStarted(message)
+            is GameWireMessage.MatchSnapshotMessage -> localMatchController.onSnapshot(message.snapshot)
+            is GameWireMessage.ActionRejected -> localMatchController.onActionRejected(message.message)
+            is GameWireMessage.MatchClosed -> {
+                localMatchController.reset()
+                handleHostConnectionLost(message.reason)
+            }
+            is GameWireMessage.PassRequest,
+            is GameWireMessage.PlayCardsRequest,
+            -> Unit
+        }
+    }
+
+    private fun handleHostGameEnvelope(participantId: String, message: GameWireMessage) {
+        val seatId = matchSeatIdOfParticipant(participantId) ?: return
+        when (message) {
+            is GameWireMessage.PlayCardsRequest -> {
+                val result = hostMatchController.handlePlayRequest(seatId, message.selectedCardIds)
+                if (!result.success) {
+                    participantConnections[participantId]?.connection?.sendSafely(
+                        RoomWireMessage.GameEnvelope(
+                            GameWireMessage.ActionRejected(result.message ?: "出牌失败"),
+                        ),
+                    )
+                    return
+                }
+                updateAllMatchSnapshots(lastActionMessage = result.message)
+            }
+            GameWireMessage.PassRequest -> {
+                val result = hostMatchController.handlePassRequest(seatId)
+                if (!result.success) {
+                    participantConnections[participantId]?.connection?.sendSafely(
+                        RoomWireMessage.GameEnvelope(
+                            GameWireMessage.ActionRejected(result.message ?: "过牌失败"),
+                        ),
+                    )
+                    return
+                }
+                updateAllMatchSnapshots(lastActionMessage = result.message)
+            }
+            is GameWireMessage.MatchStarted,
+            is GameWireMessage.MatchSnapshotMessage,
+            is GameWireMessage.ActionRejected,
+            is GameWireMessage.MatchClosed,
+            -> Unit
+        }
+    }
+
+    private fun updateAllMatchSnapshots(lastActionMessage: String?) {
+        val match = hostMatchController.currentMatch() ?: return
+        val hostSeatId = localMatchSeatId(localParticipantId()) ?: return
+        localMatchController.onSnapshot(
+            hostMatchController.buildSnapshotMessage(localSeatId = hostSeatId, lastActionMessage = lastActionMessage).snapshot,
+        )
+        activeMatchSeatAssignments.forEach { (participantId, seatId) ->
+            if (participantId == HOST_PARTICIPANT_ID) return@forEach
+            participantConnections[participantId]?.connection?.sendSafely(
+                RoomWireMessage.GameEnvelope(
+                    hostMatchController.buildSnapshotMessage(seatId, lastActionMessage),
+                ),
+            )
+        }
+        if (match.phase == MatchPhase.FINISHED) {
+            val roundScores = match.result?.scoreSummary?.roundScores.orEmpty()
+            applyRoundScores(roundScores)
+            resetReadyStatesAfterMatchFinished()
+            clearActiveMatchState()
+            broadcastSnapshot()
+            matchLoopJob?.cancel()
         }
     }
 
@@ -733,6 +1006,7 @@ class BluetoothRoomRepository(
                 homeNoticeMessage = message,
             )
         }
+        localMatchController.reset()
         shutdownCurrentRole()
         authorityState = RoomAuthorityState()
         _roomUiState.update {
@@ -857,14 +1131,21 @@ class BluetoothRoomRepository(
         updateParticipant(participantId) { participant ->
             participant.copy(connectionStatus = MemberConnectionStatus.DISCONNECTED)
         }
+        matchSeatIdOfParticipant(participantId)?.let { seatId ->
+            hostMatchController.markDisconnected(seatId, disconnected = true)
+        }
         val displayName = authorityState.participants[participantId]?.displayName.orEmpty()
         publishUiState(connectionHint = "$displayName 连接中断")
         broadcastSnapshot()
+        if (hostMatchController.currentMatch()?.phase != MatchPhase.FINISHED && activeMatchSeatAssignments.isNotEmpty()) {
+            updateAllMatchSnapshots(lastActionMessage = "$displayName 已掉线")
+        }
     }
 
     private fun removeParticipantFromRoom(participantId: String, clearSlot: Boolean, reason: String) {
         val slotIndex = slotIndexOfParticipant(participantId)
         val displayName = authorityState.participants[participantId]?.displayName.orEmpty()
+        activeMatchSeatAssignments = activeMatchSeatAssignments - participantId
         authorityState = authorityState.copy(
             participants = authorityState.participants - participantId,
             slotAssignments = authorityState.slotAssignments.toMutableMap().apply {
@@ -1036,16 +1317,145 @@ class BluetoothRoomRepository(
         return "AI(${difficulty.label}) $nextNumber"
     }
 
+    private fun buildSeatConfigs(): List<Triple<Int, String, SeatControllerType>> {
+        return (0 until SLOT_COUNT).map { slotIndex ->
+            val participantId = authorityState.slotAssignments[slotIndex]
+            val participant = participantId?.let(authorityState.participants::get)
+            val controllerType = if (participant?.occupantType == SlotOccupantType.AI) {
+                SeatControllerType.RULE_BASED_AI
+            } else {
+                SeatControllerType.HUMAN
+            }
+            val displayName = participant?.displayName ?: "玩家${slotIndex + 1}"
+            Triple(slotIndex, displayName, controllerType)
+        }
+    }
+
+    private fun applyRoundScores(roundScores: List<com.example.chudadi.model.game.entity.RoundScore>) {
+        val scoreMap = roundScores.associateBy { it.seatId }
+        authorityState = authorityState.copy(
+            participants = authorityState.participants.mapValues { (_, participant) ->
+                val slotIndex = slotIndexOfParticipant(participant.participantId) ?: return@mapValues participant
+                val roundScore = scoreMap[slotIndex]?.roundScore ?: 0
+                participant.copy(cumulativeScore = participant.cumulativeScore + roundScore)
+            },
+        )
+    }
+
+    private fun resetReadyStatesAfterMatchFinished() {
+        authorityState = authorityState.copy(
+            participants = authorityState.participants.mapValues { (_, participant) ->
+                participant.copy(connectionStatus = finishedMatchStatus(participant))
+            },
+        )
+    }
+
+    private fun finishedMatchStatus(participant: ParticipantRecord): MemberConnectionStatus? {
+        return when (participant.occupantType) {
+            SlotOccupantType.HUMAN_HOST -> MemberConnectionStatus.READY
+            SlotOccupantType.AI -> MemberConnectionStatus.READY
+            SlotOccupantType.HUMAN_MEMBER -> {
+                if (participant.connectionStatus == MemberConnectionStatus.DISCONNECTED) {
+                    MemberConnectionStatus.DISCONNECTED
+                } else {
+                    MemberConnectionStatus.NOT_READY
+                }
+            }
+        }
+    }
+
+    private fun participantReconnectStatus(participantId: String): MemberConnectionStatus {
+        val participant = authorityState.participants[participantId]
+        return when (participant?.occupantType) {
+            SlotOccupantType.HUMAN_HOST -> MemberConnectionStatus.READY
+            SlotOccupantType.AI -> MemberConnectionStatus.READY
+            SlotOccupantType.HUMAN_MEMBER, null -> {
+                if (hostMatchController.currentMatch()?.phase == MatchPhase.FINISHED || activeMatchSeatAssignments.isEmpty()) {
+                    MemberConnectionStatus.NOT_READY
+                } else {
+                    MemberConnectionStatus.CONNECTED
+                }
+            }
+        }
+    }
+
+    private fun clearCurrentNetworkMatch() {
+        hostMatchController.clearCurrentMatch()
+        clearActiveMatchState()
+        matchLoopJob?.cancel()
+    }
+
+    private fun GameRuleDisplay.toGameRuleSet(): GameRuleSet {
+        return when (this) {
+            GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
+            GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
+        }
+    }
+
     private fun canStart(slots: List<SlotState>): Boolean {
         val allFilled = slots.all { it.occupantType != null }
         val allReady = slots.all { it.connectionStatus == MemberConnectionStatus.READY }
         return allFilled && allReady
     }
 
+    private fun buildActiveMatchSeatAssignments(): Map<String, Int> {
+        return authorityState.slotAssignments.entries
+            .mapNotNull { (slotIndex, participantId) -> participantId?.let { it to slotIndex } }
+            .toMap()
+    }
+
+    private fun localMatchSeatId(participantId: String): Int? {
+        return matchSeatIdOfParticipant(participantId)
+    }
+
+    private fun matchSeatIdOfParticipant(participantId: String): Int? {
+        return activeMatchSeatAssignments[participantId] ?: slotIndexOfParticipant(participantId)
+    }
+
+    private fun clearActiveMatchState() {
+        activeMatchSeatAssignments = emptyMap()
+    }
+
+    private fun sendMatchRecoveryMessage(participantId: String) {
+        val connection = participantConnections[participantId]?.connection
+        val seatId = matchSeatIdOfParticipant(participantId)
+        val match = hostMatchController.currentMatch()
+        val hasRecoveryTarget = connection != null && seatId != null && match != null
+        val isRecoverableMatch = match?.phase != MatchPhase.FINISHED
+        if (!hasRecoveryTarget || !isRecoverableMatch) {
+            return
+        }
+        connection.sendSafely(
+            RoomWireMessage.GameEnvelope(
+                hostMatchController.buildMatchStartedMessage(localSeatId = seatId),
+            ),
+        )
+    }
+
+    private fun persistReconnectSession(
+        participantId: String,
+        hostAddress: String,
+        hostDeviceName: String,
+        roomName: String,
+    ) {
+        scope.launch {
+            reconnectSessionRepository.updateSession(
+                ReconnectSession(
+                    hostAddress = hostAddress,
+                    hostDeviceName = hostDeviceName,
+                    participantId = participantId,
+                    roomName = roomName,
+                    savedAtMillis = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
     private fun shutdownCurrentRole() {
         acceptJob?.cancel()
         heartbeatJob?.cancel()
         clientHeartbeatJob?.cancel()
+        matchLoopJob?.cancel()
         serverSocket?.closeSafely()
         serverSocket = null
         lastHostHeartbeatAt = 0L
@@ -1055,7 +1465,19 @@ class BluetoothRoomRepository(
             RoomRole.Idle -> Unit
         }
         participantConnections.clear()
+        clearActiveMatchState()
+        currentHostAddress = null
         roomRole = RoomRole.Idle
+    }
+
+    private fun isSeatDisconnected(seatId: Int): Boolean {
+        val participantId = occupantAt(seatId) ?: return false
+        return authorityState.participants[participantId]?.connectionStatus == MemberConnectionStatus.DISCONNECTED
+    }
+
+    private fun seatDisplayName(seatId: Int): String {
+        val participantId = occupantAt(seatId) ?: return "玩家${seatId + 1}"
+        return authorityState.participants[participantId]?.displayName ?: "玩家${seatId + 1}"
     }
 
     fun clear() {
@@ -1134,6 +1556,7 @@ class BluetoothRoomRepository(
         const val HEARTBEAT_INTERVAL_MS = 5_000L
         const val HEARTBEAT_TIMEOUT_MS = 15_000L
         const val CLIENT_HEARTBEAT_CHECK_INTERVAL_MS = 3_000L
+        const val MATCH_LOOP_INTERVAL_MS = 250L
     }
 }
 

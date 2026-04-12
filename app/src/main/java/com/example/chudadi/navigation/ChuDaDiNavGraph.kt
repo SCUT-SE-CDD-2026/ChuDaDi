@@ -2,6 +2,7 @@ package com.example.chudadi.navigation
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
@@ -12,7 +13,6 @@ import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.LocalMatchViewModel
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.model.game.entity.MatchPhase
-import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.ui.game.GameScreen
@@ -21,7 +21,6 @@ import com.example.chudadi.ui.home.HomeScreen
 import com.example.chudadi.ui.result.ResultScreen
 import com.example.chudadi.ui.room.BluetoothSearchScreen
 import com.example.chudadi.ui.room.BluetoothSearchState
-import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomScreen
 import com.example.chudadi.ui.room.RoomUiState
@@ -30,6 +29,7 @@ import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.settings.SettingsScreen
 import com.example.chudadi.ui.settings.SettingsViewModel
+import kotlinx.coroutines.launch
 
 private const val HOME_ROUTE = "home"
 private const val SETTINGS_ROUTE = "settings"
@@ -49,11 +49,14 @@ fun ChuDaDiNavGraph(
     onRequestBluetoothPermissions: () -> Unit,
 ) {
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
     val roomUiState = roomViewModel.uiState.collectAsStateWithLifecycle().value
+    val networkMatchUiState = roomViewModel.matchUiState.collectAsStateWithLifecycle().value
     val playerName = roomViewModel.playerName.collectAsStateWithLifecycle().value
+    val activeMatchUiState = if (networkMatchUiState.phase != MatchPhase.NOT_STARTED) networkMatchUiState else uiState
 
-    HandlePhaseNavigation(navController = navController, phase = uiState.phase)
+    HandlePhaseNavigation(navController = navController, phase = activeMatchUiState.phase)
     LaunchedEffect(
         roomUiState.isHost,
         roomUiState.slots,
@@ -103,8 +106,17 @@ fun ChuDaDiNavGraph(
                     navController.navigate(ROOM_ROUTE)
                 },
                 onJoinRoom = {
-                    roomViewModel.loadJoinableDevices()
-                    navController.navigate(BLUETOOTH_SEARCH_ROUTE)
+                    scope.launch {
+                        val reconnected = roomViewModel.tryReconnectLastSession()
+                        if (reconnected) {
+                            navController.navigate(ROOM_ROUTE) {
+                                launchSingleTop = true
+                            }
+                        } else {
+                            roomViewModel.loadJoinableDevices()
+                            navController.navigate(BLUETOOTH_SEARCH_ROUTE)
+                        }
+                    }
                 },
                 onSettings = {
                     navController.navigate(SETTINGS_ROUTE)
@@ -148,10 +160,7 @@ fun ChuDaDiNavGraph(
                 onAction = { action ->
                     when (action) {
                         is RoomAction.StartGame -> {
-                            val startAction = buildStartMatchAction(roomUiState)
-                            if (startAction != null) {
-                                viewModel.dispatch(startAction)
-                            }
+                            roomViewModel.dispatch(action)
                         }
 
                         is RoomAction.ExitRoom -> {
@@ -169,19 +178,28 @@ fun ChuDaDiNavGraph(
             )
         }
         composable(GAME_ROUTE) {
-            GameScreenRoute(viewModel = viewModel, uiState = uiState)
+            GameScreenRoute(
+                localViewModel = viewModel,
+                roomViewModel = roomViewModel,
+                uiState = activeMatchUiState,
+                useNetworkMatch = networkMatchUiState.phase != MatchPhase.NOT_STARTED,
+            )
         }
         composable(RESULT_ROUTE) {
-            val roundScores = uiState.resultSummary?.roundScores.orEmpty()
+            val roundScores = activeMatchUiState.resultSummary?.roundScores.orEmpty()
             LaunchedEffect(roundScores) {
                 if (roundScores.isNotEmpty()) {
                     roomViewModel.dispatch(RoomAction.AccumulateScores(roundScores))
                 }
             }
             ResultScreen(
-                uiState = uiState,
+                uiState = activeMatchUiState,
                 onReturnToRoom = {
-                    viewModel.dispatch(LocalGameAction.ExitToHome)
+                    if (networkMatchUiState.phase != MatchPhase.NOT_STARTED) {
+                        roomViewModel.dispatchGameAction(LocalGameAction.ExitToHome)
+                    } else {
+                        viewModel.dispatch(LocalGameAction.ExitToHome)
+                    }
                     navController.navigate(ROOM_ROUTE) {
                         popUpTo(HOME_ROUTE)
                     }
@@ -192,54 +210,36 @@ fun ChuDaDiNavGraph(
 }
 
 @Composable
-private fun GameScreenRoute(viewModel: LocalMatchViewModel, uiState: MatchUiState) {
+private fun GameScreenRoute(
+    localViewModel: LocalMatchViewModel,
+    roomViewModel: RoomViewModel,
+    uiState: MatchUiState,
+    useNetworkMatch: Boolean,
+) {
     GameScreen(
         uiState = uiState,
         actions = GameScreenActions(
             onToggleCardSelection = { cardId ->
-                viewModel.dispatch(LocalGameAction.ToggleCardSelection(cardId))
+                if (useNetworkMatch) {
+                    roomViewModel.dispatchGameAction(LocalGameAction.ToggleCardSelection(cardId))
+                } else {
+                    localViewModel.dispatch(LocalGameAction.ToggleCardSelection(cardId))
+                }
             },
-            onClearSelection = { viewModel.dispatch(LocalGameAction.ClearSelection) },
-            onSubmitSelectedCards = { viewModel.dispatch(LocalGameAction.SubmitSelectedCards) },
-            onPassTurn = { viewModel.dispatch(LocalGameAction.PassTurn) },
+            onClearSelection = {
+                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.ClearSelection)
+                else localViewModel.dispatch(LocalGameAction.ClearSelection)
+            },
+            onSubmitSelectedCards = {
+                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.SubmitSelectedCards)
+                else localViewModel.dispatch(LocalGameAction.SubmitSelectedCards)
+            },
+            onPassTurn = {
+                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.PassTurn)
+                else localViewModel.dispatch(LocalGameAction.PassTurn)
+            },
         ),
     )
-}
-
-private fun buildStartMatchAction(roomUiState: RoomUiState): LocalGameAction.StartLocalMatch? {
-    if (!roomUiState.canStartMatch()) {
-        return null
-    }
-
-    val seatConfigs = roomUiState.slots
-        .map { slot ->
-            val name = slot.displayName.ifEmpty { "玩家${slot.slotIndex + 1}" }
-            val controllerType = if (slot.occupantType == SlotOccupantType.AI) {
-                SeatControllerType.RULE_BASED_AI
-            } else {
-                SeatControllerType.HUMAN
-            }
-            Triple(slot.seatId, name, controllerType)
-        }
-    val localSeatId = roomUiState.slots.firstOrNull { it.isLocalPlayer }?.seatId ?: return null
-    val ruleSet = when (roomUiState.currentRule) {
-        GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
-        GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
-    }
-    return LocalGameAction.StartLocalMatch(
-        seatConfigs = seatConfigs,
-        localSeatId = localSeatId,
-        ruleSet = ruleSet,
-    )
-}
-
-private fun RoomUiState.canStartMatch(): Boolean {
-    val allFilled = slots.all { it.occupantType != null }
-    val allReady = slots.all { it.connectionStatus == MemberConnectionStatus.READY }
-    val slotIndexesStable = slots.withIndex().all { (index, slot) -> slot.slotIndex == index }
-    val seatIdsDistinct = slots.map { it.seatId }.distinct().size == slots.size
-    val localPlayerExists = slots.any { it.isLocalPlayer }
-    return allFilled && allReady && slotIndexesStable && seatIdsDistinct && localPlayerExists
 }
 
 @Composable

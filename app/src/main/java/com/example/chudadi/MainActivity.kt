@@ -10,6 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.lifecycle.ViewModelProvider
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
+import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.navigation.ChuDaDiNavGraph
 import com.example.chudadi.network.bluetooth.BluetoothPermissionUtils
 import com.example.chudadi.network.room.BluetoothRoomRepository
@@ -21,10 +22,12 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         val playerPrefsRepository = PlayerPreferencesRepository(applicationContext)
-        val bluetoothRoomRepository = BluetoothRoomRepository(applicationContext)
+        val reconnectSessionRepository = ReconnectSessionRepository(applicationContext)
+        val bluetoothRoomRepository = BluetoothRoomRepository(applicationContext, reconnectSessionRepository)
         val roomViewModelFactory = RoomViewModel.factory(
             playerPrefsRepository = playerPrefsRepository,
             bluetoothRoomRepository = bluetoothRoomRepository,
+            reconnectSessionRepository = reconnectSessionRepository,
         )
         val roomViewModel = ViewModelProvider(this, roomViewModelFactory)[RoomViewModel::class.java]
 
