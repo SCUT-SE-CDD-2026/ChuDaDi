@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -52,6 +54,8 @@ private val DividerColor = Color(0x33C8A96A)
 @Composable
 fun HomeScreen(
     playerName: String = "默认玩家",
+    noticeMessage: String? = null,
+    onDismissNotice: () -> Unit = {},
     onCreateRoom: () -> Unit = {},
     onJoinRoom: () -> Unit = {},
     onOnlineGame: () -> Unit = {},
@@ -100,6 +104,30 @@ fun HomeScreen(
                         .fillMaxHeight(),
                 )
             }
+        }
+
+        noticeMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = onDismissNotice,
+                title = {
+                    Text(
+                        text = "提示",
+                        color = TextPrimary,
+                    )
+                },
+                text = {
+                    Text(
+                        text = message,
+                        color = TextSecondary,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = onDismissNotice) {
+                        Text(text = "知道了", color = TextPrimary)
+                    }
+                },
+                containerColor = BgCard,
+            )
         }
     }
 }

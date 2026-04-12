@@ -38,7 +38,7 @@ private const val ROOM_ROUTE = "room"
 private const val GAME_ROUTE = "game"
 private const val RESULT_ROUTE = "result"
 
-@Suppress("LongMethod", "LongParameterList")
+@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
 @Composable
 fun ChuDaDiNavGraph(
     viewModel: LocalMatchViewModel = viewModel(),
@@ -54,13 +54,38 @@ fun ChuDaDiNavGraph(
     val playerName = roomViewModel.playerName.collectAsStateWithLifecycle().value
 
     HandlePhaseNavigation(navController = navController, phase = uiState.phase)
-    LaunchedEffect(roomUiState.isHost, roomUiState.slots, navController.currentDestination?.route) {
+    LaunchedEffect(
+        roomUiState.isHost,
+        roomUiState.slots,
+        roomUiState.removedFromRoom,
+        roomUiState.roomClosedByHost,
+        navController.currentDestination?.route,
+    ) {
         val hasLocalSeat = roomUiState.slots.any { it.isLocalPlayer && it.occupantType != null }
-        if (hasLocalSeat && navController.currentDestination?.route == BLUETOOTH_SEARCH_ROUTE) {
+        val roomStillActive = !roomUiState.removedFromRoom && !roomUiState.roomClosedByHost
+        if (hasLocalSeat && roomStillActive && navController.currentDestination?.route == BLUETOOTH_SEARCH_ROUTE) {
             navController.navigate(ROOM_ROUTE) {
                 popUpTo(BLUETOOTH_SEARCH_ROUTE) { inclusive = true }
                 launchSingleTop = true
             }
+        }
+    }
+    LaunchedEffect(roomUiState.removedFromRoom) {
+        if (roomUiState.removedFromRoom) {
+            navController.navigate(HOME_ROUTE) {
+                popUpTo(HOME_ROUTE) { inclusive = true }
+                launchSingleTop = true
+            }
+            roomViewModel.dispatch(RoomAction.ConsumeRoomExitNotice)
+        }
+    }
+    LaunchedEffect(roomUiState.roomClosedByHost) {
+        if (roomUiState.roomClosedByHost) {
+            navController.navigate(HOME_ROUTE) {
+                popUpTo(HOME_ROUTE) { inclusive = true }
+                launchSingleTop = true
+            }
+            roomViewModel.dispatch(RoomAction.ConsumeRoomExitNotice)
         }
     }
 
@@ -71,6 +96,8 @@ fun ChuDaDiNavGraph(
         composable(HOME_ROUTE) {
             HomeScreen(
                 playerName = playerName,
+                noticeMessage = roomUiState.homeNoticeMessage,
+                onDismissNotice = { roomViewModel.dispatch(RoomAction.ConsumeHomeNotice) },
                 onCreateRoom = {
                     roomViewModel.createHostRoom(localDeviceName)
                     navController.navigate(ROOM_ROUTE)
@@ -109,7 +136,10 @@ fun ChuDaDiNavGraph(
                         else -> roomViewModel.dispatch(action)
                     }
                 },
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = {
+                    roomViewModel.dispatch(RoomAction.ConsumeJoinError)
+                    navController.popBackStack()
+                },
             )
         }
         composable(ROOM_ROUTE) {

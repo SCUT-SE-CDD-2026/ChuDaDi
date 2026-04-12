@@ -51,6 +51,16 @@ sealed class RoomWireMessage {
     ) : RoomWireMessage()
 
     @Serializable
+    data class RemovedFromRoom(
+        val reason: String,
+    ) : RoomWireMessage()
+
+    @Serializable
+    data class RoomClosedByHost(
+        val reason: String,
+    ) : RoomWireMessage()
+
+    @Serializable
     data class RoomSnapshotMessage(
         val snapshot: RemoteRoomSnapshot,
     ) : RoomWireMessage()

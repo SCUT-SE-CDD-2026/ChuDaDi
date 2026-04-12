@@ -22,4 +22,7 @@ sealed interface RoomAction {
     data object ExitRoom : RoomAction
     data object ResetRoom : RoomAction
     data object ResetRoomAsHost : RoomAction
+    data object ConsumeRoomExitNotice : RoomAction
+    data object ConsumeHomeNotice : RoomAction
+    data object ConsumeJoinError : RoomAction
 }

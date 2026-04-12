@@ -265,8 +265,7 @@ private fun SlotCard(
     val bgColor = if (isEmpty) SlotEmptyBg else SlotFilledBg
     val handleClick = {
         if (isEmpty) {
-            if (isHost) onAction(RoomAction.OpenAiDialog(slot.slotIndex))
-            else onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
+            onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex))
         } else {
             onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex))
         }
@@ -291,7 +290,7 @@ private fun SlotCard(
             FilledSlotContent(slot = slot)
         }
 
-        if (showActionMenu && !isEmpty) {
+        if (showActionMenu) {
             Box(modifier = Modifier.align(Alignment.TopEnd)) {
                 SlotActionMenu(slot = slot, isHost = isHost, onAction = onAction)
             }
@@ -306,7 +305,16 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
         onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
         containerColor = Color(0xFF2A1F14),
     ) {
-        if (!slot.isLocalPlayer) {
+        if (slot.occupantType == null) {
+            if (isHost) {
+                DropdownMenuItem(
+                    text = { Text("添加 AI", color = GoldAccent) },
+                    onClick = {
+                        onAction(RoomAction.DismissSlotActionMenu)
+                        onAction(RoomAction.OpenAiDialog(slot.slotIndex))
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text("请求换位", color = GoldAccent) },
                 onClick = {
@@ -315,7 +323,16 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
                 },
             )
         }
-        if (isHost && !slot.isLocalPlayer) {
+        if (slot.occupantType != null && !slot.isLocalPlayer) {
+            DropdownMenuItem(
+                text = { Text("请求换位", color = GoldAccent) },
+                onClick = {
+                    onAction(RoomAction.DismissSlotActionMenu)
+                    onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
+                },
+            )
+        }
+        if (isHost && !slot.isLocalPlayer && slot.occupantType != null) {
             DropdownMenuItem(
                 text = { Text("移除", color = Color(0xFFE57373)) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },

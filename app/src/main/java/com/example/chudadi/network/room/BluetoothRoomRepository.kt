@@ -117,6 +117,8 @@ class BluetoothRoomRepository(
     private var serverSocket: BluetoothServerSocket? = null
     private var acceptJob: Job? = null
     private var heartbeatJob: Job? = null
+    private var clientHeartbeatJob: Job? = null
+    private var lastHostHeartbeatAt: Long = 0L
     private var discoveryReceiverRegistered = false
 
     private val discoveryReceiver =
@@ -271,6 +273,7 @@ class BluetoothRoomRepository(
                     hostDeviceName = accepted.snapshot.hostDeviceName,
                     connection = connection,
                 )
+                lastHostHeartbeatAt = System.currentTimeMillis()
                 authorityState = accepted.snapshot.toAuthorityState()
                 publishUiState(
                     connectionHint = accepted.snapshot.connectionHint,
@@ -280,12 +283,14 @@ class BluetoothRoomRepository(
                     selectedDeviceAddress = device.address,
                 )
                 startClientReadLoop(connection)
+                startClientHeartbeatWatchdog()
             }.onFailure { error ->
                 _roomUiState.update {
                     it.copy(
                         searchState = BluetoothSearchState.FAILED,
                         selectedDeviceAddress = device.address,
                         connectionHint = error.message ?: "连接失败，请重试",
+                        joinErrorMessage = error.message,
                     )
                 }
             }
@@ -348,7 +353,8 @@ class BluetoothRoomRepository(
         if (roomRole !is RoomRole.Host) return
         val participantId = occupantAt(slotIndex) ?: return
         if (participantId == HOST_PARTICIPANT_ID) return
-        participantConnections.remove(participantId)?.connection?.close()
+        val removedConnection = participantConnections[participantId]?.connection
+        removedConnection?.sendSafely(RoomWireMessage.RemovedFromRoom("你已被房主移出房间"))
         authorityState = authorityState.copy(
             participants = authorityState.participants - participantId,
             slotAssignments = authorityState.slotAssignments + (slotIndex to null),
@@ -360,6 +366,7 @@ class BluetoothRoomRepository(
             pendingSwapRequest = null,
         )
         broadcastSnapshot()
+        participantConnections.remove(participantId)?.connection?.close()
     }
 
     fun handleSwapRequest(targetSlotIndex: Int) {
@@ -423,12 +430,35 @@ class BluetoothRoomRepository(
     fun leaveRoom() {
         when (val role = roomRole) {
             is RoomRole.Client -> role.connection.sendSafely(RoomWireMessage.LeaveRoomMessage)
-            is RoomRole.Host -> Unit
+            is RoomRole.Host -> {
+                participantConnections.values.forEach { roomConnection ->
+                    roomConnection.connection.sendSafely(
+                        RoomWireMessage.RoomClosedByHost("房主已关闭房间"),
+                    )
+                }
+            }
             RoomRole.Idle -> Unit
         }
         shutdownCurrentRole()
         authorityState = RoomAuthorityState()
-        _roomUiState.value = RoomUiState()
+        _roomUiState.value = RoomUiState(homeNoticeMessage = _roomUiState.value.homeNoticeMessage)
+    }
+
+    fun consumeRoomExitNotice() {
+        _roomUiState.update {
+            it.copy(
+                removedFromRoom = false,
+                roomClosedByHost = false,
+            )
+        }
+    }
+
+    fun consumeHomeNotice() {
+        _roomUiState.update { it.copy(homeNoticeMessage = null) }
+    }
+
+    fun consumeJoinError() {
+        _roomUiState.update { it.copy(joinErrorMessage = null) }
     }
 
     private fun startServer() {
@@ -496,13 +526,50 @@ class BluetoothRoomRepository(
         connection: RoomSocketConnection,
         request: RoomWireMessage.JoinRoomRequest,
     ) {
+        val participantId = participantIdForConnection(connection)
+        val existingParticipant = authorityState.participants[participantId]
+        val existingSlotIndex = slotIndexOfParticipant(participantId)
+
+        if (existingParticipant != null && existingSlotIndex != null) {
+            if (existingParticipant.connectionStatus != MemberConnectionStatus.DISCONNECTED) {
+                connection.send(RoomWireMessage.JoinRoomRejected("该设备已在房间中，请勿重复加入"))
+                connection.close()
+                return
+            }
+
+            participantConnections.remove(participantId)?.connection?.close()
+            participantConnections[participantId] = RoomConnection(
+                participantId = participantId,
+                connection = connection,
+            )
+            authorityState = authorityState.copy(
+                slotAssignments = normalizedSlotAssignments(participantId = participantId, keepSlotIndex = existingSlotIndex),
+            )
+            updateParticipant(participantId) {
+                it.copy(
+                    displayName = request.playerName,
+                    avatarResId = request.avatarResId ?: R.drawable.avatar,
+                    connectionStatus = MemberConnectionStatus.CONNECTED,
+                )
+            }
+            publishUiState(connectionHint = "${request.playerName} 已重新连接")
+            connection.send(
+                RoomWireMessage.JoinRoomAccepted(
+                    localParticipantId = participantId,
+                    snapshot = snapshotOfCurrentRoom(),
+                ),
+            )
+            broadcastSnapshot()
+            startHostReadLoop(participantId = participantId, connection = connection)
+            return
+        }
+
         val targetSlotIndex = firstAvailableRemoteSlotIndex()
         if (targetSlotIndex == null) {
             connection.send(RoomWireMessage.JoinRoomRejected("房间已满，请等待房主调整座位"))
             connection.close()
             return
         }
-        val participantId = participantIdForConnection(connection)
         participantConnections[participantId] = RoomConnection(
             participantId = participantId,
             connection = connection,
@@ -582,17 +649,97 @@ class BluetoothRoomRepository(
                             }
                         }
                         RoomWireMessage.HeartbeatPing -> {
+                            lastHostHeartbeatAt = System.currentTimeMillis()
                             connection.sendSafely(RoomWireMessage.HeartbeatPong)
                         }
                         is RoomWireMessage.JoinRoomRejected -> {
-                            _roomUiState.update { it.copy(connectionHint = message.reason) }
+                            _roomUiState.update {
+                                it.copy(
+                                    connectionHint = message.reason,
+                                    joinErrorMessage = message.reason,
+                                    searchState = BluetoothSearchState.FAILED,
+                                )
+                            }
+                        }
+                        is RoomWireMessage.RemovedFromRoom -> {
+                            _roomUiState.update {
+                                it.copy(
+                                    connectionHint = message.reason,
+                                    removedFromRoom = true,
+                                    homeNoticeMessage = message.reason,
+                                )
+                            }
+                            shutdownCurrentRole()
+                            authorityState = RoomAuthorityState()
+                            _roomUiState.update {
+                                it.copy(
+                                    slots = List(SLOT_COUNT) { index -> SlotState(slotIndex = index) },
+                                    bluetoothVisible = false,
+                                )
+                            }
+                            break
+                        }
+                        is RoomWireMessage.RoomClosedByHost -> {
+                            _roomUiState.update {
+                                it.copy(
+                                    connectionHint = message.reason,
+                                    roomClosedByHost = true,
+                                    homeNoticeMessage = message.reason,
+                                )
+                            }
+                            shutdownCurrentRole()
+                            authorityState = RoomAuthorityState()
+                            _roomUiState.update {
+                                it.copy(
+                                    slots = List(SLOT_COUNT) { index -> SlotState(slotIndex = index) },
+                                    bluetoothVisible = false,
+                                )
+                            }
+                            break
                         }
                         else -> Unit
                     }
                 }
             } catch (_: IOException) {
-                _roomUiState.update { it.copy(connectionHint = "与房主的蓝牙连接已断开") }
+                handleHostConnectionLost("与房主连接中断，房间已关闭")
             }
+        }
+    }
+
+    private fun startClientHeartbeatWatchdog() {
+        clientHeartbeatJob?.cancel()
+        clientHeartbeatJob = scope.launch {
+            while (isActive) {
+                delay(CLIENT_HEARTBEAT_CHECK_INTERVAL_MS)
+                if (roomRole !is RoomRole.Client) {
+                    break
+                }
+                if (lastHostHeartbeatAt == 0L) {
+                    continue
+                }
+                if (System.currentTimeMillis() - lastHostHeartbeatAt > HEARTBEAT_TIMEOUT_MS) {
+                    handleHostConnectionLost("房主连接已断开，房间已关闭")
+                    break
+                }
+            }
+        }
+    }
+
+    private fun handleHostConnectionLost(message: String) {
+        _roomUiState.update {
+            it.copy(
+                connectionHint = message,
+                roomClosedByHost = true,
+                homeNoticeMessage = message,
+            )
+        }
+        shutdownCurrentRole()
+        authorityState = RoomAuthorityState()
+        _roomUiState.update {
+            it.copy(
+                slots = List(SLOT_COUNT) { index -> SlotState(slotIndex = index) },
+                bluetoothVisible = false,
+            )
         }
     }
 
@@ -861,6 +1008,17 @@ class BluetoothRoomRepository(
         return (1 until SLOT_COUNT).firstOrNull { authorityState.slotAssignments[it] == null }
     }
 
+    private fun normalizedSlotAssignments(participantId: String, keepSlotIndex: Int): Map<Int, String?> {
+        return authorityState.slotAssignments.toMutableMap().apply {
+            entries.forEach { entry ->
+                if (entry.key != keepSlotIndex && entry.value == participantId) {
+                    this[entry.key] = null
+                }
+            }
+            this[keepSlotIndex] = participantId
+        }
+    }
+
     private fun nextAiParticipantId(): String {
         var index = 1
         while (authorityState.participants.containsKey("ai-$index")) {
@@ -887,8 +1045,10 @@ class BluetoothRoomRepository(
     private fun shutdownCurrentRole() {
         acceptJob?.cancel()
         heartbeatJob?.cancel()
+        clientHeartbeatJob?.cancel()
         serverSocket?.closeSafely()
         serverSocket = null
+        lastHostHeartbeatAt = 0L
         when (val role = roomRole) {
             is RoomRole.Client -> role.connection.close()
             is RoomRole.Host -> participantConnections.values.forEach { it.connection.close() }
@@ -973,6 +1133,7 @@ class BluetoothRoomRepository(
         val ROOM_UUID: UUID = UUID.fromString("a9b56c03-6cae-417b-a522-3b299d790e14")
         const val HEARTBEAT_INTERVAL_MS = 5_000L
         const val HEARTBEAT_TIMEOUT_MS = 15_000L
+        const val CLIENT_HEARTBEAT_CHECK_INTERVAL_MS = 3_000L
     }
 }
 

@@ -87,6 +87,9 @@ class RoomViewModel(
             RoomAction.ExitRoom -> bluetoothRoomRepository.leaveRoom()
             RoomAction.ResetRoom -> bluetoothRoomRepository.leaveRoom()
             RoomAction.ResetRoomAsHost -> Unit
+            RoomAction.ConsumeRoomExitNotice -> bluetoothRoomRepository.consumeRoomExitNotice()
+            RoomAction.ConsumeHomeNotice -> bluetoothRoomRepository.consumeHomeNotice()
+            RoomAction.ConsumeJoinError -> bluetoothRoomRepository.consumeJoinError()
         }
     }
 

@@ -20,10 +20,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -102,6 +104,30 @@ fun BluetoothSearchScreen(
                     )
                 }
             }
+        }
+
+        uiState.joinErrorMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = onNavigateBack,
+                title = {
+                    Text(
+                        text = "无法加入房间",
+                        color = SearchTextPrimary,
+                    )
+                },
+                text = {
+                    Text(
+                        text = message,
+                        color = SearchTextSecondary,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = onNavigateBack) {
+                        Text(text = "知道了", color = SearchHighlight)
+                    }
+                },
+                containerColor = SearchBgCard,
+            )
         }
     }
 }
