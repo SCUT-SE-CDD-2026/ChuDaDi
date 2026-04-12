@@ -63,6 +63,7 @@ private val TextPrimary = Color(0xFFF7F1E4)
 private val TextSecondary = Color(0xFFB8A882)
 private val TextMuted = Color(0xFF7A6A50)
 private val StatusReady = Color(0xFF4CAF50)
+private val StatusConnected = Color(0xFFD4A85A)
 private val StatusNotReady = Color(0xFFFF9800)
 private val StatusDisconnected = Color(0xFF9E9E9E)
 private val ScorePositive = Color(0xFF81C784)
@@ -348,10 +349,15 @@ private fun EmptySlotContent(slotIndex: Int) {
             style = MaterialTheme.typography.labelMedium,
             color = TextMuted,
         )
+        Text(
+            text = "空位 / 可加入",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted,
+        )
     }
 }
 
-@Suppress("CyclomaticComplexMethod")
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 @Composable
 private fun FilledSlotContent(slot: SlotState) {
     Column(
@@ -381,13 +387,27 @@ private fun FilledSlotContent(slot: SlotState) {
             }
         }
 
-        Text(
-            text = slot.displayName,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = slot.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+
+            val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
+            Text(
+                text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
+                style = MaterialTheme.typography.labelMedium,
+                color = scoreColor,
+            )
+        }
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -414,7 +434,7 @@ private fun FilledSlotContent(slot: SlotState) {
                 MemberConnectionStatus.READY -> StatusReady to "已准备"
                 MemberConnectionStatus.NOT_READY -> StatusNotReady to "未准备"
                 MemberConnectionStatus.DISCONNECTED -> StatusDisconnected to "掉线"
-                MemberConnectionStatus.CONNECTED -> StatusReady to "已连接"
+                MemberConnectionStatus.CONNECTED -> StatusConnected to "已连接"
                 null -> Color.Transparent to ""
             }
             if (statusText.isNotEmpty()) {
@@ -428,12 +448,6 @@ private fun FilledSlotContent(slot: SlotState) {
             }
         }
 
-        val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
-        Text(
-            text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
-            style = MaterialTheme.typography.labelMedium,
-            color = scoreColor,
-        )
     }
 }
 
@@ -462,7 +476,7 @@ private fun ControlPanel(
         Spacer(modifier = Modifier.height(2.dp))
         InfoRow(
             label = "蓝牙状态",
-            value = if (uiState.bluetoothVisible) "可被发现" else "未广播",
+            value = if (uiState.bluetoothVisible) "房间广播中" else "未广播",
             valueColor = if (uiState.bluetoothVisible) StatusReady else TextMuted,
         )
         Spacer(modifier = Modifier.height(6.dp))

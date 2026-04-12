@@ -46,6 +46,6 @@ class PlayerPreferencesRepository(private val context: Context) {
 
         private const val DEFAULT_PLAYER_NAME = "默认玩家"
         private const val DEFAULT_AVATAR_RES_ID = 0 // 0 表示使用默认头像
-        private const val MAX_NAME_LENGTH = 20
+        const val MAX_NAME_LENGTH = 8
     }
 }

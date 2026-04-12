@@ -19,6 +19,8 @@ import com.example.chudadi.ui.game.GameScreen
 import com.example.chudadi.ui.game.GameScreenActions
 import com.example.chudadi.ui.home.HomeScreen
 import com.example.chudadi.ui.result.ResultScreen
+import com.example.chudadi.ui.room.BluetoothSearchScreen
+import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomScreen
@@ -31,15 +33,20 @@ import com.example.chudadi.ui.settings.SettingsViewModel
 
 private const val HOME_ROUTE = "home"
 private const val SETTINGS_ROUTE = "settings"
+private const val BLUETOOTH_SEARCH_ROUTE = "bluetooth-search"
 private const val ROOM_ROUTE = "room"
 private const val GAME_ROUTE = "game"
 private const val RESULT_ROUTE = "result"
 
+@Suppress("LongMethod", "LongParameterList")
 @Composable
 fun ChuDaDiNavGraph(
     viewModel: LocalMatchViewModel = viewModel(),
     roomViewModel: RoomViewModel,
     playerPreferencesRepository: PlayerPreferencesRepository,
+    localDeviceName: String,
+    onRequestBluetoothEnable: () -> Unit,
+    onRequestBluetoothPermissions: () -> Unit,
 ) {
     val navController = rememberNavController()
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
@@ -47,6 +54,15 @@ fun ChuDaDiNavGraph(
     val playerName = roomViewModel.playerName.collectAsStateWithLifecycle().value
 
     HandlePhaseNavigation(navController = navController, phase = uiState.phase)
+    LaunchedEffect(roomUiState.isHost, roomUiState.slots, navController.currentDestination?.route) {
+        val hasLocalSeat = roomUiState.slots.any { it.isLocalPlayer && it.occupantType != null }
+        if (hasLocalSeat && navController.currentDestination?.route == BLUETOOTH_SEARCH_ROUTE) {
+            navController.navigate(ROOM_ROUTE) {
+                popUpTo(BLUETOOTH_SEARCH_ROUTE) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -56,11 +72,12 @@ fun ChuDaDiNavGraph(
             HomeScreen(
                 playerName = playerName,
                 onCreateRoom = {
-                    roomViewModel.dispatch(RoomAction.ResetRoomAsHost)
+                    roomViewModel.createHostRoom(localDeviceName)
                     navController.navigate(ROOM_ROUTE)
                 },
                 onJoinRoom = {
-                    navController.navigate(ROOM_ROUTE)
+                    roomViewModel.loadJoinableDevices()
+                    navController.navigate(BLUETOOTH_SEARCH_ROUTE)
                 },
                 onSettings = {
                     navController.navigate(SETTINGS_ROUTE)
@@ -73,6 +90,25 @@ fun ChuDaDiNavGraph(
             )
             SettingsScreen(
                 viewModel = settingsViewModel,
+                onNavigateBack = { navController.popBackStack() },
+            )
+        }
+        composable(BLUETOOTH_SEARCH_ROUTE) {
+            BluetoothSearchScreen(
+                uiState = roomUiState,
+                onAction = { action ->
+                    when (action) {
+                        RoomAction.StartBluetoothDiscovery -> {
+                            onRequestBluetoothPermissions()
+                            onRequestBluetoothEnable()
+                            roomViewModel.dispatch(action)
+                        }
+
+                        is RoomAction.ConnectToBluetoothDevice -> roomViewModel.dispatch(action)
+
+                        else -> roomViewModel.dispatch(action)
+                    }
+                },
                 onNavigateBack = { navController.popBackStack() },
             )
         }
@@ -89,6 +125,7 @@ fun ChuDaDiNavGraph(
                         }
 
                         is RoomAction.ExitRoom -> {
+                            roomViewModel.dispatch(action)
                             navController.popBackStack()
                         }
 

@@ -84,7 +84,8 @@ class SettingsViewModel(
     private fun validateName(name: String): String? {
         return when {
             name.isBlank() -> "名称不能为空"
-            name.length > 20 -> "名称不能超过20个字符"
+            name.length > PlayerPreferencesRepository.MAX_NAME_LENGTH ->
+                "名称不能超过${PlayerPreferencesRepository.MAX_NAME_LENGTH}个字符"
             name != name.trim() -> "名称不能包含首尾空格"
             else -> null
         }

@@ -3,6 +3,8 @@ package com.example.chudadi.ui.room
 import com.example.chudadi.model.game.entity.RoundScore
 
 sealed interface RoomAction {
+    data object StartBluetoothDiscovery : RoomAction
+    data class ConnectToBluetoothDevice(val address: String) : RoomAction
     data object ToggleRule : RoomAction
     data class AddAiToSlot(val slotIndex: Int, val difficulty: AiDifficulty) : RoomAction
     data class RemoveSlotOccupant(val slotIndex: Int) : RoomAction

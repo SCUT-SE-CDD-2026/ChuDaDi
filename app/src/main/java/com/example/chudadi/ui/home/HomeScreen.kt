@@ -228,7 +228,6 @@ private fun RightPanel(
             text = "加入房间",
             onClick = onJoinRoom,
             style = ChuButtonStyle.SECONDARY,
-            enabled = false,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(modifier = Modifier.height(10.dp))

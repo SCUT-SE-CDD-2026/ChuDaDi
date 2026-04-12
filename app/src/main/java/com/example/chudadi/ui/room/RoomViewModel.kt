@@ -8,18 +8,20 @@ import androidx.lifecycle.viewModelScope
 import com.example.chudadi.R
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.model.game.entity.RoundScore
+import com.example.chudadi.network.room.BluetoothDiscoveredDevice
+import com.example.chudadi.network.room.BluetoothRoomRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
-import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class RoomViewModel(
     private val playerPrefsRepository: PlayerPreferencesRepository,
+    private val bluetoothRoomRepository: BluetoothRoomRepository,
 ) : ViewModel() {
 
     val playerName: StateFlow<String> = playerPrefsRepository.playerName
@@ -36,247 +38,110 @@ class RoomViewModel(
             initialValue = R.drawable.avatar,
         )
 
-    private val _uiState = MutableStateFlow(RoomUiState())
-    val uiState: StateFlow<RoomUiState> = _uiState.asStateFlow()
+    private val scoreAdjustments = MutableStateFlow<Map<Int, Int>>(emptyMap())
 
-    init {
-        // 初始化时使用保存的玩家名称
-        viewModelScope.launch {
-            val name = playerPrefsRepository.playerName.first()
-            _uiState.value = buildDefaultHostState(name)
-        }
-
-        // 监听玩家名称变化，实时更新本地槽位
-        viewModelScope.launch {
-            playerPrefsRepository.playerName.collect { name ->
-                _uiState.update { state ->
-                    val newSlots = state.slots.map { slot ->
-                        if (slot.isLocalPlayer) {
-                            slot.copy(displayName = name)
-                        } else {
-                            slot
-                        }
-                    }
-                    state.copy(slots = newSlots)
+    val uiState: StateFlow<RoomUiState> = combine(
+        bluetoothRoomRepository.roomUiState,
+        playerName,
+        scoreAdjustments,
+    ) { roomState, latestPlayerName, scoreMap ->
+        roomState.copy(
+            slots = roomState.slots.map { slot ->
+                val withName = if (slot.isLocalPlayer && slot.displayName != latestPlayerName) {
+                    slot.copy(displayName = latestPlayerName)
+                } else {
+                    slot
                 }
-            }
-        }
-    }
+                withName.copy(cumulativeScore = scoreMap[slot.seatId] ?: withName.cumulativeScore)
+            },
+        )
+    }.stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = RoomUiState(),
+    )
 
     @Suppress("CyclomaticComplexMethod")
     fun dispatch(action: RoomAction) {
         when (action) {
-            is RoomAction.ToggleRule -> toggleRule()
-            is RoomAction.AddAiToSlot -> addAiToSlot(action.slotIndex, action.difficulty)
-            is RoomAction.RemoveSlotOccupant -> removeSlotOccupant(action.slotIndex)
-            is RoomAction.RequestSwapWithSlot -> requestSwap(action.targetSlotIndex)
-            is RoomAction.ConfirmSwap -> confirmSwap(action.request)
-            is RoomAction.DeclineSwap -> _uiState.update { it.copy(pendingSwapRequest = null) }
-            is RoomAction.ToggleReady -> toggleReady()
-            is RoomAction.StartGame -> { /* handled by NavGraph */ }
-            is RoomAction.ResetScores -> resetScores()
-            is RoomAction.AccumulateScores -> accumulateScores(action.scores)
-            is RoomAction.OpenAiDialog -> _uiState.update {
-                it.copy(showAiDifficultyDialog = true, aiDialogTargetSlot = action.slotIndex)
-            }
-            is RoomAction.DismissAiDialog -> _uiState.update {
-                it.copy(showAiDifficultyDialog = false, aiDialogTargetSlot = -1)
-            }
-            is RoomAction.OpenSlotActionMenu -> _uiState.update {
-                it.copy(showSlotActionMenu = true, slotActionMenuTarget = action.slotIndex)
-            }
-            is RoomAction.DismissSlotActionMenu -> _uiState.update {
-                it.copy(showSlotActionMenu = false, slotActionMenuTarget = -1)
-            }
-            is RoomAction.ExitRoom -> { /* handled by NavGraph */ }
-            is RoomAction.ResetRoom -> resetRoom()
-            is RoomAction.ResetRoomAsHost -> resetRoomAsHost()
-        }
-    }
-
-    private fun toggleRule() {
-        _uiState.update { state ->
-            val next = if (state.currentRule == GameRuleDisplay.SOUTHERN) {
-                GameRuleDisplay.NORTHERN
-            } else {
-                GameRuleDisplay.SOUTHERN
-            }
-            state.copy(currentRule = next)
-        }
-    }
-
-    private fun addAiToSlot(slotIndex: Int, difficulty: AiDifficulty) {
-        _uiState.update { state ->
-            val usedNumbers = state.slots
-                .filter { it.occupantType == SlotOccupantType.AI }
-                .mapNotNull { it.displayName.substringAfterLast(' ').toIntOrNull() }
-                .toSet()
-            val aiNumber = generateSequence(1) { it + 1 }.first { it !in usedNumbers }
-            val newSlots = state.slots.toMutableList()
-            val originalSlot = state.slots[slotIndex]
-            newSlots[slotIndex] = SlotState(
-                slotIndex = slotIndex,
-                seatId = originalSlot.seatId,
-                occupantType = SlotOccupantType.AI,
-                displayName = "AI(${difficulty.label}) $aiNumber",
-                avatarResId = R.drawable.avatar,
-                connectionStatus = MemberConnectionStatus.READY,
-                aiDifficulty = difficulty,
-            )
-            state.copy(
-                slots = newSlots,
-                showAiDifficultyDialog = false,
-                aiDialogTargetSlot = -1,
-            ).recalcCanStart()
-        }
-    }
-
-    private fun removeSlotOccupant(slotIndex: Int) {
-        _uiState.update { state ->
-            val newSlots = state.slots.toMutableList()
-            newSlots[slotIndex] = SlotState(slotIndex = slotIndex, seatId = state.slots[slotIndex].seatId)
-            state.copy(
-                slots = newSlots,
-                showSlotActionMenu = false,
-                slotActionMenuTarget = -1,
-            ).recalcCanStart()
-        }
-    }
-
-    private fun requestSwap(targetSlotIndex: Int) {
-        val state = _uiState.value
-        val localSlot = state.slots.firstOrNull { it.isLocalPlayer } ?: return
-        val targetSlot = state.slots.getOrNull(targetSlotIndex) ?: return
-
-        if (targetSlot.occupantType == SlotOccupantType.AI) {
-            // AI swap is immediate
-            swapSlots(localSlot.slotIndex, targetSlotIndex)
-        } else if (targetSlot.occupantType == null) {
-            // Move to empty slot
-            swapSlots(localSlot.slotIndex, targetSlotIndex)
-        } else {
-            // Request swap with human
-            _uiState.update {
-                it.copy(
-                    pendingSwapRequest = SwapRequest(
-                        requesterSlotIndex = localSlot.slotIndex,
-                        targetSlotIndex = targetSlotIndex,
-                        requesterName = localSlot.displayName,
-                    ),
-                    showSlotActionMenu = false,
-                )
-            }
-        }
-    }
-
-    private fun confirmSwap(request: SwapRequest) {
-        swapSlots(request.requesterSlotIndex, request.targetSlotIndex)
-        _uiState.update { it.copy(pendingSwapRequest = null) }
-    }
-
-    private fun swapSlots(slotIndexA: Int, slotIndexB: Int) {
-        _uiState.update { state ->
-            val newSlots = state.slots.toMutableList()
-            val slotA = newSlots.getOrNull(slotIndexA) ?: return@update state
-            val slotB = newSlots.getOrNull(slotIndexB) ?: return@update state
-            newSlots[slotIndexA] = slotA.copyOccupantFrom(slotB)
-            newSlots[slotIndexB] = slotB.copyOccupantFrom(slotA)
-            state.copy(slots = newSlots, showSlotActionMenu = false).recalcCanStart()
-        }
-    }
-
-    private fun toggleReady() {
-        _uiState.update { state ->
-            val newSlots = state.slots.toMutableList()
-            val localIdx = newSlots.indexOfFirst { it.isLocalPlayer }
-            if (localIdx >= 0) {
-                val current = newSlots[localIdx]
-                val newStatus = if (current.connectionStatus == MemberConnectionStatus.READY) {
-                    MemberConnectionStatus.NOT_READY
-                } else {
-                    MemberConnectionStatus.READY
+            RoomAction.StartBluetoothDiscovery -> bluetoothRoomRepository.startDiscovery()
+            is RoomAction.ConnectToBluetoothDevice -> connectToBluetoothDevice(action.address)
+            RoomAction.ToggleRule -> bluetoothRoomRepository.handleToggleRule()
+            is RoomAction.AddAiToSlot -> bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
+            is RoomAction.RemoveSlotOccupant -> bluetoothRoomRepository.handleRemoveSlotOccupant(action.slotIndex)
+            is RoomAction.RequestSwapWithSlot -> bluetoothRoomRepository.handleSwapRequest(action.targetSlotIndex)
+            is RoomAction.ConfirmSwap -> bluetoothRoomRepository.handleSwapDecision(action.request, accepted = true)
+            RoomAction.DeclineSwap -> {
+                uiState.value.pendingSwapRequest?.let {
+                    bluetoothRoomRepository.handleSwapDecision(it, accepted = false)
                 }
-                newSlots[localIdx] = current.copy(connectionStatus = newStatus)
             }
-            state.copy(slots = newSlots).recalcCanStart()
+            RoomAction.ToggleReady -> bluetoothRoomRepository.handleToggleReady()
+            RoomAction.StartGame -> Unit
+            RoomAction.ResetScores -> scoreAdjustments.value = emptyMap()
+            is RoomAction.AccumulateScores -> accumulateScores(action.scores)
+            is RoomAction.OpenAiDialog -> bluetoothRoomRepository.openAiDialog(action.slotIndex)
+            RoomAction.DismissAiDialog -> bluetoothRoomRepository.dismissMenus()
+            is RoomAction.OpenSlotActionMenu -> bluetoothRoomRepository.openSlotActionMenu(action.slotIndex)
+            RoomAction.DismissSlotActionMenu -> bluetoothRoomRepository.dismissMenus()
+            RoomAction.ExitRoom -> bluetoothRoomRepository.leaveRoom()
+            RoomAction.ResetRoom -> bluetoothRoomRepository.leaveRoom()
+            RoomAction.ResetRoomAsHost -> Unit
         }
     }
 
-    private fun resetScores() {
-        _uiState.update { state ->
-            state.copy(slots = state.slots.map { it.copy(cumulativeScore = 0) })
+    fun loadJoinableDevices() {
+        bluetoothRoomRepository.loadBondedDevices()
+    }
+
+    fun createHostRoom(hostDeviceName: String) {
+        scoreAdjustments.value = emptyMap()
+        bluetoothRoomRepository.createHostRoom(
+            playerName = playerName.value,
+            avatarResId = avatarResId.value,
+            hostDeviceName = hostDeviceName,
+        )
+    }
+
+    private fun connectToBluetoothDevice(address: String) {
+        val target = uiState.value.discoveredDevices.firstOrNull { it.address == address } ?: return
+        viewModelScope.launch {
+            bluetoothRoomRepository.connectToHost(
+                device = BluetoothDiscoveredDevice(
+                    name = target.name,
+                    address = target.address,
+                    isBonded = target.isBonded,
+                ),
+                playerName = playerName.value,
+                avatarResId = avatarResId.value,
+            )
         }
     }
 
     private fun accumulateScores(scores: List<RoundScore>) {
-        _uiState.update { state ->
-            val newSlots = state.slots.map { slot ->
-                val match = scores.firstOrNull { it.seatId == slot.seatId }
-                if (match != null) slot.copy(cumulativeScore = slot.cumulativeScore + match.roundScore)
-                else slot
+        scoreAdjustments.update { current ->
+            val updated = current.toMutableMap()
+            scores.forEach { score ->
+                updated[score.seatId] = (updated[score.seatId] ?: 0) + score.roundScore
             }
-            state.copy(slots = newSlots)
+            updated
         }
     }
 
-    private fun resetRoom() {
-        val currentName = playerName.value
-        _uiState.value = buildDefaultHostState(currentName)
-    }
-
-    private fun resetRoomAsHost() {
-        val currentName = playerName.value
-        _uiState.value = buildDefaultHostState(currentName)
-    }
-
-    private fun buildDefaultHostState(playerName: String): RoomUiState {
-        return RoomUiState(
-            isHost = true,
-            roomName = "我的房间",
-            hostDeviceName = "本机",
-            slots = listOf(
-                SlotState(
-                    slotIndex = 0,
-                    occupantType = SlotOccupantType.HUMAN_HOST,
-                    displayName = playerName,
-                    avatarResId = R.drawable.avatar,
-                    connectionStatus = MemberConnectionStatus.READY,
-                    isLocalPlayer = true,
-                ),
-                SlotState(slotIndex = 1),
-                SlotState(slotIndex = 2),
-                SlotState(slotIndex = 3),
-            ),
-        ).recalcCanStart()
-    }
-
-    private fun RoomUiState.recalcCanStart(): RoomUiState {
-        val allFilled = slots.all { it.occupantType != null }
-        val allReady = slots.all { it.connectionStatus == MemberConnectionStatus.READY }
-        val slotIndexesStable = slots.withIndex().all { (index, slot) -> slot.slotIndex == index }
-        val seatIdsDistinct = slots.map { it.seatId }.distinct().size == slots.size
-        return copy(canStartGame = allFilled && allReady && slotIndexesStable && seatIdsDistinct)
-    }
-
-    private fun SlotState.copyOccupantFrom(source: SlotState): SlotState {
-        return copy(
-            occupantType = source.occupantType,
-            displayName = source.displayName,
-            avatarResId = source.avatarResId,
-            connectionStatus = source.connectionStatus,
-            aiDifficulty = source.aiDifficulty,
-            cumulativeScore = source.cumulativeScore,
-            isLocalPlayer = source.isLocalPlayer,
-            seatId = source.seatId,
-        )
+    override fun onCleared() {
+        bluetoothRoomRepository.clear()
+        super.onCleared()
     }
 
     companion object {
-        fun factory(playerPrefsRepository: PlayerPreferencesRepository): ViewModelProvider.Factory {
+        fun factory(
+            playerPrefsRepository: PlayerPreferencesRepository,
+            bluetoothRoomRepository: BluetoothRoomRepository,
+        ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 @Suppress("UNCHECKED_CAST")
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                    return RoomViewModel(playerPrefsRepository) as T
+                    return RoomViewModel(playerPrefsRepository, bluetoothRoomRepository) as T
                 }
             }
         }

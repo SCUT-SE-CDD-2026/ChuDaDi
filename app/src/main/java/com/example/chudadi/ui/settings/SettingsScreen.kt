@@ -309,7 +309,11 @@ private fun NameEditField(
     ) {
         OutlinedTextField(
             value = value,
-            onValueChange = { if (it.length <= 20) onValueChange(it) },
+            onValueChange = {
+                if (it.length <= com.example.chudadi.data.repository.PlayerPreferencesRepository.MAX_NAME_LENGTH) {
+                    onValueChange(it)
+                }
+            },
             modifier = Modifier.fillMaxWidth(),
             singleLine = true,
             label = {
