@@ -7,6 +7,7 @@ import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.entity.SeatStatus
@@ -70,7 +71,6 @@ open class GameEngine(
                 roundNumber = 1,
             ),
             playHistory = listOf("${openingSeat.displayName} leads the first round"),
-            totalBombCount = 0,
             result = null,
         )
     }
@@ -120,19 +120,27 @@ open class GameEngine(
                 error = GameActionError.PLAY_DOES_NOT_BEAT_CURRENT,
             )
         }
-        if (!canUseBombForCurrentTrick(match, seat, candidate, evaluator)) {
-            return ActionResult(
-                match = match,
-                success = false,
-                error = GameActionError.PLAY_DOES_NOT_BEAT_CURRENT,
-            )
-        }
+
+        val pendingBaoPay = detectBaoPayViolation(
+            match = match,
+            seat = seat,
+            candidate = candidate,
+            evaluator = evaluator,
+        )
 
         val updatedMatch = TurnResolver.applyPlay(
             match = match,
             seatIndex = seatIndex,
             combination = candidate,
-        )
+        ).let { playedMatch ->
+            playedMatch.copy(
+                trickState = playedMatch.trickState.copy(
+                    pendingBaoPaySeatId = pendingBaoPay?.first,
+                    pendingBaoPayProtectedSeatId = pendingBaoPay?.second,
+                ),
+            )
+        }
+
         val message = if (updatedMatch.phase == MatchPhase.FINISHED) {
             "${seat.displayName} wins the match."
         } else {
@@ -146,6 +154,7 @@ open class GameEngine(
         seatIndex: Int,
     ): ActionResult {
         val passError = getPassError(match, seatIndex)
+        val evaluator = evaluator(match.ruleSet)
         if (match.phase == MatchPhase.FINISHED) {
             return ActionResult(
                 match = match,
@@ -169,8 +178,39 @@ open class GameEngine(
         }
 
         val seat = match.seats.first { it.seatId == seatIndex }
+        val pendingBaoPay = detectBaoPayViolationOnPass(match, seat, evaluator)
+        val updatedMatch = TurnResolver.applyPass(match, seatIndex).let { nextMatch ->
+            when {
+                nextMatch.phase == MatchPhase.ROUND_RESET ->
+                    nextMatch.copy(
+                        trickState = nextMatch.trickState.copy(
+                            pendingBaoPaySeatId = null,
+                            pendingBaoPayProtectedSeatId = null,
+                        ),
+                    )
+
+                match.trickState.pendingBaoPayProtectedSeatId == seatIndex ->
+                    nextMatch.copy(
+                        trickState = nextMatch.trickState.copy(
+                            pendingBaoPaySeatId = null,
+                            pendingBaoPayProtectedSeatId = null,
+                        ),
+                    )
+
+                pendingBaoPay != null ->
+                    nextMatch.copy(
+                        trickState = nextMatch.trickState.copy(
+                            pendingBaoPaySeatId = pendingBaoPay.first,
+                            pendingBaoPayProtectedSeatId = pendingBaoPay.second,
+                        ),
+                    )
+
+                else -> nextMatch
+            }
+        }
+
         return ActionResult(
-            match = TurnResolver.applyPass(match, seatIndex),
+            match = updatedMatch,
             success = true,
             message = "${seat.displayName} passed",
         )
@@ -254,8 +294,7 @@ open class GameEngine(
         val hasMandatoryResponse = evaluator
             .generateAllValidCombinations(seat.hand)
             .any { candidate ->
-                !rules.isBomb(candidate.type) &&
-                    candidate.type == currentCombination.type &&
+                candidate.type == currentCombination.type &&
                     candidate.cardCount == currentCombination.cardCount &&
                     evaluator.canBeat(candidate, currentCombination)
             }
@@ -263,31 +302,89 @@ open class GameEngine(
         return if (hasMandatoryResponse) GameActionError.MUST_BEAT_IF_POSSIBLE else null
     }
 
-    private fun canUseBombForCurrentTrick(
+    private fun detectBaoPayViolation(
         match: Match,
         seat: Seat,
-        candidate: com.example.chudadi.model.game.entity.PlayCombination,
+        candidate: PlayCombination,
         evaluator: CombinationEvaluator,
-    ): Boolean {
-        val currentCombination = match.trickState.currentCombination ?: return true
-        val rules = GameRules.forRuleSet(match.ruleSet)
-        if (!rules.isBomb(candidate.type) || rules.isBomb(currentCombination.type)) {
-            return true
+    ): Pair<Int, Int>? {
+        val currentCombination = match.trickState.currentCombination ?: return null
+        if (candidate.type != CombinationType.SINGLE) {
+            return null
         }
-        if (!rules.bombRequiresNoSameTypeResponse) {
-            return true
+        val baoPayContext = getBaoPayContext(match, seat.seatId) ?: return null
+        val maxSingle = findMaxLegalSingle(seat, evaluator, currentCombination) ?: return null
+
+        val playedIsMax =
+            candidate.primaryRank == maxSingle.primaryRank &&
+                candidate.primarySuit == maxSingle.primarySuit
+
+        return if (playedIsMax) {
+            null
+        } else {
+            seat.seatId to baoPayContext.protectedSeatId
+        }
+    }
+
+    private fun detectBaoPayViolationOnPass(
+        match: Match,
+        seat: Seat,
+        evaluator: CombinationEvaluator,
+    ): Pair<Int, Int>? {
+        val baoPayContext = getBaoPayContext(match, seat.seatId) ?: return null
+        val currentCombination = match.trickState.currentCombination ?: return null
+        val maxSingle = findMaxLegalSingle(seat, evaluator, currentCombination) ?: return null
+        return if (maxSingle.cards.isNotEmpty()) {
+            seat.seatId to baoPayContext.protectedSeatId
+        } else {
+            null
+        }
+    }
+
+    private fun getBaoPayContext(
+        match: Match,
+        seatId: Int,
+    ): BaoPayContext? {
+        val currentCombination = match.trickState.currentCombination ?: return null
+        if (currentCombination.type != CombinationType.SINGLE) {
+            return null
         }
 
-        val hasSameTypeBeatOption = evaluator
+        val nextSeat = nextActiveSeat(match.seats, seatId) ?: return null
+        return if (nextSeat.hand.size == 1) {
+            BaoPayContext(protectedSeatId = nextSeat.seatId)
+        } else {
+            null
+        }
+    }
+
+    private fun findMaxLegalSingle(
+        seat: Seat,
+        evaluator: CombinationEvaluator,
+        currentCombination: PlayCombination,
+    ): PlayCombination? {
+        val legalSingles = evaluator
             .generateAllValidCombinations(seat.hand)
-            .any { alternative ->
-                !rules.isBomb(alternative.type) &&
-                    alternative.type == currentCombination.type &&
-                    alternative.cardCount == currentCombination.cardCount &&
-                    evaluator.canBeat(alternative, currentCombination)
-            }
+            .filter { it.type == CombinationType.SINGLE && evaluator.canBeat(it, currentCombination) }
+        return legalSingles.maxWithOrNull(
+            compareBy<PlayCombination> { it.primaryRank }.thenBy { it.primarySuit },
+        )
+    }
 
-        return !hasSameTypeBeatOption
+    private fun nextActiveSeat(
+        seats: List<Seat>,
+        fromSeatId: Int,
+    ): Seat? {
+        val maxIndex = seats.maxOf { it.seatId }
+        var cursor = fromSeatId
+        repeat(maxIndex + 1) {
+            cursor = (cursor + 1) % (maxIndex + 1)
+            val nextSeat = seats.first { it.seatId == cursor }
+            if (nextSeat.status != SeatStatus.FINISHED) {
+                return nextSeat
+            }
+        }
+        return null
     }
 
     companion object {
@@ -296,4 +393,8 @@ open class GameEngine(
             rank = CardRank.THREE,
         )
     }
+
+    private data class BaoPayContext(
+        val protectedSeatId: Int,
+    )
 }

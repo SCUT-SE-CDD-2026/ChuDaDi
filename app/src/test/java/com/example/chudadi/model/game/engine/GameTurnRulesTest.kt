@@ -1,7 +1,9 @@
 package com.example.chudadi.model.game.engine
 
+import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
+import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.entity.SeatStatus
@@ -71,10 +73,10 @@ class GameTurnRulesTest {
         val afterSecondPass = engine.passTurn(match = afterFirstPass, seatIndex = 2).match
         val afterThirdPass = engine.passTurn(match = afterSecondPass, seatIndex = 3).match
 
-        assertEquals(com.example.chudadi.model.game.entity.MatchPhase.ROUND_RESET, afterThirdPass.phase)
+        assertEquals(MatchPhase.ROUND_RESET, afterThirdPass.phase)
         assertEquals(0, afterThirdPass.activeSeatIndex)
         assertNull(afterThirdPass.trickState.currentCombination)
-        assertTrue(afterThirdPass.seats.filter { it.seatId != 0 }.all { it.status.name == "ACTIVE" })
+        assertTrue(afterThirdPass.seats.filter { it.seatId != 0 }.all { it.status == SeatStatus.ACTIVE })
     }
 
     @Test
@@ -103,28 +105,38 @@ class GameTurnRulesTest {
     }
 
     @Test
-    fun southernBomb_canInterruptSingle() {
-        val current = southernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-        )!!
-        val bomb = southernEvaluator.parse(
+    fun fourOfAKind_isNotAValidPlay() {
+        val combination = southernEvaluator.parse(
             listOf(
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
             ),
-        )!!
+        )
 
-        assertTrue(southernEvaluator.canBeat(bomb, current))
+        assertNull(combination)
     }
 
     @Test
-    fun southernFourWithOne_isAlsoBomb() {
-        val current = southernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-        )!!
-        val bomb = southernEvaluator.parse(
+    fun fourWithTwo_isNotAValidPlay() {
+        val combination = southernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
+                MatchFixtureFactory.card(CardRank.FOUR, CardSuit.HEARTS),
+            ),
+        )
+
+        assertNull(combination)
+    }
+
+    @Test
+    fun fourWithOne_isRecognizedAsFiveCardType() {
+        val combination = southernEvaluator.parse(
             listOf(
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
@@ -133,240 +145,154 @@ class GameTurnRulesTest {
                 MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
             ),
         )!!
-
-        assertTrue(southernEvaluator.canBeat(bomb, current))
-    }
-
-    @Test
-    fun northernBomb_isRecognizedAsResponseOption() {
-        val current = northernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-        )!!
-        val bomb = northernEvaluator.parse(
-            listOf(
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-            ),
-        )!!
-
-        assertTrue(northernEvaluator.canBeat(bomb, current))
-    }
-
-    @Test
-    fun northernFourWithOne_isValidButNotBomb() {
-        val cards = listOf(
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-            MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
-        )
-        val currentSingle = northernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-        )!!
-
-        val combination = northernEvaluator.parse(cards)!!
 
         assertEquals("FOUR_WITH_ONE", combination.type.name)
-        assertFalse(northernEvaluator.canBeat(combination, currentSingle))
+        assertEquals(CardRank.FIVE.strength, combination.primaryRank)
     }
 
     @Test
-    fun northernBomb_allowedWhenNoSameTypeBeatExists() {
-        val northernEngine = GameEngine(defaultRuleSet = GameRuleSet.NORTHERN)
-        val currentCombination = northernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-        )!!
-        val seats = listOf(
-            Seat(
-                seatId = 0,
-                displayName = "You",
-                controllerType = SeatControllerType.HUMAN,
-                hand = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 1,
-                displayName = "AI 1",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-                ),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 2,
-                displayName = "AI 2",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 3,
-                displayName = "AI 3",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS)),
-                status = SeatStatus.ACTIVE,
-            ),
-        )
-        val baseMatch = MatchFixtureFactory.localMatch(
-            activeSeatIndex = 1,
-            seats = seats,
-            ruleSet = GameRuleSet.NORTHERN,
-        )
-        val result = northernEngine.submitSelectedCards(
-            match = baseMatch.copy(
-                trickState = baseMatch.trickState.copy(
-                    currentCombination = currentCombination,
-                    lastWinningSeatIndex = 0,
-                ),
-            ),
-            seatIndex = 1,
-            selectedCardIds = setOf(
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS).id,
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS).id,
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS).id,
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES).id,
-            ),
-        )
-
-        assertTrue(result.success)
-    }
-
-    @Test
-    fun northernBomb_rejectedWhenSameTypeBeatExists() {
-        val northernEngine = GameEngine(defaultRuleSet = GameRuleSet.NORTHERN)
-        val currentCombination = northernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES)),
-        )!!
-        val seats = listOf(
-            Seat(
-                seatId = 0,
-                displayName = "You",
-                controllerType = SeatControllerType.HUMAN,
-                hand = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 1,
-                displayName = "AI 1",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(
-                    MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-                ),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 2,
-                displayName = "AI 2",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 3,
-                displayName = "AI 3",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS)),
-                status = SeatStatus.ACTIVE,
-            ),
-        )
-        val baseMatch = MatchFixtureFactory.localMatch(
-            activeSeatIndex = 1,
-            seats = seats,
-            ruleSet = GameRuleSet.NORTHERN,
-        )
-        val result = northernEngine.submitSelectedCards(
-            match = baseMatch.copy(
-                trickState = baseMatch.trickState.copy(
-                    currentCombination = currentCombination,
-                    lastWinningSeatIndex = 0,
-                ),
-            ),
-            seatIndex = 1,
-            selectedCardIds = setOf(
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS).id,
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS).id,
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS).id,
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES).id,
-            ),
-        )
-
-        assertFalse(result.success)
-        assertEquals(GameActionError.PLAY_DOES_NOT_BEAT_CURRENT, result.error)
-    }
-
-    @Test
-    fun northernOnlyFourOfAKindCountsAsBomb() {
-        val fourOfAKindBomb = northernEvaluator.parse(
+    fun southernFiveCardTypes_cannotBeatAcrossTypes() {
+        val current = southernEvaluator.parse(
             listOf(
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS),
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS),
             ),
         )!!
-        val fourWithOne = northernEvaluator.parse(
+        val flush = southernEvaluator.parse(
             listOf(
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.SPADES),
                 MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.JACK, CardSuit.SPADES),
+            ),
+        )!!
+
+        assertFalse(southernEvaluator.canBeat(flush, current))
+    }
+
+    @Test
+    fun southernFourWithOne_canBeatNonStraightFlushFiveCardType() {
+        val current = southernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.FOUR, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.SIX, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.HEARTS),
+            ),
+        )!!
+        val ironBranch = southernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.CLUBS),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
                 MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
             ),
         )!!
 
-        assertEquals("FOUR_OF_A_KIND_BOMB", fourOfAKindBomb.type.name)
-        assertEquals("FOUR_WITH_ONE", fourWithOne.type.name)
+        assertTrue(southernEvaluator.canBeat(ironBranch, current))
     }
 
     @Test
-    fun northernPassTurn_rejectsWhenBeatOptionExists() {
+    fun southernFourWithOne_cannotBeatStraightFlush() {
+        val current = southernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
+            ),
+        )!!
+        val ironBranch = southernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.TEN, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.TEN, CardSuit.CLUBS),
+                MatchFixtureFactory.card(CardRank.TEN, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.TEN, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
+            ),
+        )!!
+
+        assertFalse(southernEvaluator.canBeat(ironBranch, current))
+    }
+
+    @Test
+    fun northernFiveCardTypes_canBeatAcrossTypesByPower() {
+        val current = northernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS),
+            ),
+        )!!
+        val flush = northernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.JACK, CardSuit.SPADES),
+            ),
+        )!!
+
+        assertTrue(northernEvaluator.canBeat(flush, current))
+    }
+
+    @Test
+    fun flushComparison_usesHighestRankThenSuitOnly() {
+        val strongerBySuit = southernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.SPADES),
+            ),
+        )!!
+        val weakerBySuit = southernEvaluator.parse(
+            listOf(
+                MatchFixtureFactory.card(CardRank.ACE, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.KING, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.QUEEN, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.JACK, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.HEARTS),
+            ),
+        )!!
+
+        assertTrue(southernEvaluator.canBeat(strongerBySuit, weakerBySuit))
+    }
+
+    @Test
+    fun northernPassTurn_rejectsWhenSameTypeBeatOptionExists() {
         val northernEngine = GameEngine(defaultRuleSet = GameRuleSet.NORTHERN)
         val currentCombination = northernEvaluator.parse(
             listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES)),
         )
         val seats = listOf(
-            Seat(
-                seatId = 0,
-                displayName = "You",
-                controllerType = SeatControllerType.HUMAN,
-                hand = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
+            seat(
+                0,
+                "You",
+                listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
+                SeatControllerType.HUMAN,
             ),
-            Seat(
-                seatId = 1,
-                displayName = "AI 1",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(
+            seat(
+                1,
+                "AI 1",
+                listOf(
                     MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS),
                     MatchFixtureFactory.card(CardRank.NINE, CardSuit.HEARTS),
                 ),
-                status = SeatStatus.ACTIVE,
             ),
-            Seat(
-                seatId = 2,
-                displayName = "AI 2",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 3,
-                displayName = "AI 3",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS)),
-                status = SeatStatus.ACTIVE,
-            ),
+            seat(2, "AI 2", listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS))),
+            seat(3, "AI 3", listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS))),
         )
         val baseMatch = MatchFixtureFactory.localMatch(
             activeSeatIndex = 1,
@@ -387,110 +313,37 @@ class GameTurnRulesTest {
     }
 
     @Test
-    fun northernPassTurn_allowsPassWhenOnlyBombCanBeatNonBomb() {
-        val northernEngine = GameEngine(defaultRuleSet = GameRuleSet.NORTHERN)
-        val currentCombination = northernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-        )!!
-        val seats = listOf(
-            Seat(
-                seatId = 0,
-                displayName = "You",
-                controllerType = SeatControllerType.HUMAN,
-                hand = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 1,
-                displayName = "AI 1",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-                ),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 2,
-                displayName = "AI 2",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 3,
-                displayName = "AI 3",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS)),
-                status = SeatStatus.ACTIVE,
-            ),
-        )
-        val baseMatch = MatchFixtureFactory.localMatch(
-            activeSeatIndex = 1,
-            seats = seats,
-            ruleSet = GameRuleSet.NORTHERN,
-        )
-
-        val result = northernEngine.passTurn(
-            match = baseMatch.copy(
-                trickState = baseMatch.trickState.copy(
-                    currentCombination = currentCombination,
-                    lastWinningSeatIndex = 0,
-                ),
-            ),
-            seatIndex = 1,
-        )
-
-        assertTrue(result.success)
-    }
-
-    @Test
-    fun northernPassTurn_allowsPassWhenCurrentPlayIsBomb() {
+    fun northernPassTurn_allowsPassWhenOnlyCrossTypeFiveCardBeatExists() {
         val northernEngine = GameEngine(defaultRuleSet = GameRuleSet.NORTHERN)
         val currentCombination = northernEvaluator.parse(
             listOf(
-                MatchFixtureFactory.card(CardRank.FOUR, CardSuit.DIAMONDS),
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS),
                 MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS),
-                MatchFixtureFactory.card(CardRank.FOUR, CardSuit.HEARTS),
-                MatchFixtureFactory.card(CardRank.FOUR, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
+                MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES),
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS),
             ),
         )!!
         val seats = listOf(
-            Seat(
-                seatId = 0,
-                displayName = "You",
-                controllerType = SeatControllerType.HUMAN,
-                hand = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
+            seat(
+                0,
+                "You",
+                listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS)),
+                SeatControllerType.HUMAN,
             ),
-            Seat(
-                seatId = 1,
-                displayName = "AI 1",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
+            seat(
+                1,
+                "AI 1",
+                listOf(
+                    MatchFixtureFactory.card(CardRank.THREE, CardSuit.SPADES),
                     MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                    MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES),
+                    MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
+                    MatchFixtureFactory.card(CardRank.JACK, CardSuit.SPADES),
                 ),
-                status = SeatStatus.ACTIVE,
             ),
-            Seat(
-                seatId = 2,
-                displayName = "AI 2",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS)),
-                status = SeatStatus.ACTIVE,
-            ),
-            Seat(
-                seatId = 3,
-                displayName = "AI 3",
-                controllerType = SeatControllerType.RULE_BASED_AI,
-                hand = listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS)),
-                status = SeatStatus.ACTIVE,
-            ),
+            seat(2, "AI 2", listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.DIAMONDS))),
+            seat(3, "AI 3", listOf(MatchFixtureFactory.card(CardRank.NINE, CardSuit.CLUBS))),
         )
         val baseMatch = MatchFixtureFactory.localMatch(
             activeSeatIndex = 1,
@@ -512,50 +365,160 @@ class GameTurnRulesTest {
     }
 
     @Test
-    fun fourWithTwo_isBombOnlyInSouthernRules() {
-        val cards = listOf(
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-            MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
-            MatchFixtureFactory.card(CardRank.FOUR, CardSuit.HEARTS),
-        )
-        val currentSingle = southernEvaluator.parse(
-            listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
+    fun submitSelectedCards_recordsBaoPayWhenPlayerDoesNotTopSingleAndNextSeatWins() {
+        val southernEngine = GameEngine(defaultRuleSet = GameRuleSet.SOUTHERN)
+        val currentCombination = southernEvaluator.parse(
+            listOf(MatchFixtureFactory.card(CardRank.TEN, CardSuit.DIAMONDS)),
         )!!
 
-        val southernCombination = southernEvaluator.parse(cards)!!
-        val northernCombination = northernEvaluator.parse(cards)
+        val seats = listOf(
+            seat(
+                0,
+                "You",
+                listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS)),
+                SeatControllerType.HUMAN,
+            ),
+            seat(
+                1,
+                "AI 1",
+                listOf(
+                    MatchFixtureFactory.card(CardRank.JACK, CardSuit.CLUBS),
+                    MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES),
+                ),
+            ),
+            seat(2, "AI 2", listOf(MatchFixtureFactory.card(CardRank.KING, CardSuit.HEARTS))),
+            seat(3, "AI 3", listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS))),
+        )
 
-        assertEquals("FOUR_WITH_TWO", southernCombination.type.name)
-        assertTrue(southernEvaluator.canBeat(southernCombination, currentSingle))
-        assertNull(northernCombination)
+        val baseMatch = MatchFixtureFactory.localMatch(
+            activeSeatIndex = 1,
+            seats = seats,
+            ruleSet = GameRuleSet.SOUTHERN,
+        )
+        val match = baseMatch.copy(
+            trickState = baseMatch.trickState.copy(
+                currentCombination = currentCombination,
+                lastWinningSeatIndex = 0,
+            ),
+        )
+
+        val firstPlay = southernEngine.submitSelectedCards(
+            match = match,
+            seatIndex = 1,
+            selectedCardIds = setOf(MatchFixtureFactory.card(CardRank.JACK, CardSuit.CLUBS).id),
+        )
+
+        assertTrue(firstPlay.success)
+        assertEquals(1, firstPlay.match.trickState.pendingBaoPaySeatId)
+        assertEquals(2, firstPlay.match.trickState.pendingBaoPayProtectedSeatId)
+
+        val secondPlay = southernEngine.submitSelectedCards(
+            match = firstPlay.match,
+            seatIndex = 2,
+            selectedCardIds = setOf(MatchFixtureFactory.card(CardRank.KING, CardSuit.HEARTS).id),
+        )
+
+        assertTrue(secondPlay.success)
+        assertEquals(MatchPhase.FINISHED, secondPlay.match.phase)
+
+        val scores = secondPlay.match.result!!.scoreSummary.roundScores.associateBy { it.seatId }
+        assertEquals(BAO_PAY_WINNER_SCORE, scores.getValue(2).roundScore)
+        assertEquals(BAO_PAY_RESPONSIBLE_SCORE, scores.getValue(1).roundScore)
+        assertEquals(ZERO_SCORE, scores.getValue(0).roundScore)
+        assertEquals(ZERO_SCORE, scores.getValue(3).roundScore)
     }
 
     @Test
-    fun fourWithTwo_acceptsPairOrTwoSinglesInSouthernRules() {
-        val pairWingCards = listOf(
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-            MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
-            MatchFixtureFactory.card(CardRank.THREE, CardSuit.HEARTS),
+    fun passTurn_recordsBaoPayOnlyWhenPlayerCouldBeatSingle() {
+        val southernEngine = GameEngine(defaultRuleSet = GameRuleSet.SOUTHERN)
+        val currentCombination = southernEvaluator.parse(
+            listOf(MatchFixtureFactory.card(CardRank.TEN, CardSuit.DIAMONDS)),
+        )!!
+        val canBeatSeats = listOf(
+            seat(
+                0,
+                "You",
+                listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS)),
+                SeatControllerType.HUMAN,
+            ),
+            seat(
+                1,
+                "AI 1",
+                listOf(MatchFixtureFactory.card(CardRank.JACK, CardSuit.CLUBS)),
+            ),
+            seat(2, "AI 2", listOf(MatchFixtureFactory.card(CardRank.KING, CardSuit.HEARTS))),
+            seat(3, "AI 3", listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS))),
         )
-        val splitWingCards = listOf(
-            MatchFixtureFactory.card(CardRank.SIX, CardSuit.DIAMONDS),
-            MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS),
-            MatchFixtureFactory.card(CardRank.SIX, CardSuit.HEARTS),
-            MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES),
-            MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
-            MatchFixtureFactory.card(CardRank.FOUR, CardSuit.HEARTS),
+        val cannotBeatSeats = listOf(
+            seat(
+                0,
+                "You",
+                listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS)),
+                SeatControllerType.HUMAN,
+            ),
+            seat(
+                1,
+                "AI 1",
+                listOf(MatchFixtureFactory.card(CardRank.NINE, CardSuit.CLUBS)),
+            ),
+            seat(2, "AI 2", listOf(MatchFixtureFactory.card(CardRank.KING, CardSuit.HEARTS))),
+            seat(3, "AI 3", listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS))),
         )
 
-        val pairWing = southernEvaluator.parse(pairWingCards)
-        val splitWing = southernEvaluator.parse(splitWingCards)
+        val canBeatMatch = MatchFixtureFactory.localMatch(
+            activeSeatIndex = 1,
+            seats = canBeatSeats,
+            ruleSet = GameRuleSet.SOUTHERN,
+        ).let { baseMatch ->
+            baseMatch.copy(
+                trickState = baseMatch.trickState.copy(
+                    currentCombination = currentCombination,
+                    lastWinningSeatIndex = 0,
+                ),
+            )
+        }
+        val cannotBeatMatch = MatchFixtureFactory.localMatch(
+            activeSeatIndex = 1,
+            seats = cannotBeatSeats,
+            ruleSet = GameRuleSet.SOUTHERN,
+        ).let { baseMatch ->
+            baseMatch.copy(
+                trickState = baseMatch.trickState.copy(
+                    currentCombination = currentCombination,
+                    lastWinningSeatIndex = 0,
+                ),
+            )
+        }
 
-        assertEquals("FOUR_WITH_TWO", pairWing?.type?.name)
-        assertEquals("FOUR_WITH_TWO", splitWing?.type?.name)
+        val canBeatResult = southernEngine.passTurn(match = canBeatMatch, seatIndex = 1)
+        val cannotBeatResult = southernEngine.passTurn(match = cannotBeatMatch, seatIndex = 1)
+
+        assertTrue(canBeatResult.success)
+        assertEquals(1, canBeatResult.match.trickState.pendingBaoPaySeatId)
+        assertEquals(2, canBeatResult.match.trickState.pendingBaoPayProtectedSeatId)
+        assertTrue(cannotBeatResult.success)
+        assertEquals(null, cannotBeatResult.match.trickState.pendingBaoPaySeatId)
+        assertEquals(null, cannotBeatResult.match.trickState.pendingBaoPayProtectedSeatId)
+    }
+
+    private fun seat(
+        seatId: Int,
+        name: String,
+        cards: List<Card>,
+        controllerType: SeatControllerType = SeatControllerType.RULE_BASED_AI,
+    ): Seat {
+        return Seat(
+            seatId = seatId,
+            displayName = name,
+            controllerType = controllerType,
+            hand = cards.sortedWith(Card.gameComparator),
+            status = SeatStatus.ACTIVE,
+        )
+    }
+
+    private companion object {
+        const val BAO_PAY_WINNER_SCORE = 3
+        const val BAO_PAY_RESPONSIBLE_SCORE = -3
+        const val ZERO_SCORE = 0
     }
 }

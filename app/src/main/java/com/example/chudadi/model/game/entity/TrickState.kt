@@ -7,4 +7,6 @@ data class TrickState(
     val passCount: Int,
     val roundNumber: Int,
     val tablePlays: Map<Int, PlayCombination> = emptyMap(),
+    val pendingBaoPaySeatId: Int? = null,
+    val pendingBaoPayProtectedSeatId: Int? = null,
 )

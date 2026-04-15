@@ -13,24 +13,10 @@ class CombinationComparator(
             return true
         }
 
-        val candidateIsBomb = rules.isBomb(candidate.type)
-        val currentIsBomb = rules.isBomb(current.type)
-        val result =
-            when {
-                candidateIsBomb || currentIsBomb ->
-                    canBeatWithBombRules(
-                        candidate = candidate,
-                        current = current,
-                        candidateIsBomb = candidateIsBomb,
-                        currentIsBomb = currentIsBomb,
-                    )
-
-                candidate.cardCount != current.cardCount -> false
-                candidate.type != current.type -> false
-                else -> compareSameType(candidate, current) > 0
-            }
-
-        return result
+        return when (rules.ruleSet) {
+            GameRuleSet.SOUTHERN -> canBeatSouthern(candidate, current)
+            GameRuleSet.NORTHERN -> canBeatNorthern(candidate, current)
+        }
     }
 
     fun compareForSorting(
@@ -54,57 +40,42 @@ class CombinationComparator(
             return primaryRankComparison
         }
 
-        if (left.type == CombinationType.FLUSH) {
-            left.rankVector.zip(right.rankVector).forEach { (leftRank, rightRank) ->
-                val comparison = leftRank.compareTo(rightRank)
-                if (comparison != 0) {
-                    return comparison
-                }
-            }
-        }
-
         return left.primarySuit.compareTo(right.primarySuit)
     }
 
-    private fun canBeatWithBombRules(
+    private fun canBeatSouthern(
         candidate: PlayCombination,
         current: PlayCombination,
-        candidateIsBomb: Boolean,
-        currentIsBomb: Boolean,
-    ): Boolean {
-        if (candidateIsBomb && currentIsBomb) {
-            return compareBomb(candidate, current) > 0
+    ): Boolean =
+        when {
+            candidate.cardCount == FIVE_CARD_COUNT &&
+                candidate.type == CombinationType.STRAIGHT_FLUSH -> true
+            candidate.cardCount == FIVE_CARD_COUNT &&
+                candidate.type == CombinationType.FOUR_WITH_ONE &&
+                current.type != CombinationType.STRAIGHT_FLUSH -> true
+            candidate.cardCount != current.cardCount -> false
+            candidate.type != current.type -> false
+            else -> compareSameType(candidate, current) > 0
         }
-        if (!candidateIsBomb) {
-            return false
-        }
-        return true
-    }
 
-    private fun compareBomb(
-        left: PlayCombination,
-        right: PlayCombination,
-    ): Int {
-        val bombPowerComparison = bombPower(left).compareTo(bombPower(right))
-        if (bombPowerComparison != 0) {
-            return bombPowerComparison
+    private fun canBeatNorthern(
+        candidate: PlayCombination,
+        current: PlayCombination,
+    ): Boolean =
+        when {
+            candidate.cardCount == FIVE_CARD_COUNT && current.cardCount == FIVE_CARD_COUNT ->
+                when {
+                    candidate.type == current.type -> compareSameType(candidate, current) > 0
+                    candidate.type.typePower != current.type.typePower ->
+                        candidate.type.typePower > current.type.typePower
+                    else -> false
+                }
+            candidate.cardCount != current.cardCount -> false
+            candidate.type != current.type -> false
+            else -> compareSameType(candidate, current) > 0
         }
-        return compareSameType(left, right)
-    }
-
-    private fun bombPower(combination: PlayCombination): Int {
-        return when (combination.type) {
-            CombinationType.FOUR_OF_A_KIND_BOMB -> STANDARD_BOMB_POWER
-            CombinationType.FOUR_WITH_ONE -> STANDARD_BOMB_POWER
-            CombinationType.FOUR_WITH_TWO -> if (rules.fourWithTwoIsBomb) STANDARD_BOMB_POWER else NO_BOMB_POWER
-            CombinationType.STRAIGHT_FLUSH -> if (rules.straightFlushIsBomb) HIGH_BOMB_POWER else NO_BOMB_POWER
-            else -> NO_BOMB_POWER
-        }
-    }
 
     private companion object {
-        const val NO_BOMB_POWER = 0
-        const val STANDARD_BOMB_POWER = 1
-        const val HIGH_BOMB_POWER = 2
+        const val FIVE_CARD_COUNT = 5
     }
 }

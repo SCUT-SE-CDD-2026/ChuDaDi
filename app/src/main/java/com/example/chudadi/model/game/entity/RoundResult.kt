@@ -9,7 +9,6 @@ data class RoundScore(
 
 data class ScoreSummary(
     val summaryLines: List<String>,
-    val bombCount: Int,
     val roundScores: List<RoundScore>,
 )
 

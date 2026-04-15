@@ -90,13 +90,11 @@ class ResultFlowTest {
                     roundNumber = 1,
                 ),
                 playHistory = listOf("You win"),
-                totalBombCount = 0,
                 result = RoundResult(
                     winnerSeatIndex = 0,
                     ranking = listOf(0, 1, 2, 3),
                     scoreSummary = ScoreSummary(
                         summaryLines = listOf("1. You (0 cards left)"),
-                        bombCount = 0,
                         roundScores = listOf(
                             RoundScore(
                                 seatId = 0,

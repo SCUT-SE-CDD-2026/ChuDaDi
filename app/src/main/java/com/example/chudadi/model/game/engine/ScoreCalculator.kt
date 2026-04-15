@@ -1,5 +1,6 @@
 package com.example.chudadi.model.game.engine
 
+import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.RoundScore
 import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.rule.GameRuleSet
@@ -9,26 +10,31 @@ object ScoreCalculator {
         ruleSet: GameRuleSet,
         seats: List<Seat>,
         winnerSeatId: Int,
-        totalBombCount: Int,
+        baoPaySeatId: Int? = null,
     ): List<RoundScore> {
+        val loserPenalties = seats
+            .filterNot { it.seatId == winnerSeatId }
+            .associate { seat ->
+                seat.seatId to when (ruleSet) {
+                    GameRuleSet.SOUTHERN -> calculateSouthernPenalty(seat)
+                    GameRuleSet.NORTHERN -> calculateNorthernPenalty(seat.hand.size)
+                }
+            }
+
+        val totalLoserPenalty = loserPenalties.values.sum()
         val loserScores = seats
             .filterNot { it.seatId == winnerSeatId }
             .map { seat ->
-                val penalty = when (ruleSet) {
-                    GameRuleSet.SOUTHERN -> calculateSouthernPenalty(
-                        remainingCards = seat.hand.size,
-                        totalBombCount = totalBombCount,
-                    )
-                    GameRuleSet.NORTHERN -> calculateNorthernPenalty(
-                        remainingCards = seat.hand.size,
-                    )
+                val roundScore = when {
+                    baoPaySeatId == null -> -loserPenalties.getValue(seat.seatId)
+                    seat.seatId == baoPaySeatId -> -totalLoserPenalty
+                    else -> 0
                 }
-
                 RoundScore(
                     seatId = seat.seatId,
                     playerName = seat.displayName,
                     remainingCards = seat.hand.size,
-                    roundScore = -penalty,
+                    roundScore = roundScore,
                 )
             }
 
@@ -45,11 +51,10 @@ object ScoreCalculator {
         ) + loserScores
     }
 
-    private fun calculateSouthernPenalty(
-        remainingCards: Int,
-        totalBombCount: Int,
-    ): Int {
-        return remainingCards * (1 shl totalBombCount)
+    private fun calculateSouthernPenalty(seat: Seat): Int {
+        val basePenalty = seat.hand.size
+        val containsTwo = seat.hand.any { it.rank == CardRank.TWO }
+        return if (containsTwo) basePenalty * 2 else basePenalty
     }
 
     private fun calculateNorthernPenalty(remainingCards: Int): Int {

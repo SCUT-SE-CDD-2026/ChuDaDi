@@ -6,7 +6,7 @@ import com.example.chudadi.model.game.entity.PlayCombination
 class CombinationEvaluator(
     rules: GameRules = GameRules.forRuleSet(GameRuleSet.SOUTHERN),
 ) {
-    private val parser = CombinationParser(rules)
+    private val parser = CombinationParser()
     private val comparator = CombinationComparator(rules)
     private val generator = CombinationGenerator(parser, comparator)
 

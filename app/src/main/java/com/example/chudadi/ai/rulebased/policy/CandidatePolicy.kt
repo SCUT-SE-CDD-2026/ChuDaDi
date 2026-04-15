@@ -3,6 +3,7 @@ package com.example.chudadi.ai.rulebased.policy
 import com.example.chudadi.ai.rulebased.OPENING_CARD
 import com.example.chudadi.ai.rulebased.RuleBasedAiContext
 import com.example.chudadi.model.game.entity.PlayCombination
+import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.rule.CombinationType
 
 internal interface CandidatePolicy {
@@ -26,21 +27,60 @@ internal class DefaultCandidatePolicy(
 
     override fun filterLegalResponses(context: RuleBasedAiContext): List<PlayCombination> {
         val currentCombination = context.currentCombination ?: return emptyList()
-        val sameTypeResponses =
-            context.allCombinations.filter { combination ->
-                !context.rules.isBomb(combination.type) &&
-                    combination.type == currentCombination.type &&
-                    combination.cardCount == currentCombination.cardCount &&
-                    context.evaluator.canBeat(combination, currentCombination)
+        val legalResponses = context.allCombinations
+            .filter { context.evaluator.canBeat(it, currentCombination) }
+
+        return if (requiresTopSingleResponse(context, currentCombination)) {
+            restrictToTopSingle(legalResponses)
+        } else {
+            legalResponses
+        }
+    }
+
+    private fun requiresTopSingleResponse(
+        context: RuleBasedAiContext,
+        currentCombination: PlayCombination,
+    ): Boolean {
+        if (currentCombination.type != CombinationType.SINGLE) {
+            return false
+        }
+
+        val nextSeat = nextActiveSeat(context) ?: return false
+        return nextSeat.hand.size == 1
+    }
+
+    private fun nextActiveSeat(context: RuleBasedAiContext) =
+        context.match.seats
+            .sortedBy { it.seatId }
+            .let { seats ->
+                val maxSeatId = seats.maxOf { it.seatId }
+                var cursor = context.seatIndex
+                repeat(maxSeatId + 1) {
+                    cursor = (cursor + 1) % (maxSeatId + 1)
+                    val seat = seats.first { it.seatId == cursor }
+                    if (seat.status != SeatStatus.FINISHED) {
+                        return@let seat
+                    }
+                }
+                null
             }
 
-        return context.allCombinations
-            .filter { context.evaluator.canBeat(it, currentCombination) }
-            .filter { combination ->
-                if (!context.rules.isBomb(combination.type) || !context.rules.bombRequiresNoSameTypeResponse) {
-                    return@filter true
-                }
-                sameTypeResponses.isEmpty() || currentCombination.type == CombinationType.FOUR_OF_A_KIND_BOMB
+    private fun restrictToTopSingle(legalResponses: List<PlayCombination>): List<PlayCombination> {
+        val legalSingles = legalResponses.filter { it.type == CombinationType.SINGLE }
+        val maxSingle = legalSingles.maxWithOrNull(
+            compareBy<PlayCombination> { it.primaryRank }.thenBy { it.primarySuit },
+        )
+
+        return if (maxSingle == null) {
+            legalResponses
+        } else {
+            legalResponses.filter { candidate ->
+                candidate.type != CombinationType.SINGLE ||
+                    (
+                        candidate.primaryRank == maxSingle.primaryRank &&
+                            candidate.primarySuit == maxSingle.primarySuit
+                    )
             }
+        }
     }
 }

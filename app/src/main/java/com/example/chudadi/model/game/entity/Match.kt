@@ -10,6 +10,5 @@ data class Match(
     val activeSeatIndex: Int,
     val trickState: TrickState,
     val playHistory: List<String>,
-    val totalBombCount: Int,
     val result: RoundResult?,
 )

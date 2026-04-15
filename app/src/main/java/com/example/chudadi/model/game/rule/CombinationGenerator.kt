@@ -14,9 +14,7 @@ class CombinationGenerator(
         combinations += sortedCards.mapNotNull { parser.parse(listOf(it)) }
         combinations += sortedCards.combinations(2).mapNotNull(parser::parse)
         combinations += sortedCards.combinations(3).mapNotNull(parser::parse)
-        combinations += sortedCards.combinations(FOUR_CARD_COUNT).mapNotNull(parser::parse)
         combinations += sortedCards.combinations(FIVE_CARD_COUNT).mapNotNull(parser::parse)
-        combinations += sortedCards.combinations(SIX_CARD_COUNT).mapNotNull(parser::parse)
 
         return combinations
             .distinctBy { combination ->
@@ -56,8 +54,6 @@ class CombinationGenerator(
     }
 
     private companion object {
-        const val FOUR_CARD_COUNT = 4
         const val FIVE_CARD_COUNT = 5
-        const val SIX_CARD_COUNT = 6
     }
 }
