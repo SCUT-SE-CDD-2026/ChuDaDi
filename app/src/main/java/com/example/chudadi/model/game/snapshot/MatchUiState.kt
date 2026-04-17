@@ -24,6 +24,7 @@ data class OpponentSummary(
 )
 
 data class TablePlaySummary(
+    val playId: String,
     val ownerViewSeat: ViewSeat,
     val ownerName: String,
     val combinationLabel: String,

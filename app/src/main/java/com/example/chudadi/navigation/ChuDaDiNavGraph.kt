@@ -45,8 +45,8 @@ fun ChuDaDiNavGraph(
     roomViewModel: RoomViewModel,
     playerPreferencesRepository: PlayerPreferencesRepository,
     localDeviceName: String,
-    onRequestBluetoothEnable: () -> Unit,
-    onRequestBluetoothPermissions: () -> Unit,
+    onRequestBluetoothEnable: (onComplete: () -> Unit) -> Unit,
+    onRequestBluetoothPermissions: (onComplete: () -> Unit) -> Unit,
 ) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
@@ -55,6 +55,73 @@ fun ChuDaDiNavGraph(
     val networkMatchUiState = roomViewModel.matchUiState.collectAsStateWithLifecycle().value
     val playerName = roomViewModel.playerName.collectAsStateWithLifecycle().value
     val activeMatchUiState = if (networkMatchUiState.phase != MatchPhase.NOT_STARTED) networkMatchUiState else uiState
+    val runJoinFlow: () -> Unit = {
+        scope.launch {
+            val reconnected = roomViewModel.tryReconnectLastSession()
+            if (reconnected) {
+                navController.navigate(ROOM_ROUTE) {
+                    launchSingleTop = true
+                }
+            } else {
+                roomViewModel.loadJoinableDevices()
+                navController.navigate(BLUETOOTH_SEARCH_ROUTE)
+            }
+        }
+    }
+    val requestBluetoothConnectReady: ((() -> Unit) -> Unit) = { onReady ->
+        if (!roomViewModel.isBluetoothSupported()) {
+            onReady()
+        } else if (!roomViewModel.hasBluetoothConnectPermission()) {
+            onRequestBluetoothPermissions {
+                if (roomViewModel.hasBluetoothConnectPermission()) {
+                    if (roomViewModel.isBluetoothEnabled()) {
+                        onReady()
+                    } else {
+                        onRequestBluetoothEnable {
+                            if (roomViewModel.isBluetoothEnabled()) {
+                                onReady()
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (!roomViewModel.isBluetoothEnabled()) {
+            onRequestBluetoothEnable {
+                if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                }
+            }
+        } else {
+            onReady()
+        }
+    }
+    val requestBluetoothDiscoveryReady: ((() -> Unit) -> Unit) = { onReady ->
+        if (!roomViewModel.isBluetoothSupported()) {
+            onReady()
+        } else if (!roomViewModel.hasBluetoothConnectPermission() || !roomViewModel.hasBluetoothScanPermission()) {
+            onRequestBluetoothPermissions {
+                if (roomViewModel.hasBluetoothConnectPermission() && roomViewModel.hasBluetoothScanPermission()) {
+                    if (roomViewModel.isBluetoothEnabled()) {
+                        onReady()
+                    } else {
+                        onRequestBluetoothEnable {
+                            if (roomViewModel.isBluetoothEnabled()) {
+                                onReady()
+                            }
+                        }
+                    }
+                }
+            }
+        } else if (!roomViewModel.isBluetoothEnabled()) {
+            onRequestBluetoothEnable {
+                if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                }
+            }
+        } else {
+            onReady()
+        }
+    }
 
     HandlePhaseNavigation(navController = navController, phase = activeMatchUiState.phase)
     LaunchedEffect(
@@ -106,17 +173,7 @@ fun ChuDaDiNavGraph(
                     navController.navigate(ROOM_ROUTE)
                 },
                 onJoinRoom = {
-                    scope.launch {
-                        val reconnected = roomViewModel.tryReconnectLastSession()
-                        if (reconnected) {
-                            navController.navigate(ROOM_ROUTE) {
-                                launchSingleTop = true
-                            }
-                        } else {
-                            roomViewModel.loadJoinableDevices()
-                            navController.navigate(BLUETOOTH_SEARCH_ROUTE)
-                        }
-                    }
+                    requestBluetoothConnectReady(runJoinFlow)
                 },
                 onSettings = {
                     navController.navigate(SETTINGS_ROUTE)
@@ -138,9 +195,9 @@ fun ChuDaDiNavGraph(
                 onAction = { action ->
                     when (action) {
                         RoomAction.StartBluetoothDiscovery -> {
-                            onRequestBluetoothPermissions()
-                            onRequestBluetoothEnable()
-                            roomViewModel.dispatch(action)
+                            requestBluetoothDiscoveryReady {
+                                roomViewModel.dispatch(action)
+                            }
                         }
 
                         is RoomAction.ConnectToBluetoothDevice -> roomViewModel.dispatch(action)

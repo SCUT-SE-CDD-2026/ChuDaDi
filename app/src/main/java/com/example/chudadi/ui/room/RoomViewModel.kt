@@ -111,6 +111,14 @@ class RoomViewModel(
         bluetoothRoomRepository.loadBondedDevices()
     }
 
+    fun isBluetoothSupported(): Boolean = bluetoothRoomRepository.isBluetoothSupported
+
+    fun isBluetoothEnabled(): Boolean = bluetoothRoomRepository.isBluetoothEnabled()
+
+    fun hasBluetoothConnectPermission(): Boolean = bluetoothRoomRepository.hasBluetoothConnectPermission()
+
+    fun hasBluetoothScanPermission(): Boolean = bluetoothRoomRepository.hasBluetoothScanPermission()
+
     suspend fun tryReconnectLastSession(): Boolean {
         val session = reconnectSessionRepository.session.first() ?: return false
         val result = bluetoothRoomRepository.tryReconnectLastSession(

@@ -32,6 +32,7 @@ data class RemoteOpponentSummary(
 
 @Serializable
 data class RemoteTablePlaySummary(
+    val playId: String,
     val ownerViewSeat: String,
     val ownerName: String,
     val combinationLabel: String,
@@ -93,6 +94,7 @@ fun MatchUiState.toRemoteMatchSnapshot(matchId: String): RemoteMatchSnapshot {
         currentActorName = currentActorName,
         tablePlays = tablePlays.map { tablePlay ->
             RemoteTablePlaySummary(
+                playId = tablePlay.playId,
                 ownerViewSeat = tablePlay.ownerViewSeat.name,
                 ownerName = tablePlay.ownerName,
                 combinationLabel = tablePlay.combinationLabel,
@@ -102,6 +104,7 @@ fun MatchUiState.toRemoteMatchSnapshot(matchId: String): RemoteMatchSnapshot {
         },
         currentTablePlay = currentTablePlay?.let { tablePlay ->
             RemoteTablePlaySummary(
+                playId = tablePlay.playId,
                 ownerViewSeat = tablePlay.ownerViewSeat.name,
                 ownerName = tablePlay.ownerName,
                 combinationLabel = tablePlay.combinationLabel,
@@ -158,6 +161,7 @@ fun RemoteMatchSnapshot.toMatchUiState(selectedCardIds: Set<String>): MatchUiSta
         currentActorName = currentActorName,
         tablePlays = tablePlays.map { tablePlay ->
             TablePlaySummary(
+                playId = tablePlay.playId,
                 ownerViewSeat = ViewSeat.valueOf(tablePlay.ownerViewSeat),
                 ownerName = tablePlay.ownerName,
                 combinationLabel = tablePlay.combinationLabel,
@@ -167,6 +171,7 @@ fun RemoteMatchSnapshot.toMatchUiState(selectedCardIds: Set<String>): MatchUiSta
         },
         currentTablePlay = currentTablePlay?.let { tablePlay ->
             TablePlaySummary(
+                playId = tablePlay.playId,
                 ownerViewSeat = ViewSeat.valueOf(tablePlay.ownerViewSeat),
                 ownerName = tablePlay.ownerName,
                 combinationLabel = tablePlay.combinationLabel,

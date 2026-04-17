@@ -8,6 +8,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModelProvider
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.data.repository.ReconnectSessionRepository
@@ -34,20 +39,32 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             ChuDaDiTheme {
+                var pendingEnableCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+                var pendingPermissionCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
+                val latestEnableCallback by rememberUpdatedState(pendingEnableCallback)
+                val latestPermissionCallback by rememberUpdatedState(pendingPermissionCallback)
                 val enableBluetoothLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.StartActivityForResult(),
-                ) { }
+                ) {
+                    latestEnableCallback?.invoke()
+                    pendingEnableCallback = null
+                }
                 val permissionsLauncher = rememberLauncherForActivityResult(
                     contract = ActivityResultContracts.RequestMultiplePermissions(),
-                ) { }
+                ) {
+                    latestPermissionCallback?.invoke()
+                    pendingPermissionCallback = null
+                }
                 ChuDaDiNavGraph(
                     roomViewModel = roomViewModel,
                     playerPreferencesRepository = playerPrefsRepository,
                     localDeviceName = deviceName(),
-                    onRequestBluetoothEnable = {
+                    onRequestBluetoothEnable = { onComplete ->
+                        pendingEnableCallback = onComplete
                         enableBluetoothLauncher.launch(android.content.Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                     },
-                    onRequestBluetoothPermissions = {
+                    onRequestBluetoothPermissions = { onComplete ->
+                        pendingPermissionCallback = onComplete
                         permissionsLauncher.launch(BluetoothPermissionUtils.requiredRuntimePermissions())
                     },
                 )

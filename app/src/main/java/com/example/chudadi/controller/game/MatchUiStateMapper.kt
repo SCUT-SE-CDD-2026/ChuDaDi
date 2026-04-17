@@ -5,6 +5,8 @@ import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.model.game.entity.PlayCombination
+import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
@@ -27,17 +29,12 @@ class MatchUiStateMapper(
 
         val humanSeat = match.seats.first { it.seatId == localSeatId }
         val selectedCards = humanSeat.hand.filter { it.id in selectedCardIds }.map(Card::id).toSet()
-        val tablePlays = match.trickState.tablePlays.entries
-            .mapIndexed { index, (seatId, combination) ->
-                val owner = match.seats.first { it.seatId == seatId }
-                TablePlaySummary(
-                    ownerViewSeat = owner.seatId.toViewSeat(localSeatId),
-                    ownerName = owner.displayName,
-                    combinationLabel = combination.type.displayName,
-                    cardLabels = combination.cards.sortedWith(Card.gameComparator).map(Card::displayName),
-                    stackOrder = index,
-                )
-            }
+        val tablePlays = buildTablePlays(match = match, localSeatId = localSeatId)
+        val currentTablePlay = buildCurrentTablePlay(
+            match = match,
+            localSeatId = localSeatId,
+            stackOrder = tablePlays.size,
+        )
 
         return MatchUiState(
             matchId = match.matchId,
@@ -60,16 +57,7 @@ class MatchUiStateMapper(
                 },
             currentActorName = match.seats.first { it.seatId == match.activeSeatIndex }.displayName,
             tablePlays = tablePlays,
-            currentTablePlay = match.trickState.currentCombination?.let { combination ->
-                val owner = match.seats.first { it.seatId == match.trickState.lastWinningSeatIndex }
-                TablePlaySummary(
-                    ownerViewSeat = owner.seatId.toViewSeat(localSeatId),
-                    ownerName = owner.displayName,
-                    combinationLabel = combination.type.displayName,
-                    cardLabels = combination.cards.sortedWith(Card.gameComparator).map(Card::displayName),
-                    stackOrder = tablePlays.size,
-                )
-            },
+            currentTablePlay = currentTablePlay,
             lastActionMessage = lastActionMessage,
             canSubmitPlay = engine.canSubmitSelectedCards(
                 match = match,
@@ -96,6 +84,75 @@ class MatchUiStateMapper(
     companion object {
         const val DEFAULT_LOCAL_SEAT_ID = 0
         private const val VIEW_SEAT_COUNT = 4
+    }
+
+    private fun buildTablePlays(
+        match: Match,
+        localSeatId: Int,
+    ): List<TablePlaySummary> {
+        return match.trickState.tablePlays.entries.mapIndexed { index, (seatId, combination) ->
+            val owner = match.seats.first { it.seatId == seatId }
+            buildTablePlaySummary(
+                match = match,
+                localSeatId = localSeatId,
+                owner = owner,
+                combination = combination,
+                stackOrder = index,
+            )
+        }
+    }
+
+    private fun buildCurrentTablePlay(
+        match: Match,
+        localSeatId: Int,
+        stackOrder: Int,
+    ): TablePlaySummary? {
+        val combination = match.trickState.currentCombination ?: return null
+        val owner = match.seats.first { it.seatId == match.trickState.lastWinningSeatIndex }
+        return buildTablePlaySummary(
+            match = match,
+            localSeatId = localSeatId,
+            owner = owner,
+            combination = combination,
+            stackOrder = stackOrder,
+        )
+    }
+
+    private fun buildTablePlaySummary(
+        match: Match,
+        localSeatId: Int,
+        owner: Seat,
+        combination: PlayCombination,
+        stackOrder: Int,
+    ): TablePlaySummary {
+        val cardLabels = combination.cards
+            .sortedWith(Card.gameComparator)
+            .map(Card::displayName)
+
+        return TablePlaySummary(
+            playId = buildTablePlayId(
+                roundNumber = match.trickState.roundNumber,
+                seatId = owner.seatId,
+                cardLabels = cardLabels,
+            ),
+            ownerViewSeat = owner.seatId.toViewSeat(localSeatId),
+            ownerName = owner.displayName,
+            combinationLabel = combination.type.displayName,
+            cardLabels = cardLabels,
+            stackOrder = stackOrder,
+        )
+    }
+
+    private fun buildTablePlayId(
+        roundNumber: Int,
+        seatId: Int,
+        cardLabels: List<String>,
+    ): String {
+        return listOf(
+            roundNumber.toString(),
+            seatId.toString(),
+            cardLabels.joinToString(separator = "|"),
+        ).joinToString(separator = ":")
     }
 
     private fun Int.toViewSeat(localSeatId: Int): ViewSeat {

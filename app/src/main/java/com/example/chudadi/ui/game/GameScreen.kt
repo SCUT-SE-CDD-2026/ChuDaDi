@@ -56,6 +56,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -415,13 +416,15 @@ private fun CenterPlayArea(
                 .padding(bottom = layoutSpec.centerPlayBottomClearance),
         ) {
             tablePlays.forEach { tablePlay ->
-                TablePlaySlot(
-                    tablePlay = tablePlay,
-                    layoutSpec = layoutSpec,
-                    modifier = Modifier
-                        .align(playAlignment(tablePlay.ownerViewSeat))
-                        .zIndex(tablePlay.stackOrder.toFloat()),
-                )
+                key(tablePlay.playId) {
+                    TablePlaySlot(
+                        tablePlay = tablePlay,
+                        layoutSpec = layoutSpec,
+                        modifier = Modifier
+                            .align(playAlignment(tablePlay.ownerViewSeat))
+                            .zIndex(tablePlay.stackOrder.toFloat()),
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
@@ -461,14 +464,13 @@ private fun TablePlaySlot(
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
-    var animationKey by remember(tablePlay.ownerViewSeat) { mutableIntStateOf(0) }
-    var previousSignature by remember(tablePlay.ownerViewSeat) { mutableStateOf<String?>(null) }
-    val tablePlaySignature = remember(tablePlay.cardLabels) { tablePlay.cardLabels.joinToString(separator = "|") }
+    var animationKey by remember(tablePlay.playId) { mutableIntStateOf(0) }
+    var hasAnimated by remember(tablePlay.playId) { mutableStateOf(false) }
 
-    LaunchedEffect(tablePlaySignature) {
-        if (tablePlay.cardLabels.isNotEmpty() && previousSignature != tablePlaySignature) {
+    LaunchedEffect(tablePlay.playId) {
+        if (tablePlay.cardLabels.isNotEmpty() && !hasAnimated) {
             animationKey += 1
-            previousSignature = tablePlaySignature
+            hasAnimated = true
         }
     }
 

@@ -176,6 +176,10 @@ class BluetoothRoomRepository(
 
     fun isBluetoothEnabled(): Boolean = bluetoothAdapter?.isEnabled == true
 
+    fun hasBluetoothConnectPermission(): Boolean = BluetoothPermissionUtils.hasConnectPermission(appContext)
+
+    fun hasBluetoothScanPermission(): Boolean = BluetoothPermissionUtils.hasScanPermission(appContext)
+
     @SuppressLint("MissingPermission")
     fun loadBondedDevices() {
         val devices = getBondedDevices().map { it.toUiState() }
@@ -272,6 +276,7 @@ class BluetoothRoomRepository(
         device: BluetoothDiscoveredDevice,
         playerName: String,
         avatarResId: Int?,
+        resumeParticipantId: String? = null,
     ): Result<Unit> {
         val adapter = bluetoothAdapter ?: return Result.failure(IllegalStateException("设备不支持蓝牙"))
         if (!BluetoothPermissionUtils.hasConnectPermission(appContext)) {
@@ -292,7 +297,11 @@ class BluetoothRoomRepository(
                 val socket = remoteDevice.createRfcommSocketToServiceRecord(ROOM_UUID)
                 socket.connect()
                 val connection = RoomSocketConnection(socket = socket, frameCodec = frameCodec)
-                val accepted = connection.awaitJoinAccepted(playerName = playerName, avatarResId = avatarResId)
+                val accepted = connection.awaitJoinAccepted(
+                    playerName = playerName,
+                    avatarResId = avatarResId,
+                    resumeParticipantId = resumeParticipantId,
+                )
                 roomRole = RoomRole.Client(
                     localParticipantId = accepted.localParticipantId,
                     hostDeviceName = accepted.snapshot.hostDeviceName,
@@ -342,10 +351,8 @@ class BluetoothRoomRepository(
             ),
             playerName = playerName,
             avatarResId = avatarResId,
+            resumeParticipantId = session.participantId,
         )
-        if (result.isFailure) {
-            reconnectSessionRepository.clearSession()
-        }
         return result
     }
 
@@ -672,7 +679,9 @@ class BluetoothRoomRepository(
         connection: RoomSocketConnection,
         request: RoomWireMessage.JoinRoomRequest,
     ) {
-        val participantId = participantIdForConnection(connection)
+        val participantId = request.resumeParticipantId
+            ?.takeIf { authorityState.participants.containsKey(it) }
+            ?: participantIdForConnection(connection)
         val existingParticipant = authorityState.participants[participantId]
         val existingSlotIndex = slotIndexOfParticipant(participantId)
 
@@ -1426,23 +1435,21 @@ class BluetoothRoomRepository(
         )
     }
 
-    private fun persistReconnectSession(
+    private suspend fun persistReconnectSession(
         participantId: String,
         hostAddress: String,
         hostDeviceName: String,
         roomName: String,
     ) {
-        scope.launch {
-            reconnectSessionRepository.updateSession(
-                ReconnectSession(
-                    hostAddress = hostAddress,
-                    hostDeviceName = hostDeviceName,
-                    participantId = participantId,
-                    roomName = roomName,
-                    savedAtMillis = System.currentTimeMillis(),
-                ),
+        reconnectSessionRepository.updateSession(
+            ReconnectSession(
+                hostAddress = hostAddress,
+                hostDeviceName = hostDeviceName,
+                participantId = participantId,
+                roomName = roomName,
+                savedAtMillis = System.currentTimeMillis(),
             )
-        }
+        )
     }
 
     private fun shutdownCurrentRole() {
@@ -1563,8 +1570,18 @@ private class RoomSocketConnection(
     private val bluetoothSocket = socket
     val remoteAddress: String = socket.remoteDevice?.address.orEmpty()
 
-    suspend fun awaitJoinAccepted(playerName: String, avatarResId: Int?): RoomWireMessage.JoinRoomAccepted {
-        send(RoomWireMessage.JoinRoomRequest(playerName = playerName, avatarResId = avatarResId))
+    suspend fun awaitJoinAccepted(
+        playerName: String,
+        avatarResId: Int?,
+        resumeParticipantId: String? = null,
+    ): RoomWireMessage.JoinRoomAccepted {
+        send(
+            RoomWireMessage.JoinRoomRequest(
+                playerName = playerName,
+                avatarResId = avatarResId,
+                resumeParticipantId = resumeParticipantId,
+            ),
+        )
         return when (val response = read()) {
             is RoomWireMessage.JoinRoomAccepted -> response
             is RoomWireMessage.JoinRoomRejected -> throw IOException(response.reason)

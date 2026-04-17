@@ -38,6 +38,7 @@ sealed class RoomWireMessage {
     data class JoinRoomRequest(
         val playerName: String,
         val avatarResId: Int?,
+        val resumeParticipantId: String? = null,
     ) : RoomWireMessage()
 
     @Serializable
