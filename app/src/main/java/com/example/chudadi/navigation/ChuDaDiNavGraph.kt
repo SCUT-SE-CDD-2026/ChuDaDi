@@ -70,7 +70,7 @@ fun ChuDaDiNavGraph(
     }
     val requestBluetoothConnectReady: ((() -> Unit) -> Unit) = { onReady ->
         if (!roomViewModel.isBluetoothSupported()) {
-            onReady()
+            roomViewModel.showHomeNotice("当前设备不支持蓝牙")
         } else if (!roomViewModel.hasBluetoothConnectPermission()) {
             onRequestBluetoothPermissions {
                 if (roomViewModel.hasBluetoothConnectPermission()) {
@@ -80,7 +80,42 @@ fun ChuDaDiNavGraph(
                         onRequestBluetoothEnable {
                             if (roomViewModel.isBluetoothEnabled()) {
                                 onReady()
+                            } else {
+                                roomViewModel.showHomeNotice("未开启蓝牙，无法加入房间")
                             }
+                        }
+                    }
+                } else {
+                    roomViewModel.showHomeNotice("缺少蓝牙连接权限，无法加入房间")
+                }
+            }
+        } else if (!roomViewModel.isBluetoothEnabled()) {
+            onRequestBluetoothEnable {
+                if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                } else {
+                    roomViewModel.showHomeNotice("未开启蓝牙，无法加入房间")
+                }
+            }
+        } else {
+            onReady()
+        }
+    }
+    val requestBluetoothHostReady: ((() -> Unit) -> Unit) = { onReady ->
+        if (!roomViewModel.isBluetoothSupported()) {
+            roomViewModel.showHomeNotice("当前设备不支持蓝牙，无法创建房间")
+        } else if (!roomViewModel.hasBluetoothConnectPermission()) {
+            onRequestBluetoothPermissions {
+                if (!roomViewModel.hasBluetoothConnectPermission()) {
+                    roomViewModel.showHomeNotice("缺少蓝牙连接权限，无法创建房间")
+                } else if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                } else {
+                    onRequestBluetoothEnable {
+                        if (roomViewModel.isBluetoothEnabled()) {
+                            onReady()
+                        } else {
+                            roomViewModel.showHomeNotice("未开启蓝牙，无法创建房间")
                         }
                     }
                 }
@@ -89,6 +124,8 @@ fun ChuDaDiNavGraph(
             onRequestBluetoothEnable {
                 if (roomViewModel.isBluetoothEnabled()) {
                     onReady()
+                } else {
+                    roomViewModel.showHomeNotice("未开启蓝牙，无法创建房间")
                 }
             }
         } else {
@@ -97,7 +134,7 @@ fun ChuDaDiNavGraph(
     }
     val requestBluetoothDiscoveryReady: ((() -> Unit) -> Unit) = { onReady ->
         if (!roomViewModel.isBluetoothSupported()) {
-            onReady()
+            roomViewModel.showJoinError("当前设备不支持蓝牙")
         } else if (!roomViewModel.hasBluetoothConnectPermission() || !roomViewModel.hasBluetoothScanPermission()) {
             onRequestBluetoothPermissions {
                 if (roomViewModel.hasBluetoothConnectPermission() && roomViewModel.hasBluetoothScanPermission()) {
@@ -107,15 +144,21 @@ fun ChuDaDiNavGraph(
                         onRequestBluetoothEnable {
                             if (roomViewModel.isBluetoothEnabled()) {
                                 onReady()
+                            } else {
+                                roomViewModel.showJoinError("未开启蓝牙，无法搜索房间")
                             }
                         }
                     }
+                } else {
+                    roomViewModel.showJoinError("缺少蓝牙权限，无法搜索房间")
                 }
             }
         } else if (!roomViewModel.isBluetoothEnabled()) {
             onRequestBluetoothEnable {
                 if (roomViewModel.isBluetoothEnabled()) {
                     onReady()
+                } else {
+                    roomViewModel.showJoinError("未开启蓝牙，无法搜索房间")
                 }
             }
         } else {
@@ -169,8 +212,12 @@ fun ChuDaDiNavGraph(
                 noticeMessage = roomUiState.homeNoticeMessage,
                 onDismissNotice = { roomViewModel.dispatch(RoomAction.ConsumeHomeNotice) },
                 onCreateRoom = {
-                    roomViewModel.createHostRoom(localDeviceName)
-                    navController.navigate(ROOM_ROUTE)
+                    requestBluetoothHostReady {
+                        val created = roomViewModel.createHostRoom(localDeviceName)
+                        if (created) {
+                            navController.navigate(ROOM_ROUTE)
+                        }
+                    }
                 },
                 onJoinRoom = {
                     requestBluetoothConnectReady(runJoinFlow)

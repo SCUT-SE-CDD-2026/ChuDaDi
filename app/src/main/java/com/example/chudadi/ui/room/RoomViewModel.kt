@@ -75,7 +75,7 @@ class RoomViewModel(
     @Suppress("CyclomaticComplexMethod")
     fun dispatch(action: RoomAction) {
         when (action) {
-            RoomAction.StartBluetoothDiscovery -> bluetoothRoomRepository.startDiscovery()
+            RoomAction.StartBluetoothDiscovery -> bluetoothRoomRepository.startDiscoveryWithFeedback()
             is RoomAction.ConnectToBluetoothDevice -> connectToBluetoothDevice(action.address)
             RoomAction.ToggleRule -> bluetoothRoomRepository.handleToggleRule()
             is RoomAction.AddAiToSlot -> bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
@@ -108,7 +108,15 @@ class RoomViewModel(
     }
 
     fun loadJoinableDevices() {
-        bluetoothRoomRepository.loadBondedDevices()
+        bluetoothRoomRepository.loadBondedDevicesWithFeedback()
+    }
+
+    fun showHomeNotice(message: String) {
+        bluetoothRoomRepository.showHomeNotice(message)
+    }
+
+    fun showJoinError(message: String) {
+        bluetoothRoomRepository.showJoinError(message)
     }
 
     fun isBluetoothSupported(): Boolean = bluetoothRoomRepository.isBluetoothSupported
@@ -129,13 +137,14 @@ class RoomViewModel(
         return result.isSuccess
     }
 
-    fun createHostRoom(hostDeviceName: String) {
+    fun createHostRoom(hostDeviceName: String): Boolean {
         scoreAdjustments.value = emptyMap()
-        bluetoothRoomRepository.createHostRoom(
+        val result = bluetoothRoomRepository.createHostRoom(
             playerName = playerName.value,
             avatarResId = avatarResId.value,
             hostDeviceName = hostDeviceName,
         )
+        return result.isSuccess
     }
 
     private fun connectToBluetoothDevice(address: String) {

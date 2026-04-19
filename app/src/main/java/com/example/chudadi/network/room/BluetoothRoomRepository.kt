@@ -241,7 +241,12 @@ class BluetoothRoomRepository(
         playerName: String,
         avatarResId: Int?,
         hostDeviceName: String,
-    ) {
+    ): Result<Unit> {
+        val adapter = bluetoothAdapter
+            ?: return Result.failure(IllegalStateException("当前设备不支持蓝牙"))
+        if (!BluetoothPermissionUtils.hasConnectPermission(appContext)) {
+            return Result.failure(IllegalStateException("缺少蓝牙连接权限，无法创建房间"))
+        }
         shutdownCurrentRole()
         localMatchController.reset()
         roomRole = RoomRole.Host(
@@ -268,8 +273,7 @@ class BluetoothRoomRepository(
                 if (slotIndex == 0) HOST_PARTICIPANT_ID else null
             },
         )
-        publishUiState(connectionHint = "已开启蓝牙房间，等待成员加入")
-        startServer()
+        return startServerSynchronously(adapter)
     }
 
     suspend fun connectToHost(
@@ -563,6 +567,64 @@ class BluetoothRoomRepository(
         _roomUiState.update { it.copy(joinErrorMessage = null) }
     }
 
+    fun showHomeNotice(message: String) {
+        _roomUiState.update {
+            it.copy(
+                homeNoticeMessage = message,
+                connectionHint = message,
+            )
+        }
+    }
+
+    fun showJoinError(message: String) {
+        _roomUiState.update {
+            it.copy(
+                searchState = BluetoothSearchState.FAILED,
+                connectionHint = message,
+                joinErrorMessage = message,
+            )
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun loadBondedDevicesWithFeedback() {
+        if (!BluetoothPermissionUtils.hasConnectPermission(appContext)) {
+            showJoinError("缺少蓝牙连接权限")
+            return
+        }
+        loadBondedDevices()
+        _roomUiState.update { it.copy(joinErrorMessage = null) }
+    }
+
+    @SuppressLint("MissingPermission")
+    fun startDiscoveryWithFeedback() {
+        val adapter = bluetoothAdapter ?: run {
+            showJoinError("当前设备不支持蓝牙")
+            return
+        }
+        if (!BluetoothPermissionUtils.hasScanPermission(appContext)) {
+            showJoinError("缺少蓝牙扫描权限")
+            return
+        }
+        registerDiscoveryReceiverIfNeeded()
+        if (adapter.isDiscovering) {
+            adapter.cancelDiscovery()
+        }
+        loadBondedDevicesWithFeedback()
+        val started = adapter.startDiscovery()
+        if (!started) {
+            showJoinError("蓝牙扫描启动失败，请确认蓝牙已开启且当前未被系统占用")
+            return
+        }
+        _roomUiState.update {
+            it.copy(
+                searchState = BluetoothSearchState.SCANNING,
+                connectionHint = "姝ｅ湪鎼滅储钃濈墮鎴块棿...",
+                joinErrorMessage = null,
+            )
+        }
+    }
+
     fun resetRoomScores() {
         if (roomRole !is RoomRole.Host) return
         authorityState = authorityState.copy(
@@ -574,24 +636,26 @@ class BluetoothRoomRepository(
         broadcastSnapshot()
     }
 
-    private fun startServer() {
-        val adapter = bluetoothAdapter ?: return
-        if (!BluetoothPermissionUtils.hasConnectPermission(appContext)) {
-            _roomUiState.update { it.copy(connectionHint = "缺少蓝牙连接权限，无法开启房间") }
-            return
-        }
+    @SuppressLint("MissingPermission")
+    private fun startServerSynchronously(adapter: BluetoothAdapter): Result<Unit> {
         acceptJob?.cancel()
         heartbeatJob?.cancel()
-        scope.launch {
-            try {
-                @SuppressLint("MissingPermission")
-                val socket = adapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, ROOM_UUID)
-                serverSocket = socket
-                acceptJob = launchAcceptLoop(socket)
-                heartbeatJob = launchHeartbeatLoop()
-            } catch (_: IOException) {
-                _roomUiState.update { it.copy(connectionHint = "蓝牙房间监听启动失败") }
-            }
+        return try {
+            val socket = adapter.listenUsingRfcommWithServiceRecord(SERVICE_NAME, ROOM_UUID)
+            serverSocket = socket
+            acceptJob = launchAcceptLoop(socket)
+            heartbeatJob = launchHeartbeatLoop()
+            publishUiState(connectionHint = "已开启蓝牙房间，等待成员加入")
+            Result.success(Unit)
+        } catch (error: IOException) {
+            shutdownCurrentRole()
+            authorityState = RoomAuthorityState()
+            localMatchController.reset()
+            _roomUiState.value = RoomUiState(
+                homeNoticeMessage = "创建房间失败，请重试",
+                connectionHint = error.message ?: "蓝牙房间监听启动失败",
+            )
+            Result.failure(error)
         }
     }
 
