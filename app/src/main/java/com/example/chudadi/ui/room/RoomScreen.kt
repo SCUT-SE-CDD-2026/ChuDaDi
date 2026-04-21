@@ -70,6 +70,8 @@ private val ScorePositive = Color(0xFF81C784)
 private val ScoreNegative = Color(0xFFE57373)
 private val DividerColor = Color(0x33C8A96A)
 private val GoldAccent = Color(0xFFD4A85A)
+private val HostActionButtonCompactHeight = 32.dp
+private val HostActionButtonExpandedHeight = 40.dp
 
 @Composable
 fun RoomScreen(
@@ -475,6 +477,11 @@ private fun ControlPanel(
     onAction: (RoomAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val hostActionButtonHeight = if (uiState.canEnableBroadcast) {
+        HostActionButtonCompactHeight
+    } else {
+        HostActionButtonExpandedHeight
+    }
     // Use Column with explicit Spacer instead of Arrangement.spacedBy to avoid
     // weight(1f) interaction issues that cause button height distortion
     Column(
@@ -496,18 +503,31 @@ private fun ControlPanel(
             value = if (uiState.bluetoothVisible) "房间广播中" else "未广播",
             valueColor = if (uiState.bluetoothVisible) StatusReady else TextMuted,
         )
-        Spacer(modifier = Modifier.height(6.dp))
+        if (uiState.canEnableBroadcast) {
+            Spacer(modifier = Modifier.height(6.dp))
+            ChuButton(
+                text = "开启广播",
+                onClick = { onAction(RoomAction.EnableBluetoothBroadcast) },
+                style = ChuButtonStyle.SECONDARY,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(hostActionButtonHeight),
+            )
+        }
+        Spacer(modifier = Modifier.height(4.dp))
         Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         if (uiState.isHost) {
             Text("房主操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             ChuButton(
                 text = "切换: ${uiState.currentRule.label}",
                 onClick = { onAction(RoomAction.ToggleRule) },
                 style = ChuButtonStyle.SECONDARY,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(hostActionButtonHeight),
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -528,6 +548,7 @@ private fun ControlPanel(
                 enabled = uiState.canStartGame,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(hostActionButtonHeight)
                     .testTag(ComposeTestTags.START_GAME_BUTTON),
             )
         } else {
@@ -548,7 +569,9 @@ private fun ControlPanel(
                 text = if (isReady) "取消准备" else "准备",
                 onClick = { onAction(RoomAction.ToggleReady) },
                 style = if (isReady) ChuButtonStyle.SECONDARY else ChuButtonStyle.PRIMARY,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(hostActionButtonHeight),
             )
         }
 

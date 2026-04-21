@@ -46,6 +46,7 @@ enum class GameRuleDisplay(val label: String) {
 
 data class RoomUiState(
     val isHost: Boolean = true,
+    val roomMode: RoomMode = RoomMode.LOCAL,
     val roomName: String = "",
     val hostDeviceName: String = "",
     val currentRule: GameRuleDisplay = GameRuleDisplay.SOUTHERN,
@@ -57,6 +58,10 @@ data class RoomUiState(
     val searchState: BluetoothSearchState = BluetoothSearchState.IDLE,
     val selectedDeviceAddress: String? = null,
     val canStartGame: Boolean = false,
+    val canStartLocalGame: Boolean = false,
+    val canStartNetworkGame: Boolean = false,
+    val canEnableBroadcast: Boolean = false,
+    val canManageAiSeats: Boolean = false,
     val pendingSwapRequest: SwapRequest? = null,
     val removedFromRoom: Boolean = false,
     val roomClosedByHost: Boolean = false,

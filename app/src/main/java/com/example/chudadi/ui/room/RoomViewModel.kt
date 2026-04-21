@@ -9,16 +9,25 @@ import com.example.chudadi.R
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.data.repository.ReconnectSessionRepository
+import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.RoundScore
+import com.example.chudadi.model.game.entity.SeatControllerType
+import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
+import com.example.chudadi.navigation.AppFlowNavigationEvent
+import com.example.chudadi.navigation.AppFlowRoute
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
 import com.example.chudadi.network.room.BluetoothRoomRepository
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -44,6 +53,10 @@ class RoomViewModel(
         )
 
     private val scoreAdjustments = MutableStateFlow<Map<Int, Int>>(emptyMap())
+    private val _appFlowEvents = MutableSharedFlow<AppFlowNavigationEvent>(extraBufferCapacity = 8)
+    private val _gameLaunchEvents = MutableSharedFlow<RoomGameLaunchEvent>(extraBufferCapacity = 4)
+    private val _externalEvents = MutableSharedFlow<RoomExternalEvent>(extraBufferCapacity = 4)
+
     val matchUiState: StateFlow<MatchUiState> = bluetoothRoomRepository.matchUiState
         .stateIn(
             scope = viewModelScope,
@@ -58,12 +71,14 @@ class RoomViewModel(
     ) { roomState, latestPlayerName, scoreMap ->
         roomState.copy(
             slots = roomState.slots.map { slot ->
-                val withName = if (slot.isLocalPlayer && slot.displayName != latestPlayerName) {
+                val slotWithLatestName = if (slot.isLocalPlayer && slot.displayName != latestPlayerName) {
                     slot.copy(displayName = latestPlayerName)
                 } else {
                     slot
                 }
-                withName.copy(cumulativeScore = scoreMap[slot.seatId] ?: withName.cumulativeScore)
+                slotWithLatestName.copy(
+                    cumulativeScore = scoreMap[slot.seatId] ?: slotWithLatestName.cumulativeScore,
+                )
             },
         )
     }.stateIn(
@@ -71,6 +86,15 @@ class RoomViewModel(
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = RoomUiState(),
     )
+
+    val appFlowEvents: SharedFlow<AppFlowNavigationEvent> = _appFlowEvents.asSharedFlow()
+    val gameLaunchEvents: SharedFlow<RoomGameLaunchEvent> = _gameLaunchEvents.asSharedFlow()
+    val externalEvents: SharedFlow<RoomExternalEvent> = _externalEvents.asSharedFlow()
+
+    init {
+        observeRoomExitEvents()
+        observeMatchFinishedEvents()
+    }
 
     @Suppress("CyclomaticComplexMethod")
     fun dispatch(action: RoomAction) {
@@ -88,7 +112,10 @@ class RoomViewModel(
                 }
             }
             RoomAction.ToggleReady -> bluetoothRoomRepository.handleToggleReady()
-            RoomAction.StartGame -> bluetoothRoomRepository.startNetworkMatch()
+            RoomAction.StartGame -> startConfiguredGame()
+            RoomAction.EnableBluetoothBroadcast -> {
+                _externalEvents.tryEmit(RoomExternalEvent.RequestEnableBluetoothBroadcast)
+            }
             RoomAction.ResetScores -> {
                 scoreAdjustments.value = emptyMap()
                 bluetoothRoomRepository.resetRoomScores()
@@ -147,6 +174,24 @@ class RoomViewModel(
         return result.isSuccess
     }
 
+    fun createLocalRoom(hostDeviceName: String) {
+        scoreAdjustments.value = emptyMap()
+        bluetoothRoomRepository.createLocalRoom(
+            playerName = playerName.value,
+            avatarResId = avatarResId.value,
+            hostDeviceName = hostDeviceName,
+        )
+    }
+
+    fun enableBluetoothBroadcast(hostDeviceName: String): Boolean {
+        val result = bluetoothRoomRepository.enableBluetoothBroadcast(hostDeviceName)
+        return result.isSuccess
+    }
+
+    fun dispatchGameAction(action: LocalGameAction) {
+        bluetoothRoomRepository.onLocalGameAction(action)
+    }
+
     private fun connectToBluetoothDevice(address: String) {
         val target = uiState.value.discoveredDevices.firstOrNull { it.address == address } ?: return
         viewModelScope.launch {
@@ -172,8 +217,90 @@ class RoomViewModel(
         }
     }
 
-    fun dispatchGameAction(action: LocalGameAction) {
-        bluetoothRoomRepository.onLocalGameAction(action)
+    private fun startConfiguredGame() {
+        when (uiState.value.roomMode) {
+            RoomMode.LOCAL -> emitLocalGameLaunch()
+            RoomMode.BLUETOOTH_HOST -> bluetoothRoomRepository.startNetworkMatch()
+            RoomMode.BLUETOOTH_CLIENT -> Unit
+        }
+    }
+
+    private fun emitLocalGameLaunch() {
+        val slots = uiState.value.slots
+        val seatConfigs = slots.map { slot ->
+            val controllerType = if (slot.occupantType == SlotOccupantType.AI) {
+                SeatControllerType.RULE_BASED_AI
+            } else {
+                SeatControllerType.HUMAN
+            }
+            Triple(
+                slot.seatId,
+                slot.displayName.ifBlank { "玩家${slot.seatId + 1}" },
+                controllerType,
+            )
+        }
+        val localSeatId = slots.firstOrNull { it.isLocalPlayer }?.seatId ?: 0
+        val ruleSet = when (uiState.value.currentRule) {
+            GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
+            GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
+        }
+        _gameLaunchEvents.tryEmit(
+            RoomGameLaunchEvent.StartLocalMatch(
+                seatConfigs = seatConfigs,
+                localSeatId = localSeatId,
+                ruleSet = ruleSet,
+            ),
+        )
+    }
+
+    private fun observeRoomExitEvents() {
+        viewModelScope.launch {
+            uiState
+                .map { it.removedFromRoom to it.homeNoticeMessage }
+                .distinctUntilChanged()
+                .collect { (removedFromRoom, _) ->
+                    if (removedFromRoom) {
+                        _appFlowEvents.emit(
+                            AppFlowNavigationEvent(
+                                route = AppFlowRoute.HOME,
+                                popUpTo = AppFlowRoute.HOME,
+                                inclusive = true,
+                            ),
+                        )
+                        bluetoothRoomRepository.consumeRoomExitNotice()
+                    }
+                }
+        }
+        viewModelScope.launch {
+            uiState
+                .map { it.roomClosedByHost to it.homeNoticeMessage }
+                .distinctUntilChanged()
+                .collect { (roomClosedByHost, _) ->
+                    if (roomClosedByHost) {
+                        _appFlowEvents.emit(
+                            AppFlowNavigationEvent(
+                                route = AppFlowRoute.HOME,
+                                popUpTo = AppFlowRoute.HOME,
+                                inclusive = true,
+                            ),
+                        )
+                        bluetoothRoomRepository.consumeRoomExitNotice()
+                    }
+                }
+        }
+    }
+
+    private fun observeMatchFinishedEvents() {
+        viewModelScope.launch {
+            matchUiState
+                .map { it.phase == MatchPhase.FINISHED }
+                .distinctUntilChanged()
+                .collect { isFinished ->
+                    if (isFinished) {
+                        _appFlowEvents.emit(AppFlowNavigationEvent(route = AppFlowRoute.RESULT))
+                    }
+                }
+        }
     }
 
     override fun onCleared() {
