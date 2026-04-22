@@ -5,6 +5,7 @@ package com.example.chudadi.controller.server
 import com.example.chudadi.ai.rulebased.AiDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.controller.client.GameActionMessageFormatter
+import com.example.chudadi.controller.game.MatchTurnTimer
 import com.example.chudadi.controller.game.MatchUiStateMapper
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Match
@@ -17,9 +18,6 @@ import com.example.chudadi.network.game.GameWireMessage
 import com.example.chudadi.network.game.toRemoteMatchSnapshot
 import com.example.chudadi.network.protocol.PassCommand
 import com.example.chudadi.network.protocol.PlayCardCommand
-import kotlin.random.Random
-
-private const val MILLIS_PER_SECOND = 1000L
 
 class BluetoothAuthoritativeMatchController(
     private val engine: GameEngine,
@@ -27,7 +25,7 @@ class BluetoothAuthoritativeMatchController(
     private val aiPlayer: RuleBasedAiPlayer,
 ) {
     private var currentMatch: Match? = null
-    private var turnTimerState: TurnTimerState = TurnTimerState.Idle
+    private val turnTimer = MatchTurnTimer()
     private var disconnectedSeatIds: Set<Int> = emptySet()
 
     fun startMatch(
@@ -137,16 +135,15 @@ class BluetoothAuthoritativeMatchController(
     }
 
     fun isCurrentTurnExpired(nowMillis: Long = System.currentTimeMillis()): Boolean {
-        return turnTimerState.deadlineAtMillis?.let { nowMillis >= it } ?: false
+        return turnTimer.isExpired(nowMillis)
     }
 
     fun remainingTurnSeconds(nowMillis: Long = System.currentTimeMillis()): Int? {
-        val deadline = turnTimerState.deadlineAtMillis ?: return null
-        return ((deadline - nowMillis).coerceAtLeast(0L) / MILLIS_PER_SECOND).toInt()
+        return turnTimer.remainingTurnSeconds(nowMillis)
     }
 
     fun isCurrentActorAi(): Boolean {
-        return turnTimerState is TurnTimerState.AiThinking
+        return turnTimer.isCurrentActorAi()
     }
 
     fun canCurrentSeatPass(): Boolean {
@@ -168,34 +165,25 @@ class BluetoothAuthoritativeMatchController(
 
     fun closeMatch(reason: String): GameWireMessage.MatchClosed {
         currentMatch = null
-        turnTimerState = TurnTimerState.Idle
+        turnTimer.reset()
         disconnectedSeatIds = emptySet()
         return GameWireMessage.MatchClosed(reason)
     }
 
     fun clearCurrentMatch() {
         currentMatch = null
-        turnTimerState = TurnTimerState.Idle
+        turnTimer.reset()
         disconnectedSeatIds = emptySet()
     }
 
     private fun scheduleCurrentTurn(match: Match, forceHumanWindow: Boolean = false) {
         if (match.phase == MatchPhase.FINISHED) {
-            turnTimerState = TurnTimerState.Idle
+            turnTimer.reset()
             return
         }
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = !forceHumanWindow && isAiDrivenSeat(activeSeat.seatId, activeSeat.controllerType)
-        val deadlineAtMillis = System.currentTimeMillis() + if (isAiDrivenTurn) {
-            aiDelayMillis()
-        } else {
-            HUMAN_TURN_DURATION_MS
-        }
-        turnTimerState = if (isAiDrivenTurn) {
-            TurnTimerState.AiThinking(deadlineAtMillis)
-        } else {
-            TurnTimerState.HumanTurn(deadlineAtMillis)
-        }
+        turnTimer.scheduleTurn(isAiDrivenTurn = isAiDrivenTurn)
     }
 
     private fun isAiDrivenSeat(seatId: Int, controllerType: SeatControllerType): Boolean {
@@ -229,30 +217,7 @@ class BluetoothAuthoritativeMatchController(
             roundScores = action.match.result?.scoreSummary?.roundScores.orEmpty(),
         )
     }
-
-    private fun aiDelayMillis(): Long = Random.nextLong(AI_DELAY_MIN_MS, AI_DELAY_MAX_MS + 1)
-
-    companion object {
-        private const val HUMAN_TURN_DURATION_MS = 15_000L
-        private const val AI_DELAY_MIN_MS = 2_000L
-        private const val AI_DELAY_MAX_MS = 3_500L
-    }
 }
-
-private sealed interface TurnTimerState {
-    data object Idle : TurnTimerState
-
-    data class HumanTurn(val deadlineAtMillis: Long) : TurnTimerState
-
-    data class AiThinking(val deadlineAtMillis: Long) : TurnTimerState
-}
-
-private val TurnTimerState.deadlineAtMillis: Long?
-    get() = when (this) {
-        TurnTimerState.Idle -> null
-        is TurnTimerState.HumanTurn -> deadlineAtMillis
-        is TurnTimerState.AiThinking -> deadlineAtMillis
-    }
 
 data class MatchActionEnvelope(
     val match: Match?,

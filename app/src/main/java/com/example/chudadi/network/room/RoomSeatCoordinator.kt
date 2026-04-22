@@ -11,15 +11,23 @@ import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.room.SwapRequest
 
+interface RoomSeatPort {
+    fun snapshotOfCurrentRoom(): RemoteRoomSnapshot
+
+    fun publishConnectionHint(message: String)
+
+    fun showHostSwapPrompt(request: SwapRequest)
+
+    fun clearPendingSwapRequest()
+
+    fun broadcastSnapshot()
+}
+
 class RoomSeatCoordinator(
     private val authorityStore: RoomAuthorityStore,
     private val socketManager: RoomSocketManager,
     private val localParticipantIdProvider: () -> String,
-    private val snapshotProvider: () -> RemoteRoomSnapshot,
-    private val publishUiState: (String) -> Unit,
-    private val showHostSwapPrompt: (SwapRequest) -> Unit,
-    private val clearPendingSwapRequest: () -> Unit,
-    private val broadcastSnapshot: () -> Unit,
+    private val port: RoomSeatPort,
 ) {
     fun handleAddAiToSlot(slotIndex: Int, difficulty: AiDifficulty) {
         if (authorityStore.occupantAt(slotIndex) != null) return
@@ -39,8 +47,8 @@ class RoomSeatCoordinator(
                 slotAssignments = it.slotAssignments + (slotIndex to aiId),
             )
         }
-        publishUiState("已更新房间成员")
-        broadcastSnapshot()
+        port.publishConnectionHint("已更新房间成员")
+        port.broadcastSnapshot()
     }
 
     fun setRemoteReady(participantId: String, ready: Boolean) {
@@ -50,8 +58,8 @@ class RoomSeatCoordinator(
             )
         }
         val displayName = authorityStore.state.participants[participantId]?.displayName.orEmpty()
-        publishUiState("$displayName ${if (ready) "已准备" else "取消准备"}")
-        broadcastSnapshot()
+        port.publishConnectionHint("$displayName ${if (ready) "已准备" else "取消准备"}")
+        port.broadcastSnapshot()
     }
 
     fun toggleReadyForParticipant(participantId: String) {
@@ -64,8 +72,8 @@ class RoomSeatCoordinator(
         authorityStore.updateParticipant(participantId) {
             it.copy(connectionStatus = nextStatus)
         }
-        publishUiState("准备状态已更新")
-        broadcastSnapshot()
+        port.publishConnectionHint("准备状态已更新")
+        port.broadcastSnapshot()
     }
 
     fun handleHostSwapRequest(requesterParticipantId: String, targetSlotIndex: Int) {
@@ -85,14 +93,14 @@ class RoomSeatCoordinator(
         when (targetParticipant.occupantType) {
             SlotOccupantType.AI -> applySeatSwap(requesterSlotIndex, targetSlotIndex)
             SlotOccupantType.HUMAN_HOST -> {
-                showHostSwapPrompt(
+                port.showHostSwapPrompt(
                     SwapRequest(
                         requesterSlotIndex = requesterSlotIndex,
                         targetSlotIndex = targetSlotIndex,
                         requesterName = requester.displayName,
                     ),
                 )
-                publishUiState("${requester.displayName} 请求与房主换位")
+                port.publishConnectionHint("${requester.displayName} 请求与房主换位")
             }
 
             SlotOccupantType.HUMAN_MEMBER -> {
@@ -106,7 +114,7 @@ class RoomSeatCoordinator(
                         ),
                     ),
                 )
-                publishUiState("已向 ${targetParticipant.displayName} 发送换位请求")
+                port.publishConnectionHint("已向 ${targetParticipant.displayName} 发送换位请求")
             }
         }
     }
@@ -117,8 +125,8 @@ class RoomSeatCoordinator(
             return
         }
         notifyRequesterSwapRejected(message.requesterSlotIndex)
-        clearPendingSwapRequest()
-        publishUiState("换位请求被拒绝")
+        port.clearPendingSwapRequest()
+        port.publishConnectionHint("换位请求被拒绝")
     }
 
     fun applySeatSwap(slotIndexA: Int, slotIndexB: Int) {
@@ -132,20 +140,20 @@ class RoomSeatCoordinator(
                 },
             )
         }
-        clearPendingSwapRequest()
-        publishUiState("已完成换位")
-        broadcastSnapshot()
+        port.clearPendingSwapRequest()
+        port.publishConnectionHint("已完成换位")
+        port.broadcastSnapshot()
     }
 
     private fun notifyRequesterSwapRejected(requesterSlotIndex: Int) {
         val requesterParticipantId = authorityStore.occupantAt(requesterSlotIndex) ?: return
         if (requesterParticipantId == localParticipantIdProvider()) {
-            publishUiState("换位请求已被拒绝")
+            port.publishConnectionHint("换位请求已被拒绝")
             return
         }
         socketManager.sendToParticipant(
             requesterParticipantId,
-            RoomWireMessage.RoomSnapshotMessage(snapshotProvider()),
+            RoomWireMessage.RoomSnapshotMessage(port.snapshotOfCurrentRoom()),
         )
     }
 }

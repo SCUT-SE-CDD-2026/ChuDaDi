@@ -50,36 +50,67 @@ class BluetoothRoomRepository(
     private val authorityStore = RoomAuthorityStore()
     private val socketManager = RoomSocketManager(bluetoothAdapter, frameCodec, scope)
     private val matchCoordinator = NetworkMatchCoordinator(scope)
+    private val membershipPort = object : RoomMembershipPort {
+        override fun snapshotOfCurrentRoom(): RemoteRoomSnapshot = this@BluetoothRoomRepository.snapshotOfCurrentRoom()
+
+        override fun publishConnectionHint(message: String) {
+            this@BluetoothRoomRepository.publishUiState(connectionHint = message)
+        }
+
+        override fun publishRoomClosed(message: String) {
+            this@BluetoothRoomRepository.publishRoomClosedState(message)
+        }
+
+        override fun resetRoomUiState() {
+            this@BluetoothRoomRepository.resetRoomUiState()
+        }
+
+        override fun broadcastSnapshot() {
+            this@BluetoothRoomRepository.broadcastSnapshot()
+        }
+
+        override fun updateAllMatchSnapshots(lastActionMessage: String?) {
+            this@BluetoothRoomRepository.updateAllMatchSnapshots(lastActionMessage)
+        }
+    }
+    private val seatPort = object : RoomSeatPort {
+        override fun snapshotOfCurrentRoom(): RemoteRoomSnapshot = this@BluetoothRoomRepository.snapshotOfCurrentRoom()
+
+        override fun publishConnectionHint(message: String) {
+            this@BluetoothRoomRepository.publishUiState(connectionHint = message)
+        }
+
+        override fun showHostSwapPrompt(request: SwapRequest) {
+            this@BluetoothRoomRepository.showHostSwapPrompt(request)
+        }
+
+        override fun clearPendingSwapRequest() {
+            this@BluetoothRoomRepository.clearPendingSwapRequest()
+        }
+
+        override fun broadcastSnapshot() {
+            this@BluetoothRoomRepository.broadcastSnapshot()
+        }
+    }
     private val membershipCoordinator = RoomMembershipCoordinator(
         scope = scope,
         authorityStore = authorityStore,
         socketManager = socketManager,
         matchCoordinator = matchCoordinator,
         reconnectSessionRepository = reconnectSessionRepository,
-        snapshotProvider = ::snapshotOfCurrentRoom,
-        publishUiState = { message -> publishUiState(connectionHint = message) },
-        publishRoomClosed = ::publishRoomClosedState,
-        resetRoomUi = ::resetRoomUiState,
-        broadcastSnapshot = ::broadcastSnapshot,
-        updateAllMatchSnapshots = ::updateAllMatchSnapshots,
+        port = membershipPort,
     )
     private val seatCoordinator = RoomSeatCoordinator(
         authorityStore = authorityStore,
         socketManager = socketManager,
         localParticipantIdProvider = ::localParticipantId,
-        snapshotProvider = ::snapshotOfCurrentRoom,
-        publishUiState = { message -> publishUiState(connectionHint = message) },
-        showHostSwapPrompt = ::showHostSwapPrompt,
-        clearPendingSwapRequest = ::clearPendingSwapRequest,
-        broadcastSnapshot = ::broadcastSnapshot,
+        port = seatPort,
     )
 
     private val _roomUiState = MutableStateFlow(RoomUiState())
     val roomUiState: StateFlow<RoomUiState> = _roomUiState.asStateFlow()
     val matchUiState: StateFlow<MatchUiState> = matchCoordinator.matchUiState
-
     private var roomRole: RoomRole = RoomRole.Idle
-    private var currentHostAddress: String? = null
 
     init {
         scope.launch {
@@ -171,12 +202,7 @@ class BluetoothRoomRepository(
     ) {
         shutdownCurrentRole()
         matchCoordinator.reset()
-        roomRole = RoomRole.Host(
-            localParticipantId = HOST_PARTICIPANT_ID,
-            hostDeviceName = hostDeviceName,
-        )
-        currentHostAddress = null
-        authorityStore.createHostRoom(
+        initializeHostRoom(
             playerName = playerName,
             avatarResId = avatarResId,
             hostDeviceName = hostDeviceName,
@@ -199,12 +225,7 @@ class BluetoothRoomRepository(
         }
         shutdownCurrentRole()
         matchCoordinator.reset()
-        roomRole = RoomRole.Host(
-            localParticipantId = HOST_PARTICIPANT_ID,
-            hostDeviceName = hostDeviceName,
-        )
-        currentHostAddress = null
-        authorityStore.createHostRoom(
+        initializeHostRoom(
             playerName = playerName,
             avatarResId = avatarResId,
             hostDeviceName = hostDeviceName,
@@ -303,18 +324,8 @@ class BluetoothRoomRepository(
                     avatarResId = avatarResId,
                     resumeParticipantId = resumeParticipantId,
                 )
-                roomRole = RoomRole.Client(
-                    localParticipantId = accepted.localParticipantId,
-                    hostDeviceName = accepted.snapshot.hostDeviceName,
-                )
-                currentHostAddress = device.address
-                authorityStore.applyRemoteSnapshot(accepted.snapshot)
-                publishUiState(
-                    connectionHint = accepted.snapshot.connectionHint,
-                    localParticipantId = accepted.localParticipantId,
-                    isHost = false,
-                    roomMode = RoomMode.BLUETOOTH_CLIENT,
-                    searchState = BluetoothSearchState.IDLE,
+                acceptClientJoin(
+                    accepted = accepted,
                     selectedDeviceAddress = device.address,
                 )
                 persistReconnectSession(
@@ -656,15 +667,7 @@ class BluetoothRoomRepository(
 
     private fun handleClientSocketMessage(message: RoomWireMessage) {
         when (message) {
-            is RoomWireMessage.RoomSnapshotMessage -> {
-                val localParticipantId = (roomRole as? RoomRole.Client)?.localParticipantId ?: return
-                authorityStore.applyRemoteSnapshot(message.snapshot)
-                publishUiState(
-                    connectionHint = message.snapshot.connectionHint,
-                    localParticipantId = localParticipantId,
-                    isHost = false,
-                )
-            }
+            is RoomWireMessage.RoomSnapshotMessage -> handleClientRoomSnapshot(message)
 
             is RoomWireMessage.SwapSeatPromptMessage -> {
                 _roomUiState.update {
@@ -679,39 +682,17 @@ class BluetoothRoomRepository(
                 }
             }
 
-            is RoomWireMessage.JoinRoomRejected -> {
-                _roomUiState.update {
-                    it.copy(
-                        connectionHint = message.reason,
-                        joinErrorMessage = message.reason,
-                        searchState = BluetoothSearchState.FAILED,
-                    )
-                }
-            }
+            is RoomWireMessage.JoinRoomRejected -> handleClientJoinRejected(message)
 
-            is RoomWireMessage.RemovedFromRoom -> {
-                _roomUiState.update {
-                    it.copy(
-                        connectionHint = message.reason,
-                        removedFromRoom = true,
-                        homeNoticeMessage = message.reason,
-                    )
-                }
-                shutdownCurrentRole()
-                membershipCoordinator.handleRemovedFromRoom(message.reason)
-            }
+            is RoomWireMessage.RemovedFromRoom -> handleClientRoomTermination(
+                reason = message.reason,
+                removedFromRoom = true,
+            )
 
-            is RoomWireMessage.RoomClosedByHost -> {
-                _roomUiState.update {
-                    it.copy(
-                        connectionHint = message.reason,
-                        roomClosedByHost = true,
-                        homeNoticeMessage = message.reason,
-                    )
-                }
-                shutdownCurrentRole()
-                membershipCoordinator.handleRoomClosedByHost(message.reason)
-            }
+            is RoomWireMessage.RoomClosedByHost -> handleClientRoomTermination(
+                reason = message.reason,
+                removedFromRoom = false,
+            )
 
             is RoomWireMessage.GameEnvelope -> {
                 matchCoordinator.handleClientGameEnvelope(
@@ -724,6 +705,83 @@ class BluetoothRoomRepository(
             }
 
             else -> Unit
+        }
+    }
+
+    private fun initializeHostRoom(
+        playerName: String,
+        avatarResId: Int?,
+        hostDeviceName: String,
+        bluetoothVisible: Boolean,
+    ) {
+        roomRole = RoomRole.Host(
+            localParticipantId = HOST_PARTICIPANT_ID,
+            hostDeviceName = hostDeviceName,
+        )
+        authorityStore.createHostRoom(
+            playerName = playerName,
+            avatarResId = avatarResId,
+            hostDeviceName = hostDeviceName,
+            bluetoothVisible = bluetoothVisible,
+        )
+    }
+
+    private fun acceptClientJoin(
+        accepted: RoomWireMessage.JoinRoomAccepted,
+        selectedDeviceAddress: String,
+    ) {
+        roomRole = RoomRole.Client(
+            localParticipantId = accepted.localParticipantId,
+            hostDeviceName = accepted.snapshot.hostDeviceName,
+        )
+        authorityStore.applyRemoteSnapshot(accepted.snapshot)
+        publishUiState(
+            connectionHint = accepted.snapshot.connectionHint,
+            localParticipantId = accepted.localParticipantId,
+            isHost = false,
+            roomMode = RoomMode.BLUETOOTH_CLIENT,
+            searchState = BluetoothSearchState.IDLE,
+            selectedDeviceAddress = selectedDeviceAddress,
+        )
+    }
+
+    private fun handleClientRoomSnapshot(message: RoomWireMessage.RoomSnapshotMessage) {
+        val localParticipantId = (roomRole as? RoomRole.Client)?.localParticipantId ?: return
+        authorityStore.applyRemoteSnapshot(message.snapshot)
+        publishUiState(
+            connectionHint = message.snapshot.connectionHint,
+            localParticipantId = localParticipantId,
+            isHost = false,
+        )
+    }
+
+    private fun handleClientJoinRejected(message: RoomWireMessage.JoinRoomRejected) {
+        _roomUiState.update {
+            it.copy(
+                connectionHint = message.reason,
+                joinErrorMessage = message.reason,
+                searchState = BluetoothSearchState.FAILED,
+            )
+        }
+    }
+
+    private fun handleClientRoomTermination(
+        reason: String,
+        removedFromRoom: Boolean,
+    ) {
+        _roomUiState.update {
+            it.copy(
+                connectionHint = reason,
+                removedFromRoom = removedFromRoom,
+                roomClosedByHost = !removedFromRoom,
+                homeNoticeMessage = reason,
+            )
+        }
+        shutdownCurrentRole()
+        if (removedFromRoom) {
+            membershipCoordinator.handleRemovedFromRoom(reason)
+        } else {
+            membershipCoordinator.handleRoomClosedByHost(reason)
         }
     }
 
@@ -841,7 +899,6 @@ class BluetoothRoomRepository(
 
     private fun shutdownCurrentRole() {
         socketManager.shutdown()
-        currentHostAddress = null
         roomRole = RoomRole.Idle
     }
 

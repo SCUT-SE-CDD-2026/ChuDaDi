@@ -9,9 +9,24 @@ import com.example.chudadi.R
 import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.SlotOccupantType
 import java.io.IOException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+
+interface RoomMembershipPort {
+    fun snapshotOfCurrentRoom(): RemoteRoomSnapshot
+
+    fun publishConnectionHint(message: String)
+
+    fun publishRoomClosed(message: String)
+
+    fun resetRoomUiState()
+
+    fun broadcastSnapshot()
+
+    fun updateAllMatchSnapshots(lastActionMessage: String?)
+}
 
 class RoomMembershipCoordinator(
     private val scope: CoroutineScope,
@@ -19,12 +34,7 @@ class RoomMembershipCoordinator(
     private val socketManager: RoomSocketManager,
     private val matchCoordinator: NetworkMatchCoordinator,
     private val reconnectSessionRepository: ReconnectSessionRepository,
-    private val snapshotProvider: () -> RemoteRoomSnapshot,
-    private val publishUiState: (String) -> Unit,
-    private val publishRoomClosed: (String) -> Unit,
-    private val resetRoomUi: () -> Unit,
-    private val broadcastSnapshot: () -> Unit,
-    private val updateAllMatchSnapshots: (String?) -> Unit,
+    private val port: RoomMembershipPort,
 ) {
     suspend fun handleIncomingConnection(connection: RoomSocketConnection) {
         try {
@@ -76,37 +86,26 @@ class RoomMembershipCoordinator(
         matchCoordinator.onParticipantDisconnected(participantId, authorityStore)
 
         val displayName = authorityStore.state.participants[participantId]?.displayName.orEmpty()
-        publishUiState("$displayName 连接中断")
-        broadcastSnapshot()
+        port.publishConnectionHint("$displayName 连接中断")
+        port.broadcastSnapshot()
 
         if (matchCoordinator.currentMatchPhase() != MatchPhase.FINISHED &&
             matchCoordinator.hasActiveMatchSeatAssignments()
         ) {
-            updateAllMatchSnapshots("$displayName 已掉线")
+            port.updateAllMatchSnapshots("$displayName 已掉线")
         }
     }
 
     fun handleRemovedFromRoom(reason: String) {
-        scope.launch { reconnectSessionRepository.clearSession() }
-        publishRoomClosed(reason)
-        matchCoordinator.reset()
-        authorityStore.reset()
-        resetRoomUi()
+        closeRoomSession(reason = reason, clearReconnectSession = true)
     }
 
     fun handleRoomClosedByHost(reason: String) {
-        scope.launch { reconnectSessionRepository.clearSession() }
-        publishRoomClosed(reason)
-        matchCoordinator.reset()
-        authorityStore.reset()
-        resetRoomUi()
+        closeRoomSession(reason = reason, clearReconnectSession = true)
     }
 
     fun handleHostConnectionLost(message: String) {
-        publishRoomClosed(message)
-        matchCoordinator.reset()
-        authorityStore.reset()
-        resetRoomUi()
+        closeRoomSession(reason = message, clearReconnectSession = false)
     }
 
     private suspend fun handleReconnect(
@@ -136,12 +135,12 @@ class RoomMembershipCoordinator(
             )
         }
         matchCoordinator.onParticipantReconnected(participantId, authorityStore)
-        publishUiState("${request.playerName} 已重新连接")
+        port.publishConnectionHint("${request.playerName} 已重新连接")
 
         connection.send(
             RoomWireMessage.JoinRoomAccepted(
                 localParticipantId = participantId,
-                snapshot = snapshotProvider(),
+                snapshot = port.snapshotOfCurrentRoom(),
             ),
         )
 
@@ -150,7 +149,7 @@ class RoomMembershipCoordinator(
             authorityStore = authorityStore,
             sendToParticipant = socketManager::sendToParticipant,
         )
-        broadcastSnapshot()
+        port.broadcastSnapshot()
     }
 
     private suspend fun handleNewJoin(
@@ -170,7 +169,7 @@ class RoomMembershipCoordinator(
                 participants = state.participants + (
                     participantId to ParticipantRecord(
                         participantId = participantId,
-                        occupantType = com.example.chudadi.ui.room.SlotOccupantType.HUMAN_MEMBER,
+                        occupantType = SlotOccupantType.HUMAN_MEMBER,
                         displayName = request.playerName,
                         avatarResId = request.avatarResId ?: R.drawable.avatar,
                         connectionStatus = MemberConnectionStatus.CONNECTED,
@@ -181,15 +180,28 @@ class RoomMembershipCoordinator(
         }
 
         socketManager.attachHostReadLoop(participantId = participantId, connection = connection)
-        publishUiState("${request.playerName} 已加入房间")
+        port.publishConnectionHint("${request.playerName} 已加入房间")
 
         connection.send(
             RoomWireMessage.JoinRoomAccepted(
                 localParticipantId = participantId,
-                snapshot = snapshotProvider(),
+                snapshot = port.snapshotOfCurrentRoom(),
             ),
         )
-        broadcastSnapshot()
+        port.broadcastSnapshot()
+    }
+
+    private fun closeRoomSession(
+        reason: String,
+        clearReconnectSession: Boolean,
+    ) {
+        if (clearReconnectSession) {
+            scope.launch { reconnectSessionRepository.clearSession() }
+        }
+        port.publishRoomClosed(reason)
+        matchCoordinator.reset()
+        authorityStore.reset()
+        port.resetRoomUiState()
     }
 
     private fun removeParticipantFromRoom(participantId: String, clearSlot: Boolean, reason: String) {
@@ -205,8 +217,8 @@ class RoomMembershipCoordinator(
                 },
             )
         }
-        publishUiState("$displayName $reason")
-        broadcastSnapshot()
+        port.publishConnectionHint("$displayName $reason")
+        port.broadcastSnapshot()
     }
 
     private fun participantIdForConnection(connection: RoomSocketConnection): String {
