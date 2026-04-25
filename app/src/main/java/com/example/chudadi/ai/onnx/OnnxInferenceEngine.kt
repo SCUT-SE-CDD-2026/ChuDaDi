@@ -35,6 +35,7 @@ class OnnxInferenceEngine(modelPath: String) {
         private const val INFERENCE_TIMEOUT_MS = 5000L
         private const val EXPECTED_OBS_INPUT_DIM = GameStateEncoder.INPUT_DIM
         private const val EXPECTED_ACTION_INPUT_DIM = ActionFeatureEncoder.ACTION_FEATURE_DIM
+        // Note: must stay in sync with RLCard ChuDaDi contract (334 / 139)
         private const val EXPECTED_OUTPUT_DIM = 1
 
         // OrtEnvironment is process-wide singleton; do not close it per engine instance.

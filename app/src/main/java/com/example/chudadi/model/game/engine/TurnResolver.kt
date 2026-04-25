@@ -51,6 +51,7 @@ object TurnResolver {
                     passCount = 0,
                     tablePlays = match.trickState.tablePlays + (seatIndex to combination),
                     playedCardHistory = nextPlayedCardHistory,
+                    passedSeatIndices = emptySet(),
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
                 totalBombCount = nextBombCount,
@@ -74,6 +75,7 @@ object TurnResolver {
                 passCount = 0,
                 tablePlays = match.trickState.tablePlays + (seatIndex to combination),
                 playedCardHistory = nextPlayedCardHistory,
+                passedSeatIndices = emptySet(),
             ),
             playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
             totalBombCount = nextBombCount,
@@ -116,6 +118,7 @@ object TurnResolver {
                     passCount = 0,
                     roundNumber = match.trickState.roundNumber + 1,
                     tablePlays = emptyMap(),
+                    passedSeatIndices = emptySet(),
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",
             )
@@ -127,6 +130,7 @@ object TurnResolver {
                 trickState = match.trickState.copy(
                     passCount = nextPassCount,
                     tablePlays = tablePlaysAfterPass,
+                    passedSeatIndices = match.trickState.passedSeatIndices + seatIndex,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",
             )

@@ -4,21 +4,21 @@ import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.rule.CombinationType
 
 /**
- * Encodes one legal action into RLCard ChuDaDi DMC action feature (140 dims):
+ * Encodes one legal action into RLCard ChuDaDi DMC action feature (139 dims):
  * - action bits (52)
  * - future hand bits (52)
- * - action type one-hot (10)
+ * - action type one-hot (9)
  * - action main rank one-hot (13)
  * - action kicker rank one-hot (13)
  */
 class ActionFeatureEncoder {
 
     companion object {
-        const val ACTION_FEATURE_DIM = 140
+        const val ACTION_FEATURE_DIM = 139
         private const val CARD_SPACE = 52
         private const val FUTURE_HAND_OFFSET = CARD_SPACE
         private const val ACTION_TYPE_OFFSET = CARD_SPACE * 2
-        private const val ACTION_MAIN_RANK_OFFSET = ACTION_TYPE_OFFSET + 10
+        private const val ACTION_MAIN_RANK_OFFSET = ACTION_TYPE_OFFSET + 9
         private const val ACTION_KICKER_RANK_OFFSET = ACTION_MAIN_RANK_OFFSET + 13
 
         private const val ACTION_TYPE_NONE = 0
@@ -28,10 +28,8 @@ class ActionFeatureEncoder {
         private const val ACTION_TYPE_STRAIGHT = 4
         private const val ACTION_TYPE_FLUSH = 5
         private const val ACTION_TYPE_FULL_HOUSE = 6
-        private const val ACTION_TYPE_FOUR_BUCKET = 7
+        private const val ACTION_TYPE_FOUR_OF_A_KIND = 7
         private const val ACTION_TYPE_STRAIGHT_FLUSH = 8
-        private const val ACTION_TYPE_FOUR_BOMB = 9
-        private const val FOUR_OF_A_KIND_CARD_COUNT = 4
     }
 
     fun encodeActionFeature(
@@ -62,8 +60,8 @@ class ActionFeatureEncoder {
             feature[FUTURE_HAND_OFFSET + i] = if (handBits[i] - actionBits[i] > 0f) 1f else 0f
         }
 
-        // action_type(10)
-        val actionTypeIndex = actionTypeToIndex(actionType, actionCards.size)
+        // action_type(9)
+        val actionTypeIndex = actionTypeToIndex(actionType)
         feature[ACTION_TYPE_OFFSET + actionTypeIndex] = 1f
 
         // action_main_rank(13), action_kicker_rank(13)
@@ -75,7 +73,7 @@ class ActionFeatureEncoder {
         return feature
     }
 
-    private fun actionTypeToIndex(actionType: CombinationType?, actionLength: Int): Int {
+    private fun actionTypeToIndex(actionType: CombinationType?): Int {
         if (actionType == null) return ACTION_TYPE_NONE // none/pass
         return when (actionType) {
             CombinationType.SINGLE -> ACTION_TYPE_SINGLE
@@ -86,12 +84,10 @@ class ActionFeatureEncoder {
             CombinationType.FULL_HOUSE -> ACTION_TYPE_FULL_HOUSE
             CombinationType.FOUR_WITH_ONE,
             CombinationType.FOUR_WITH_TWO,
-            -> ACTION_TYPE_FOUR_BUCKET // four_of_a_kind bucket
+            CombinationType.FOUR_OF_A_KIND_BOMB,
+            -> ACTION_TYPE_FOUR_OF_A_KIND
 
             CombinationType.STRAIGHT_FLUSH -> ACTION_TYPE_STRAIGHT_FLUSH
-            CombinationType.FOUR_OF_A_KIND_BOMB ->
-                if (actionLength == FOUR_OF_A_KIND_CARD_COUNT) ACTION_TYPE_FOUR_BOMB
-                else ACTION_TYPE_FOUR_BUCKET
         }
     }
 

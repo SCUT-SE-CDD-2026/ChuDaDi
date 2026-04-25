@@ -61,7 +61,7 @@ class ActionFeatureEncoderMainKickerTest {
     private fun card(rank: CardRank, suit: CardSuit): Card = Card(rank = rank, suit = suit)
 
     private companion object {
-        const val ACTION_TYPE_DIM = 10
+        const val ACTION_TYPE_DIM = 9
         const val RANK_DIM = 13
         const val MAIN_RANK_OFFSET = 52 + 52 + ACTION_TYPE_DIM
         const val KICKER_RANK_OFFSET = MAIN_RANK_OFFSET + RANK_DIM

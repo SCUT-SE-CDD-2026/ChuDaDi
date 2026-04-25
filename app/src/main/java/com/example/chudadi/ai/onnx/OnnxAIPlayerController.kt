@@ -185,7 +185,7 @@ class OnnxAIPlayerController(
             candidates += ActionCandidate(actionId = actionId, feature = feature)
         }
 
-        if (isPassLegal(match, ruleSet, validActions)) {
+        if (isPassLegal(match, ruleSet)) {
             val passId = 0L
             if (seenActionIds.add(passId)) {
                 val passFeature = actionFeatureEncoder.encodeActionFeature(
@@ -210,15 +210,33 @@ class OnnxAIPlayerController(
         return candidates
     }
 
-    private fun isPassLegal(
-        match: Match,
-        ruleSet: GameRuleSet,
-        validActions: List<List<Card>>,
-    ): Boolean {
+    private fun isPassLegal(match: Match, ruleSet: GameRuleSet): Boolean {
         return when (ruleSet) {
             GameRuleSet.SOUTHERN -> match.trickState.currentCombination != null
-            GameRuleSet.NORTHERN -> validActions.isEmpty()
+            GameRuleSet.NORTHERN -> canPassUnderNorthernRule(match, ruleSet)
         }
+    }
+
+    /**
+     * 与 RLCard 北方规则对齐：只有当有同类型可压时才不能 pass。
+     */
+    private fun canPassUnderNorthernRule(match: Match, ruleSet: GameRuleSet): Boolean {
+        val currentCombination = match.trickState.currentCombination
+        val seat = match.seats.getOrNull(seatIndex)
+        val rules = GameRules.forRuleSet(ruleSet)
+        if (currentCombination == null || seat == null || !rules.mustBeatIfPossible) {
+            return currentCombination != null
+        }
+        val evaluator = CombinationEvaluator(rules)
+        val hasMandatoryResponse = evaluator
+            .generateAllValidCombinations(seat.hand)
+            .any { candidate ->
+                !rules.isBomb(candidate.type) &&
+                    candidate.type == currentCombination.type &&
+                    candidate.cardCount == currentCombination.cardCount &&
+                    evaluator.canBeat(candidate, currentCombination)
+            }
+        return !hasMandatoryResponse
     }
 
     private fun actionIdFromCards(cards: List<Card>): Long {
@@ -307,7 +325,7 @@ class OnnxAIPlayerController(
             AIDecision.Pass -> {
                 when (ruleSet) {
                     GameRuleSet.SOUTHERN -> match.trickState.currentCombination != null
-                    GameRuleSet.NORTHERN -> validActions.isEmpty()
+                    GameRuleSet.NORTHERN -> canPassUnderNorthernRule(match, ruleSet)
                 }
             }
 
