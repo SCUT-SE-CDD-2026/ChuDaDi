@@ -64,8 +64,7 @@
 
 ### 5.2. Playing Process
 
-- Players play in clockwise order.
-- Each round, a player can either play a combination or pass.
+- Cards are played clockwise, and each player may choose to play a card or pass in each round.
 ---
 
 ### 5.3. Follow-Up Play Rules
@@ -106,9 +105,10 @@
 ### 5.7. Special Rules for Straight
 
 - 5 consecutive cards.
-- Cannot include 2：The smallest Straight is 34567, and the largest is 10JQKA.
-- A can only be the highest card, it cannot be used as 1.
-- No loops are allowed (e.g., QKA23 is invalid).
+  - Cannot include 2：The smallest Straight is 34567, and the largest is 10JQKA.
+  - A can only be the highest card, it cannot be used as 1.
+  - No loops are allowed (e.g., QKA23 is invalid).
+- Only the card with the highest point value determines the rank; if the highest point values are the same, the rank is determined by the "suit order".
 
 ---
 
