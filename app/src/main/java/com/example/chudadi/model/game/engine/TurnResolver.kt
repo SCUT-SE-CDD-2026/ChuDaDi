@@ -15,6 +15,11 @@ object TurnResolver {
         combination: PlayCombination,
     ): Match {
         val currentSeat = match.seats.first { it.seatId == seatIndex }
+        val handIds = currentSeat.hand.map { it.id }.toSet()
+        val playedIds = combination.cards.map { it.id }.toSet()
+        require(playedIds.all { it in handIds }) {
+            "Played cards $playedIds are not all present in hand $handIds for seat $seatIndex"
+        }
         val remainingHand = currentSeat.hand.filterNot { card ->
             combination.cards.any { selected -> selected.id == card.id }
         }
@@ -28,7 +33,6 @@ object TurnResolver {
                     )
                 }
 
-                seat.status != SeatStatus.FINISHED -> seat.copy(status = SeatStatus.ACTIVE)
                 else -> seat
             }
         }
@@ -50,6 +54,8 @@ object TurnResolver {
                     match = match,
                     seats = rankedSeats,
                     winnerSeatId = seatIndex,
+                    winningCombination = combination,
+                    baopeiSeatId = match.trickState.baopeiSeatId,
                 ),
             )
         }
@@ -57,7 +63,8 @@ object TurnResolver {
         return match.copy(
             phase = MatchPhase.PLAYER_TURN,
             seats = updatedSeats,
-            activeSeatIndex = nextActiveSeatIndex(updatedSeats, seatIndex),
+            activeSeatIndex = nextActiveSeatIndex(updatedSeats, seatIndex)
+                ?: throw TurnResolutionException("No active seat found from $seatIndex"),
             trickState = match.trickState.copy(
                 leadSeatIndex = seatIndex,
                 lastWinningSeatIndex = seatIndex,
@@ -85,6 +92,8 @@ object TurnResolver {
         val unfinishedSeats = updatedSeats.filter { it.status != SeatStatus.FINISHED }
         val nextPassCount = match.trickState.passCount + 1
         val shouldResetRound = nextPassCount >= unfinishedSeats.size - 1
+        // 防御性清理：PASS 玩家理论上不会出现在 tablePlays 中（只有 applyPlay 才会写入），
+        // 但此处显式移除可避免异常场景下 tablePlays 中残留旧数据。
         val tablePlaysAfterPass = match.trickState.tablePlays - seatIndex
 
         return if (shouldResetRound) {
@@ -105,6 +114,9 @@ object TurnResolver {
                     passCount = 0,
                     roundNumber = match.trickState.roundNumber + 1,
                     tablePlays = emptyMap(),
+                    // 一轮结束重置包赔标记。若同一轮内有多个玩家触发包赔（极端情况），
+                    // 后触发的玩家会覆盖前者；当前规则未定义多触发情形，以最后触发者为准。
+                    baopeiSeatId = null,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",
             )
@@ -112,7 +124,8 @@ object TurnResolver {
             match.copy(
                 phase = MatchPhase.PLAYER_TURN,
                 seats = updatedSeats,
-                activeSeatIndex = nextActiveSeatIndex(updatedSeats, seatIndex),
+                activeSeatIndex = nextActiveSeatIndex(updatedSeats, seatIndex)
+                    ?: throw TurnResolutionException("No active seat found from $seatIndex"),
                 trickState = match.trickState.copy(
                     passCount = nextPassCount,
                     tablePlays = tablePlaysAfterPass,
@@ -122,21 +135,6 @@ object TurnResolver {
         }
     }
 
-    private fun nextActiveSeatIndex(
-        seats: List<Seat>,
-        fromSeatId: Int,
-    ): Int {
-        val maxIndex = seats.maxOf { it.seatId }
-        var cursor = fromSeatId
-        repeat(maxIndex + 1) {
-            cursor = (cursor + 1) % (maxIndex + 1)
-            val nextSeat = seats.first { it.seatId == cursor }
-            if (nextSeat.status != SeatStatus.FINISHED) {
-                return cursor
-            }
-        }
-        return fromSeatId
-    }
 
     private fun assignFinishOrder(
         seats: List<Seat>,
@@ -151,7 +149,7 @@ object TurnResolver {
         return seats.map { seat ->
             val position = ranking.indexOfFirst { it.seatId == seat.seatId }
             seat.copy(
-                status = if (seat.seatId == winnerSeatId) SeatStatus.FINISHED else seat.status,
+                status = SeatStatus.FINISHED,
                 finishOrder = position + 1,
             )
         }
@@ -161,19 +159,16 @@ object TurnResolver {
         match: Match,
         seats: List<Seat>,
         winnerSeatId: Int,
+        winningCombination: PlayCombination,
+        baopeiSeatId: Int? = null,
     ): RoundResult {
         val orderedSeats = seats.sortedBy { it.finishOrder ?: Int.MAX_VALUE }
-        val baoPaySeatId =
-            if (match.trickState.pendingBaoPayProtectedSeatId == winnerSeatId) {
-                match.trickState.pendingBaoPaySeatId
-            } else {
-                null
-            }
         val roundScores = ScoreCalculator.calculateRoundScores(
             ruleSet = match.ruleSet,
             seats = orderedSeats,
             winnerSeatId = winnerSeatId,
-            baoPaySeatId = baoPaySeatId,
+            winningCombination = winningCombination,
+            baopeiSeatId = baopeiSeatId?.takeIf { it != winnerSeatId },
         )
         return RoundResult(
             winnerSeatIndex = orderedSeats.first().seatId,

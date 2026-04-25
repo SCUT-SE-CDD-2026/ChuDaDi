@@ -104,7 +104,6 @@ class CombinationParser {
                 cards = cards,
                 primaryRank = cards.maxOf { it.rank.strength },
                 primarySuit = cards.maxOf { it.suit.sortOrder },
-                rankVector = cards.sortedByDescending { it.rank.strength }.map { it.rank.strength },
             )
         }
 

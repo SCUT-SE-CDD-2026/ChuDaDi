@@ -36,7 +36,9 @@ internal class DefaultTurnConstraintPolicy : TurnConstraintPolicy {
         }
 
         return legalResponses.any { candidate ->
-            candidate.type == currentCombination.type &&
+            !context.rules.isBomb(candidate.type) &&
+                !context.rules.isBomb(currentCombination.type) &&
+                candidate.type == currentCombination.type &&
                 candidate.cardCount == currentCombination.cardCount
         }
     }

@@ -30,10 +30,22 @@ internal class DefaultCandidatePolicy(
         val legalResponses = context.allCombinations
             .filter { context.evaluator.canBeat(it, currentCombination) }
 
-        return if (requiresTopSingleResponse(context, currentCombination)) {
+        val restrictedResponses = if (requiresTopSingleResponse(context, currentCombination)) {
             restrictToTopSingle(legalResponses)
         } else {
             legalResponses
+        }
+
+        return restrictedResponses.filter { combination ->
+            if (!context.rules.isBomb(combination.type) || !context.rules.bombRequiresNoSameTypeResponse) {
+                return@filter true
+            }
+            val sameTypeResponses = restrictedResponses.filter {
+                !context.rules.isBomb(it.type) &&
+                    it.type == currentCombination.type &&
+                    it.cardCount == currentCombination.cardCount
+            }
+            sameTypeResponses.isEmpty()
         }
     }
 

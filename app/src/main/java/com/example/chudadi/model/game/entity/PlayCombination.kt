@@ -7,7 +7,6 @@ data class PlayCombination(
     val cards: List<Card>,
     val primaryRank: Int,
     val primarySuit: Int,
-    val rankVector: List<Int> = emptyList(),
 ) {
     val cardCount: Int = cards.size
     val displayName: String = buildString {
