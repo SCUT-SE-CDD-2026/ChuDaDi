@@ -76,9 +76,13 @@ class RoomViewModel(
                 } else {
                     slot
                 }
-                slotWithLatestName.copy(
-                    cumulativeScore = scoreMap[slot.seatId] ?: slotWithLatestName.cumulativeScore,
-                )
+                if (roomState.roomMode == RoomMode.LOCAL) {
+                    slotWithLatestName.copy(
+                        cumulativeScore = scoreMap[slot.seatId] ?: slotWithLatestName.cumulativeScore,
+                    )
+                } else {
+                    slotWithLatestName
+                }
             },
         )
     }.stateIn(

@@ -289,8 +289,8 @@ fun ChuDaDiNavGraph(
         }
         composable(AppFlowRoute.RESULT.route) {
             val roundScores = appFlowState.activeMatchUiState.resultSummary?.roundScores.orEmpty()
-            LaunchedEffect(roundScores) {
-                if (roundScores.isNotEmpty()) {
+            LaunchedEffect(roundScores, appFlowState.useNetworkMatch) {
+                if (!appFlowState.useNetworkMatch && roundScores.isNotEmpty()) {
                     roomViewModel.dispatch(RoomAction.AccumulateScores(roundScores))
                 }
             }

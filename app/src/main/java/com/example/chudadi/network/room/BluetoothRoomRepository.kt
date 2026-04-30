@@ -11,6 +11,7 @@ package com.example.chudadi.network.room
 
 import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.data.repository.ReconnectSession
@@ -27,6 +28,7 @@ import com.example.chudadi.ui.room.RoomMode
 import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.SlotState
 import com.example.chudadi.ui.room.SwapRequest
+import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -44,7 +46,8 @@ class BluetoothRoomRepository(
 ) {
     private val appContext = context.applicationContext
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val bluetoothAdapter: BluetoothAdapter? = BluetoothAdapter.getDefaultAdapter()
+    private val bluetoothAdapter: BluetoothAdapter? =
+        appContext.getSystemService(BluetoothManager::class.java)?.adapter
     private val frameCodec = RoomFrameCodec()
     private val discoveryManager = BluetoothDiscoveryManager(appContext, bluetoothAdapter)
     private val authorityStore = RoomAuthorityStore()
@@ -243,12 +246,13 @@ class BluetoothRoomRepository(
                 )
             }
             .onFailure { error ->
+                val userMessage = error.toUserFacingBluetoothMessage("蓝牙房间监听启动失败")
                 shutdownCurrentRole()
                 authorityStore.reset()
                 matchCoordinator.reset()
                 _roomUiState.value = RoomUiState(
-                    homeNoticeMessage = "创建房间失败，请重试",
-                    connectionHint = error.message ?: "蓝牙房间监听启动失败",
+                    homeNoticeMessage = userMessage,
+                    connectionHint = userMessage,
                     roomMode = RoomMode.LOCAL,
                 )
             }
@@ -287,9 +291,10 @@ class BluetoothRoomRepository(
                         )
                     }
                     .onFailure { error ->
+                        val userMessage = error.toUserFacingBluetoothMessage("蓝牙房间监听启动失败")
                         authorityStore.update { state -> state.copy(bluetoothVisible = false) }
                         publishUiState(
-                            connectionHint = error.message ?: "蓝牙房间监听启动失败",
+                            connectionHint = userMessage,
                             roomMode = RoomMode.LOCAL,
                         )
                     }
@@ -341,12 +346,13 @@ class BluetoothRoomRepository(
                 )
             }
             .onFailure { error ->
+                val userMessage = error.toUserFacingBluetoothMessage("连接失败，请重试")
                 _roomUiState.update {
                     it.copy(
                         searchState = BluetoothSearchState.FAILED,
                         selectedDeviceAddress = device.address,
-                        connectionHint = error.message ?: "连接失败，请重试",
-                        joinErrorMessage = error.message,
+                        connectionHint = userMessage,
+                        joinErrorMessage = userMessage,
                     )
                 }
             }
@@ -793,6 +799,7 @@ class BluetoothRoomRepository(
             onMatchFinished = { roundScores ->
                 authorityStore.applyRoundScores(roundScores)
                 authorityStore.resetReadyStatesAfterMatchFinished()
+                publishUiState()
                 broadcastSnapshot()
             },
             lastActionMessage = lastActionMessage,
@@ -858,7 +865,7 @@ class BluetoothRoomRepository(
             hostDeviceName = authorityStore.state.hostDeviceName,
             currentRule = authorityStore.state.currentRule,
             slots = slots,
-            bluetoothVisible = authorityStore.state.bluetoothVisible && roomMode == RoomMode.BLUETOOTH_HOST && isHost,
+            bluetoothVisible = authorityStore.state.bluetoothVisible && roomMode != RoomMode.LOCAL,
             connectionHint = connectionHint ?: _roomUiState.value.connectionHint,
             homeNoticeMessage = _roomUiState.value.homeNoticeMessage,
             discoveredDevices = discoveryManager.devices.value.map { it.toUiState() },
@@ -929,6 +936,59 @@ class BluetoothRoomRepository(
 
     private fun clearPendingSwapRequest() {
         _roomUiState.update { it.copy(pendingSwapRequest = null) }
+    }
+
+    private fun Throwable.toUserFacingBluetoothMessage(defaultMessage: String): String {
+        val rawMessage = message?.trim().orEmpty()
+        if (rawMessage.isChineseText()) {
+            return rawMessage
+        }
+
+        return when {
+            this is SecurityException -> "缺少蓝牙权限，请授权后重试"
+
+            this is IllegalArgumentException &&
+                rawMessage.contains("address", ignoreCase = true) -> {
+                "蓝牙设备地址无效，请重新搜索房间"
+            }
+
+            this is IOException && rawMessage.containsAnyIgnoreCase(
+                "read failed",
+                "socket closed",
+                "bt socket closed",
+                "broken pipe",
+                "connection reset",
+                "software caused connection abort",
+            ) -> {
+                "蓝牙连接已断开，请确认双方设备蓝牙状态后重试"
+            }
+
+            this is IOException && rawMessage.containsAnyIgnoreCase(
+                "timed out",
+                "timeout",
+            ) -> {
+                "蓝牙连接超时，请确认双方设备距离和蓝牙状态后重试"
+            }
+
+            this is IOException && rawMessage.containsAnyIgnoreCase(
+                "service discovery failed",
+                "connection refused",
+                "connection failure",
+            ) -> {
+                "蓝牙连接失败，请确认房主已开启房间后重试"
+            }
+
+            rawMessage.isNotBlank() && rawMessage.isChineseText() -> rawMessage
+            else -> defaultMessage
+        }
+    }
+
+    private fun String.containsAnyIgnoreCase(vararg keywords: String): Boolean {
+        return keywords.any { keyword -> contains(keyword, ignoreCase = true) }
+    }
+
+    private fun String.isChineseText(): Boolean {
+        return any { it in '\u4E00'..'\u9FFF' }
     }
 
     private fun BluetoothDiscoveredDevice.toUiState(): DiscoveredDeviceUiState {

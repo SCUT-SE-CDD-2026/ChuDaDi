@@ -214,7 +214,7 @@ class RoomSocketManager(
         roomUuid: UUID,
     ): Result<RoomSocketConnection> {
         val adapter = bluetoothAdapter ?: return Result.failure(
-            IllegalStateException("Bluetooth not supported"),
+            IllegalStateException("当前设备不支持蓝牙"),
         )
         val result = CompletableDeferred<Result<RoomSocketConnection>>()
         scope.launch(Dispatchers.IO) {
@@ -395,7 +395,7 @@ class RoomSocketManager(
     ): SocketManagerState {
         val adapter = bluetoothAdapter
         if (adapter == null) {
-            command.result.complete(Result.failure(IllegalStateException("Bluetooth not supported")))
+            command.result.complete(Result.failure(IllegalStateException("当前设备不支持蓝牙")))
             return state
         }
 
@@ -589,7 +589,7 @@ class RoomSocketManager(
                     }
                 }
             } catch (_: IOException) {
-                commands.send(SocketCommand.ClientReadFailed("Lost connection to host"))
+                commands.send(SocketCommand.ClientReadFailed("与房主的连接已断开"))
             }
         }
         return state.copy(
@@ -654,7 +654,7 @@ class RoomSocketManager(
             state.clientHeartbeatJob?.cancel()
             state.copy(clientHeartbeatJob = null)
         } else if (heartbeatExpired) {
-            _events.tryEmit(RoomSocketEvent.HostConnectionLost("Host connection timed out"))
+            _events.tryEmit(RoomSocketEvent.HostConnectionLost("与房主的连接已超时"))
             state.clientReadJob?.cancel()
             state.clientConnection?.close()
             state.clientHeartbeatJob?.cancel()
@@ -773,7 +773,7 @@ class RoomSocketConnection(
         return when (val response = read()) {
             is RoomWireMessage.JoinRoomAccepted -> response
             is RoomWireMessage.JoinRoomRejected -> throw IOException(response.reason)
-            else -> throw IOException("Unexpected join response")
+            else -> throw IOException("房间响应异常，请重试")
         }
     }
 

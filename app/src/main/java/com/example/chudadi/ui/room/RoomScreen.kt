@@ -36,13 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.R
 import com.example.chudadi.ui.ComposeTestTags
@@ -70,8 +69,10 @@ private val ScorePositive = Color(0xFF81C784)
 private val ScoreNegative = Color(0xFFE57373)
 private val DividerColor = Color(0x33C8A96A)
 private val GoldAccent = Color(0xFFD4A85A)
-private val HostActionButtonCompactHeight = 32.dp
-private val HostActionButtonExpandedHeight = 40.dp
+private val HostActionButtonHeight = 44.dp
+private val MemberActionButtonHeight = 44.dp
+private val BroadcastButtonHeight = 28.dp
+private val BroadcastButtonWidth = 108.dp
 
 @Composable
 fun RoomScreen(
@@ -217,14 +218,18 @@ private fun SlotsGrid(
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 0,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             SlotCard(
                 slot = uiState.slots[1],
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 1,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
         Row(
@@ -236,14 +241,18 @@ private fun SlotsGrid(
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 2,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             SlotCard(
                 slot = uiState.slots[3],
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 3,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
     }
@@ -265,13 +274,6 @@ private fun SlotCard(
         else -> SlotFilledBorder
     }
     val bgColor = if (isEmpty) SlotEmptyBg else SlotFilledBg
-    val handleClick = {
-        if (isEmpty) {
-            onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex))
-        } else {
-            onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex))
-        }
-    }
 
     Box(
         modifier = modifier
@@ -283,7 +285,7 @@ private fun SlotCard(
                 color = borderColor,
                 shape = RoundedCornerShape(14.dp),
             )
-            .clickable { handleClick() },
+            .clickable { onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex)) },
         contentAlignment = Alignment.Center,
     ) {
         if (isEmpty) {
@@ -301,7 +303,11 @@ private fun SlotCard(
 }
 
 @Composable
-private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomAction) -> Unit) {
+private fun SlotActionMenu(
+    slot: SlotState,
+    isHost: Boolean,
+    onAction: (RoomAction) -> Unit,
+) {
     DropdownMenu(
         expanded = true,
         onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
@@ -361,7 +367,12 @@ private fun EmptySlotContent(slotIndex: Int) {
                 .border(1.dp, SlotEmptyBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = TextMuted, modifier = Modifier.size(24.dp))
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = TextMuted,
+                modifier = Modifier.size(24.dp),
+            )
         }
         Text(
             text = "位置 ${slotIndex + 1}",
@@ -380,7 +391,9 @@ private fun EmptySlotContent(slotIndex: Int) {
 @Composable
 private fun FilledSlotContent(slot: SlotState) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(8.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
@@ -466,7 +479,22 @@ private fun FilledSlotContent(slot: SlotState) {
                 Text(statusText, style = MaterialTheme.typography.labelSmall, color = statusDot)
             }
         }
+    }
+}
 
+@Composable
+private fun InfoRow(
+    label: String,
+    value: String,
+    valueColor: Color = TextSecondary,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        Text(value, style = MaterialTheme.typography.bodySmall, color = valueColor)
     }
 }
 
@@ -477,13 +505,6 @@ private fun ControlPanel(
     onAction: (RoomAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val hostActionButtonHeight = if (uiState.canEnableBroadcast) {
-        HostActionButtonCompactHeight
-    } else {
-        HostActionButtonExpandedHeight
-    }
-    // Use Column with explicit Spacer instead of Arrangement.spacedBy to avoid
-    // weight(1f) interaction issues that cause button height distortion
     Column(
         modifier = modifier
             .shadow(4.dp, RoundedCornerShape(16.dp))
@@ -498,24 +519,43 @@ private fun ControlPanel(
         Spacer(modifier = Modifier.height(2.dp))
         InfoRow(label = "当前规则", value = uiState.currentRule.label)
         Spacer(modifier = Modifier.height(2.dp))
-        InfoRow(
-            label = "蓝牙状态",
-            value = if (uiState.bluetoothVisible) "房间广播中" else "未广播",
-            valueColor = if (uiState.bluetoothVisible) StatusReady else TextMuted,
-        )
-        if (uiState.canEnableBroadcast) {
-            Spacer(modifier = Modifier.height(6.dp))
-            ChuButton(
-                text = "开启广播",
-                onClick = { onAction(RoomAction.EnableBluetoothBroadcast) },
-                style = ChuButtonStyle.SECONDARY,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(hostActionButtonHeight),
-            )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("蓝牙状态", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Text(
+                    text = if (uiState.bluetoothVisible) "房间广播中" else "未广播",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (uiState.bluetoothVisible) StatusReady else TextMuted,
+                )
+            }
+            if (uiState.canEnableBroadcast) {
+                Spacer(modifier = Modifier.width(12.dp))
+                ChuButton(
+                    text = "开启广播",
+                    onClick = { onAction(RoomAction.EnableBluetoothBroadcast) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier
+                        .width(BroadcastButtonWidth)
+                        .height(BroadcastButtonHeight),
+                )
+            }
         }
+
         Spacer(modifier = Modifier.height(4.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(DividerColor),
+        )
         Spacer(modifier = Modifier.height(4.dp))
 
         if (uiState.isHost) {
@@ -527,7 +567,7 @@ private fun ControlPanel(
                 style = ChuButtonStyle.SECONDARY,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(hostActionButtonHeight),
+                    .height(HostActionButtonHeight),
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -548,7 +588,7 @@ private fun ControlPanel(
                 enabled = uiState.canStartGame,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(hostActionButtonHeight)
+                    .height(HostActionButtonHeight)
                     .testTag(ComposeTestTags.START_GAME_BUTTON),
             )
         } else {
@@ -558,7 +598,7 @@ private fun ControlPanel(
             Text("成员操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "已连接: ${uiState.hostDeviceName.ifEmpty { "房主" }}",
+                text = "已连接 ${uiState.hostDeviceName.ifEmpty { "房主" }}",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
             )
@@ -571,7 +611,7 @@ private fun ControlPanel(
                 style = if (isReady) ChuButtonStyle.SECONDARY else ChuButtonStyle.PRIMARY,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(hostActionButtonHeight),
+                    .height(MemberActionButtonHeight),
             )
         }
 
@@ -586,22 +626,6 @@ private fun ControlPanel(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-    }
-}
-
-@Composable
-private fun InfoRow(
-    label: String,
-    value: String,
-    valueColor: Color = TextSecondary,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = TextMuted)
-        Text(value, style = MaterialTheme.typography.bodySmall, color = valueColor)
     }
 }
 

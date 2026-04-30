@@ -154,6 +154,7 @@ class RoomAuthorityStore {
             roomName = state.roomName,
             hostDeviceName = state.hostDeviceName,
             currentRule = state.currentRule.name,
+            bluetoothVisible = state.bluetoothVisible,
             connectionHint = connectionHint,
             slots = buildSlotStates(localParticipantId = localParticipantId).map { slot ->
                 RemoteSlotSnapshot(
@@ -252,7 +253,7 @@ class RoomAuthorityStore {
             roomName = roomName,
             hostDeviceName = hostDeviceName,
             currentRule = GameRuleDisplay.valueOf(currentRule),
-            bluetoothVisible = false,
+            bluetoothVisible = bluetoothVisible,
             participants = participants,
             slotAssignments = slotAssignments,
         )

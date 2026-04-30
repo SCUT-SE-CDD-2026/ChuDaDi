@@ -8,6 +8,7 @@ data class RemoteRoomSnapshot(
     val roomName: String,
     val hostDeviceName: String,
     val currentRule: String,
+    val bluetoothVisible: Boolean = false,
     val slots: List<RemoteSlotSnapshot>,
     val connectionHint: String = "",
 )
