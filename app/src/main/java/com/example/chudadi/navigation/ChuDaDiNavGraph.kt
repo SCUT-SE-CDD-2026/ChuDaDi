@@ -132,7 +132,10 @@ fun ChuDaDiNavGraph(
     }
     val requestBluetoothDiscoveryReady: ((() -> Unit) -> Unit) = { onReady ->
         if (!roomViewModel.isBluetoothSupported()) {
-            roomViewModel.showJoinError("当前设备不支持蓝牙")
+            roomViewModel.showJoinError(
+                message = "当前设备不支持蓝牙",
+                title = "无法搜索房间",
+            )
         } else if (!roomViewModel.hasBluetoothConnectPermission() || !roomViewModel.hasBluetoothScanPermission()) {
             onRequestBluetoothPermissions {
                 if (roomViewModel.hasBluetoothConnectPermission() && roomViewModel.hasBluetoothScanPermission()) {
@@ -143,12 +146,18 @@ fun ChuDaDiNavGraph(
                             if (roomViewModel.isBluetoothEnabled()) {
                                 onReady()
                             } else {
-                                roomViewModel.showJoinError("未开启蓝牙，无法搜索房间")
+                                roomViewModel.showJoinError(
+                                    message = "未开启蓝牙，无法搜索房间",
+                                    title = "无法搜索房间",
+                                )
                             }
                         }
                     }
                 } else {
-                    roomViewModel.showJoinError("缺少蓝牙权限，无法搜索房间")
+                    roomViewModel.showJoinError(
+                        message = "缺少蓝牙权限，无法搜索房间",
+                        title = "无法搜索房间",
+                    )
                 }
             }
         } else if (!roomViewModel.isBluetoothEnabled()) {
@@ -156,7 +165,10 @@ fun ChuDaDiNavGraph(
                 if (roomViewModel.isBluetoothEnabled()) {
                     onReady()
                 } else {
-                    roomViewModel.showJoinError("未开启蓝牙，无法搜索房间")
+                    roomViewModel.showJoinError(
+                        message = "未开启蓝牙，无法搜索房间",
+                        title = "无法搜索房间",
+                    )
                 }
             }
         } else {
@@ -253,6 +265,9 @@ fun ChuDaDiNavGraph(
                 onNavigateBack = {
                     roomViewModel.dispatch(RoomAction.ConsumeJoinError)
                     requestedRoute = AppFlowRoute.HOME
+                },
+                onDismissJoinError = {
+                    roomViewModel.dispatch(RoomAction.ConsumeJoinError)
                 },
             )
         }

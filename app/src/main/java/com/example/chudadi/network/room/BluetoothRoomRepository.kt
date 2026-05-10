@@ -353,6 +353,7 @@ class BluetoothRoomRepository(
                         selectedDeviceAddress = device.address,
                         connectionHint = userMessage,
                         joinErrorMessage = userMessage,
+                        joinErrorTitle = "无法加入房间",
                     )
                 }
             }
@@ -572,7 +573,12 @@ class BluetoothRoomRepository(
     }
 
     fun consumeJoinError() {
-        _roomUiState.update { it.copy(joinErrorMessage = null) }
+        _roomUiState.update {
+            it.copy(
+                joinErrorMessage = null,
+                joinErrorTitle = "无法加入房间",
+            )
+        }
     }
 
     fun showHomeNotice(message: String) {
@@ -584,12 +590,16 @@ class BluetoothRoomRepository(
         }
     }
 
-    fun showJoinError(message: String) {
+    fun showJoinError(
+        message: String,
+        title: String = "无法加入房间",
+    ) {
         _roomUiState.update {
             it.copy(
                 searchState = BluetoothSearchState.FAILED,
                 connectionHint = message,
                 joinErrorMessage = message,
+                joinErrorTitle = title,
             )
         }
     }
@@ -597,27 +607,44 @@ class BluetoothRoomRepository(
     @SuppressLint("MissingPermission")
     fun loadBondedDevicesWithFeedback() {
         if (!BluetoothPermissionUtils.hasConnectPermission(appContext)) {
-            showJoinError("缺少蓝牙连接权限")
+            showJoinError(
+                message = "缺少蓝牙连接权限",
+                title = "无法搜索房间",
+            )
             return
         }
         loadBondedDevices()
-        _roomUiState.update { it.copy(joinErrorMessage = null) }
+        _roomUiState.update {
+            it.copy(
+                joinErrorMessage = null,
+                joinErrorTitle = "无法加入房间",
+            )
+        }
     }
 
     @SuppressLint("MissingPermission")
     fun startDiscoveryWithFeedback() {
         bluetoothAdapter ?: run {
-            showJoinError("当前设备不支持蓝牙")
+            showJoinError(
+                message = "当前设备不支持蓝牙",
+                title = "无法搜索房间",
+            )
             return
         }
         if (!BluetoothPermissionUtils.hasScanPermission(appContext)) {
-            showJoinError("缺少蓝牙扫描权限")
+            showJoinError(
+                message = "缺少蓝牙扫描权限",
+                title = "无法搜索房间",
+            )
             return
         }
         loadBondedDevicesWithFeedback()
         val started = discoveryManager.startDiscovery()
         if (!started) {
-            showJoinError("蓝牙扫描启动失败，请确认蓝牙已开启且当前未被系统占用")
+            showJoinError(
+                message = "蓝牙扫描启动失败，请确认蓝牙已开启且当前未被系统占用",
+                title = "扫描启动失败",
+            )
             return
         }
         _roomUiState.update {
@@ -625,6 +652,7 @@ class BluetoothRoomRepository(
                 searchState = BluetoothSearchState.SCANNING,
                 connectionHint = "正在搜索蓝牙房间...",
                 joinErrorMessage = null,
+                joinErrorTitle = "无法加入房间",
             )
         }
     }
@@ -766,6 +794,7 @@ class BluetoothRoomRepository(
             it.copy(
                 connectionHint = message.reason,
                 joinErrorMessage = message.reason,
+                joinErrorTitle = "无法加入房间",
                 searchState = BluetoothSearchState.FAILED,
             )
         }
@@ -880,6 +909,7 @@ class BluetoothRoomRepository(
             removedFromRoom = _roomUiState.value.removedFromRoom,
             roomClosedByHost = _roomUiState.value.roomClosedByHost,
             joinErrorMessage = _roomUiState.value.joinErrorMessage,
+            joinErrorTitle = _roomUiState.value.joinErrorTitle,
             showAiDifficultyDialog = showAiDifficultyDialog,
             aiDialogTargetSlot = aiDialogTargetSlot,
             showSlotActionMenu = showSlotActionMenu,

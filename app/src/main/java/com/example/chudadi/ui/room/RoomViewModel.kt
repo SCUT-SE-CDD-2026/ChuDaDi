@@ -146,8 +146,11 @@ class RoomViewModel(
         bluetoothRoomRepository.showHomeNotice(message)
     }
 
-    fun showJoinError(message: String) {
-        bluetoothRoomRepository.showJoinError(message)
+    fun showJoinError(
+        message: String,
+        title: String = "无法加入房间",
+    ) {
+        bluetoothRoomRepository.showJoinError(message, title)
     }
 
     fun isBluetoothSupported(): Boolean = bluetoothRoomRepository.isBluetoothSupported

@@ -66,6 +66,7 @@ data class RoomUiState(
     val removedFromRoom: Boolean = false,
     val roomClosedByHost: Boolean = false,
     val joinErrorMessage: String? = null,
+    val joinErrorTitle: String = "无法加入房间",
     val showAiDifficultyDialog: Boolean = false,
     val aiDialogTargetSlot: Int = -1,
     val showSlotActionMenu: Boolean = false,

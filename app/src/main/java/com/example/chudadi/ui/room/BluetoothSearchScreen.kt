@@ -53,6 +53,7 @@ fun BluetoothSearchScreen(
     uiState: RoomUiState,
     onAction: (RoomAction) -> Unit,
     onNavigateBack: () -> Unit,
+    onDismissJoinError: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -108,10 +109,10 @@ fun BluetoothSearchScreen(
 
         uiState.joinErrorMessage?.let { message ->
             AlertDialog(
-                onDismissRequest = onNavigateBack,
+                onDismissRequest = onDismissJoinError,
                 title = {
                     Text(
-                        text = "无法加入房间",
+                        text = uiState.joinErrorTitle,
                         color = SearchTextPrimary,
                     )
                 },
@@ -122,7 +123,7 @@ fun BluetoothSearchScreen(
                     )
                 },
                 confirmButton = {
-                    TextButton(onClick = onNavigateBack) {
+                    TextButton(onClick = onDismissJoinError) {
                         Text(text = "知道了", color = SearchHighlight)
                     }
                 },
