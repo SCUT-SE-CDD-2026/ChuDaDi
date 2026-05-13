@@ -9,6 +9,11 @@ import android.annotation.SuppressLint
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
+import com.example.chudadi.network.bluetooth.transport.BluetoothConnection
+import com.example.chudadi.network.bluetooth.transport.ClientConnectionHolder
+import com.example.chudadi.network.bluetooth.transport.HeartbeatEvent
+import com.example.chudadi.network.bluetooth.transport.HeartbeatMonitor
+import com.example.chudadi.network.bluetooth.transport.HostConnectionRegistry
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
@@ -18,7 +23,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -26,13 +30,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-
-data class RoomConnection(
-    val participantId: String,
-    val connection: RoomSocketConnection,
-    val readJob: Job? = null,
-    val lastHeartbeatAt: Long = System.currentTimeMillis(),
-)
 
 sealed interface RoomSocketEvent {
     data class IncomingConnection(val connection: RoomSocketConnection) : RoomSocketEvent
@@ -50,14 +47,10 @@ sealed interface RoomSocketEvent {
 }
 
 private data class SocketManagerState(
-    val participantConnections: Map<String, RoomConnection> = emptyMap(),
+    val hostReadJobs: Map<String, Job> = emptyMap(),
     val serverSocket: BluetoothServerSocket? = null,
     val acceptJob: Job? = null,
-    val heartbeatJob: Job? = null,
-    val clientHeartbeatJob: Job? = null,
-    val clientConnection: RoomSocketConnection? = null,
     val clientReadJob: Job? = null,
-    val lastHostHeartbeatAt: Long = 0L,
 )
 
 private sealed interface SocketCommand {
@@ -71,18 +64,12 @@ private sealed interface SocketCommand {
         val socket: BluetoothSocket,
     ) : SocketCommand
 
-    data class LaunchHeartbeatLoop(
-        val heartbeatIntervalMs: Long,
-        val heartbeatTimeoutMs: Long,
-        val result: CompletableDeferred<Job>,
-    ) : SocketCommand
-
-    data class HeartbeatTick(
-        val heartbeatTimeoutMs: Long,
+    data class ParticipantHeartbeatTimedOut(
+        val participantId: String,
     ) : SocketCommand
 
     data class ConnectToHostSucceeded(
-        val connection: RoomSocketConnection,
+        val connection: BluetoothConnection,
         val result: CompletableDeferred<Result<RoomSocketConnection>>,
     ) : SocketCommand
 
@@ -93,7 +80,7 @@ private sealed interface SocketCommand {
 
     data class AttachHostConnection(
         val participantId: String,
-        val connection: RoomSocketConnection,
+        val connection: BluetoothConnection,
     ) : SocketCommand
 
     data class HostHeartbeatReceived(
@@ -110,7 +97,7 @@ private sealed interface SocketCommand {
     ) : SocketCommand
 
     data class AttachClientConnection(
-        val connection: RoomSocketConnection,
+        val connection: BluetoothConnection,
     ) : SocketCommand
 
     data object ClientHeartbeatReceived : SocketCommand
@@ -123,52 +110,56 @@ private sealed interface SocketCommand {
         val reason: String,
     ) : SocketCommand
 
-    data class StartClientHeartbeatWatchdog(
-        val heartbeatTimeoutMs: Long,
-        val checkIntervalMs: Long,
-    ) : SocketCommand
-
-    data class ClientHeartbeatCheck(
-        val heartbeatTimeoutMs: Long,
-    ) : SocketCommand
+    data object HostHeartbeatTimedOut : SocketCommand
 
     data class ReplaceHostConnection(
         val participantId: String,
-        val connection: RoomSocketConnection,
-    ) : SocketCommand
-
-    data class SendToParticipant(
-        val participantId: String,
-        val message: RoomWireMessage,
-    ) : SocketCommand
-
-    data class SendToHost(
-        val message: RoomWireMessage,
-    ) : SocketCommand
-
-    data class Broadcast(
-        val message: RoomWireMessage,
+        val connection: BluetoothConnection,
     ) : SocketCommand
 
     data class DisconnectParticipant(
         val participantId: String,
     ) : SocketCommand
 
-    data object CloseClientConnection : SocketCommand
-
     data object Shutdown : SocketCommand
 }
 
+/**
+ * Keeps low-level RFCOMM socket creation, accept loops, and read-loop lifecycle wiring.
+ *
+ * Connection lookup, client connection ownership, message sending, and heartbeat timing live in
+ * transport components shared with ClassicBluetoothTransport.
+ *
+ * Compatibility debt: this manager still coordinates the actor loop that attaches read jobs to
+ * HostConnectionRegistry, ClientConnectionHolder, and HeartbeatMonitor. Avoid adding membership,
+ * seating, UI wording, or game-rule decisions here; those belong above the transport boundary.
+ */
 class RoomSocketManager(
     private val bluetoothAdapter: BluetoothAdapter?,
     private val frameCodec: RoomFrameCodec,
     private val scope: CoroutineScope,
+    private val hostConnectionRegistry: HostConnectionRegistry = HostConnectionRegistry(),
+    private val clientConnectionHolder: ClientConnectionHolder = ClientConnectionHolder(),
+    private val heartbeatMonitor: HeartbeatMonitor = HeartbeatMonitor(scope),
 ) {
     private val _events = MutableSharedFlow<RoomSocketEvent>(extraBufferCapacity = 32)
     private val commands = Channel<SocketCommand>(capacity = Channel.UNLIMITED)
 
     init {
         scope.launch { runActorLoop() }
+        scope.launch {
+            heartbeatMonitor.events.collect { event ->
+                when (event) {
+                    is HeartbeatEvent.ParticipantTimedOut -> {
+                        commands.send(SocketCommand.ParticipantHeartbeatTimedOut(event.participantId))
+                    }
+
+                    HeartbeatEvent.HostTimedOut -> {
+                        commands.send(SocketCommand.HostHeartbeatTimedOut)
+                    }
+                }
+            }
+        }
     }
 
     val events: SharedFlow<RoomSocketEvent> = _events.asSharedFlow()
@@ -191,23 +182,6 @@ class RoomSocketManager(
         }
     }
 
-    fun launchHeartbeatLoop(
-        heartbeatIntervalMs: Long,
-        heartbeatTimeoutMs: Long,
-    ): Job {
-        val result = CompletableDeferred<Job>()
-        return runBlocking {
-            commands.send(
-                SocketCommand.LaunchHeartbeatLoop(
-                    heartbeatIntervalMs = heartbeatIntervalMs,
-                    heartbeatTimeoutMs = heartbeatTimeoutMs,
-                    result = result,
-                ),
-            )
-            result.await()
-        }
-    }
-
     @SuppressLint("MissingPermission")
     suspend fun connectToHost(
         device: BluetoothDiscoveredDevice,
@@ -222,7 +196,11 @@ class RoomSocketManager(
                 val remoteDevice = adapter.getRemoteDevice(device.address)
                 val socket = remoteDevice.createRfcommSocketToServiceRecord(roomUuid)
                 socket.connect()
-                RoomSocketConnection(socket = socket, frameCodec = frameCodec)
+                BluetoothConnection(
+                    rawConnection = RoomSocketConnection(socket = socket, frameCodec = frameCodec),
+                    deviceName = device.name,
+                    deviceAddress = device.address,
+                )
             }.onSuccess { connection ->
                 commands.send(SocketCommand.ConnectToHostSucceeded(connection = connection, result = result))
             }.onFailure { error ->
@@ -236,59 +214,26 @@ class RoomSocketManager(
         commands.trySend(
             SocketCommand.AttachHostConnection(
                 participantId = participantId,
-                connection = connection,
+                connection = BluetoothConnection(connection),
             ),
         )
     }
 
     fun attachClientReadLoop(connection: RoomSocketConnection) {
-        commands.trySend(SocketCommand.AttachClientConnection(connection))
-    }
-
-    fun startClientHeartbeatWatchdog(
-        heartbeatTimeoutMs: Long,
-        clientHeartbeatCheckIntervalMs: Long,
-    ) {
-        commands.trySend(
-            SocketCommand.StartClientHeartbeatWatchdog(
-                heartbeatTimeoutMs = heartbeatTimeoutMs,
-                checkIntervalMs = clientHeartbeatCheckIntervalMs,
-            ),
-        )
+        commands.trySend(SocketCommand.AttachClientConnection(BluetoothConnection(connection)))
     }
 
     fun replaceHostConnection(participantId: String, connection: RoomSocketConnection) {
         commands.trySend(
             SocketCommand.ReplaceHostConnection(
                 participantId = participantId,
-                connection = connection,
+                connection = BluetoothConnection(connection),
             ),
         )
-    }
-
-    fun sendToParticipant(participantId: String, message: RoomWireMessage) {
-        commands.trySend(
-            SocketCommand.SendToParticipant(
-                participantId = participantId,
-                message = message,
-            ),
-        )
-    }
-
-    fun sendToHost(message: RoomWireMessage) {
-        commands.trySend(SocketCommand.SendToHost(message))
-    }
-
-    fun broadcast(message: RoomWireMessage) {
-        commands.trySend(SocketCommand.Broadcast(message))
     }
 
     fun disconnectParticipant(participantId: String) {
         commands.trySend(SocketCommand.DisconnectParticipant(participantId))
-    }
-
-    fun closeClientConnection() {
-        commands.trySend(SocketCommand.CloseClientConnection)
     }
 
     fun shutdown() {
@@ -309,8 +254,7 @@ class RoomSocketManager(
         return when (command) {
             is SocketCommand.StartServer,
             is SocketCommand.ServerAccepted,
-            is SocketCommand.LaunchHeartbeatLoop,
-            is SocketCommand.HeartbeatTick,
+            is SocketCommand.ParticipantHeartbeatTimedOut,
             is SocketCommand.ConnectToHostSucceeded,
             is SocketCommand.ConnectToHostFailed,
             -> dispatchServerCommand(state, command)
@@ -320,8 +264,6 @@ class RoomSocketManager(
             is SocketCommand.HostMessageReceived,
             is SocketCommand.HostReadFailed,
             is SocketCommand.ReplaceHostConnection,
-            is SocketCommand.SendToParticipant,
-            is SocketCommand.Broadcast,
             is SocketCommand.DisconnectParticipant,
             -> dispatchParticipantCommand(state, command)
 
@@ -329,10 +271,7 @@ class RoomSocketManager(
             SocketCommand.ClientHeartbeatReceived,
             is SocketCommand.ClientMessageReceived,
             is SocketCommand.ClientReadFailed,
-            is SocketCommand.StartClientHeartbeatWatchdog,
-            is SocketCommand.ClientHeartbeatCheck,
-            is SocketCommand.SendToHost,
-            SocketCommand.CloseClientConnection,
+            SocketCommand.HostHeartbeatTimedOut,
             SocketCommand.Shutdown,
             -> dispatchClientCommand(state, command)
         }
@@ -345,8 +284,7 @@ class RoomSocketManager(
         return when (command) {
             is SocketCommand.StartServer -> handleStartServer(state, command)
             is SocketCommand.ServerAccepted -> handleServerAccepted(state, command)
-            is SocketCommand.LaunchHeartbeatLoop -> handleLaunchHeartbeatLoop(state, command)
-            is SocketCommand.HeartbeatTick -> handleHeartbeatTick(state, command)
+            is SocketCommand.ParticipantHeartbeatTimedOut -> handleParticipantHeartbeatTimedOut(state, command)
             is SocketCommand.ConnectToHostSucceeded -> handleConnectToHostSucceeded(state, command)
             is SocketCommand.ConnectToHostFailed -> handleConnectToHostFailed(state, command)
             else -> state
@@ -363,8 +301,6 @@ class RoomSocketManager(
             is SocketCommand.HostMessageReceived -> handleHostMessageReceived(state, command)
             is SocketCommand.HostReadFailed -> handleHostReadFailed(state, command)
             is SocketCommand.ReplaceHostConnection -> handleReplaceHostConnection(state, command)
-            is SocketCommand.SendToParticipant -> handleSendToParticipant(state, command)
-            is SocketCommand.Broadcast -> handleBroadcast(state, command)
             is SocketCommand.DisconnectParticipant -> handleDisconnectParticipant(state, command)
             else -> state
         }
@@ -379,10 +315,7 @@ class RoomSocketManager(
             SocketCommand.ClientHeartbeatReceived -> handleClientHeartbeatReceived(state)
             is SocketCommand.ClientMessageReceived -> handleClientMessageReceived(state, command)
             is SocketCommand.ClientReadFailed -> handleClientReadFailed(state, command)
-            is SocketCommand.StartClientHeartbeatWatchdog -> handleStartClientHeartbeatWatchdog(state, command)
-            is SocketCommand.ClientHeartbeatCheck -> handleClientHeartbeatCheck(state, command)
-            is SocketCommand.SendToHost -> handleSendToHost(state, command)
-            SocketCommand.CloseClientConnection -> handleCloseClientConnection(state)
+            SocketCommand.HostHeartbeatTimedOut -> handleHostHeartbeatTimedOut(state)
             SocketCommand.Shutdown -> handleShutdown(state)
             else -> state
         }
@@ -400,7 +333,7 @@ class RoomSocketManager(
         }
 
         state.acceptJob?.cancel()
-        state.heartbeatJob?.cancel()
+        heartbeatMonitor.stopHostHeartbeat()
         state.serverSocket?.closeSafely()
 
         return try {
@@ -419,7 +352,6 @@ class RoomSocketManager(
             state.copy(
                 serverSocket = serverSocket,
                 acceptJob = acceptJob,
-                heartbeatJob = null,
             )
         } catch (error: IOException) {
             command.result.complete(Result.failure(error))
@@ -435,50 +367,24 @@ class RoomSocketManager(
         return state
     }
 
-    private fun handleLaunchHeartbeatLoop(
+    private fun handleParticipantHeartbeatTimedOut(
         state: SocketManagerState,
-        command: SocketCommand.LaunchHeartbeatLoop,
+        command: SocketCommand.ParticipantHeartbeatTimedOut,
     ): SocketManagerState {
-        state.heartbeatJob?.cancel()
-        val heartbeatJob = scope.launch {
-            while (isActive) {
-                delay(command.heartbeatIntervalMs)
-                commands.send(SocketCommand.HeartbeatTick(command.heartbeatTimeoutMs))
-            }
-        }
-        command.result.complete(heartbeatJob)
-        return state.copy(heartbeatJob = heartbeatJob)
-    }
-
-    private fun handleHeartbeatTick(
-        state: SocketManagerState,
-        command: SocketCommand.HeartbeatTick,
-    ): SocketManagerState {
-        val now = System.currentTimeMillis()
-        val expiredIds = state.participantConnections.values
-            .filter { now - it.lastHeartbeatAt > command.heartbeatTimeoutMs }
-            .map { it.participantId }
-        expiredIds.forEach { participantId ->
-            state.participantConnections[participantId]?.readJob?.cancel()
-            state.participantConnections[participantId]?.connection?.close()
-            _events.tryEmit(RoomSocketEvent.ParticipantDisconnected(participantId))
-        }
-        val remainingConnections = state.participantConnections - expiredIds.toSet()
-        remainingConnections.values.forEach { roomConnection ->
-            roomConnection.connection.sendSafely(RoomWireMessage.HeartbeatPing)
-        }
-        return state.copy(participantConnections = remainingConnections)
+        state.hostReadJobs[command.participantId]?.cancel()
+        hostConnectionRegistry.remove(command.participantId)?.closeNow()
+        _events.tryEmit(RoomSocketEvent.ParticipantDisconnected(command.participantId))
+        return state.copy(hostReadJobs = state.hostReadJobs - command.participantId)
     }
 
     private fun handleConnectToHostSucceeded(
         state: SocketManagerState,
         command: SocketCommand.ConnectToHostSucceeded,
     ): SocketManagerState {
-        command.result.complete(Result.success(command.connection))
-        return state.copy(
-            clientConnection = command.connection,
-            lastHostHeartbeatAt = System.currentTimeMillis(),
-        )
+        clientConnectionHolder.set(command.connection)
+        heartbeatMonitor.markHostConnected()
+        command.result.complete(Result.success(command.connection.rawConnection))
+        return state
     }
 
     private fun handleConnectToHostFailed(
@@ -493,53 +399,41 @@ class RoomSocketManager(
         state: SocketManagerState,
         command: SocketCommand.AttachHostConnection,
     ): SocketManagerState {
-        state.participantConnections[command.participantId]?.let { oldConnection ->
-            oldConnection.readJob?.cancel()
-            oldConnection.connection.close()
-        }
+        state.hostReadJobs[command.participantId]?.cancel()
+        hostConnectionRegistry.remove(command.participantId)?.closeNow()
+        heartbeatMonitor.removeParticipant(command.participantId)
         val readJob = scope.launch {
             try {
-                while (isActive) {
-                    when (val message = command.connection.read()) {
-                        RoomWireMessage.HeartbeatPong -> {
-                            commands.send(SocketCommand.HostHeartbeatReceived(command.participantId))
-                        }
+                command.connection.readLoop { message ->
+                    when (message) {
+                        RoomWireMessage.HeartbeatPong -> commands.send(
+                            SocketCommand.HostHeartbeatReceived(command.participantId),
+                        )
 
-                        else -> {
-                            commands.send(
-                                SocketCommand.HostMessageReceived(
-                                    participantId = command.participantId,
-                                    message = message,
-                                ),
-                            )
-                        }
+                        else -> commands.send(
+                            SocketCommand.HostMessageReceived(
+                                participantId = command.participantId,
+                                message = message,
+                            ),
+                        )
                     }
                 }
             } catch (_: IOException) {
                 commands.send(SocketCommand.HostReadFailed(command.participantId))
             }
         }
-        return state.copy(
-            participantConnections = state.participantConnections + (
-                command.participantId to RoomConnection(
-                    participantId = command.participantId,
-                    connection = command.connection,
-                    readJob = readJob,
-                )
-            ),
-        )
+        hostConnectionRegistry.add(command.participantId, command.connection)
+        heartbeatMonitor.trackParticipant(command.participantId)
+        return state.copy(hostReadJobs = state.hostReadJobs + (command.participantId to readJob))
     }
 
     private fun handleHostHeartbeatReceived(
         state: SocketManagerState,
         command: SocketCommand.HostHeartbeatReceived,
     ): SocketManagerState {
-        val roomConnection = state.participantConnections[command.participantId] ?: return state
-        return state.copy(
-            participantConnections = state.participantConnections + (
-                command.participantId to roomConnection.copy(lastHeartbeatAt = System.currentTimeMillis())
-            ),
-        )
+        if (!hostConnectionRegistry.contains(command.participantId)) return state
+        heartbeatMonitor.markHeartbeatReceived(command.participantId)
+        return state
     }
 
     private suspend fun handleHostMessageReceived(
@@ -559,13 +453,12 @@ class RoomSocketManager(
         state: SocketManagerState,
         command: SocketCommand.HostReadFailed,
     ): SocketManagerState {
-        val roomConnection = state.participantConnections[command.participantId] ?: return state
-        roomConnection.readJob?.cancel()
-        roomConnection.connection.close()
+        if (!hostConnectionRegistry.contains(command.participantId)) return state
+        state.hostReadJobs[command.participantId]?.cancel()
+        hostConnectionRegistry.remove(command.participantId)?.closeNow()
+        heartbeatMonitor.removeParticipant(command.participantId)
         _events.tryEmit(RoomSocketEvent.ParticipantDisconnected(command.participantId))
-        return state.copy(
-            participantConnections = state.participantConnections - command.participantId,
-        )
+        return state.copy(hostReadJobs = state.hostReadJobs - command.participantId)
     }
 
     private fun handleAttachClientConnection(
@@ -573,13 +466,15 @@ class RoomSocketManager(
         command: SocketCommand.AttachClientConnection,
     ): SocketManagerState {
         state.clientReadJob?.cancel()
-        if (state.clientConnection !== command.connection) {
-            state.clientConnection?.close()
+        val previousConnection = clientConnectionHolder.set(command.connection)
+        if (previousConnection != null && !previousConnection.wraps(command.connection.rawConnection)) {
+            previousConnection.closeNow()
         }
+        heartbeatMonitor.markHostConnected()
         val readJob = scope.launch {
             try {
-                while (isActive) {
-                    when (val message = command.connection.read()) {
+                command.connection.readLoop { message ->
+                    when (message) {
                         RoomWireMessage.HeartbeatPing -> {
                             command.connection.sendSafely(RoomWireMessage.HeartbeatPong)
                             commands.send(SocketCommand.ClientHeartbeatReceived)
@@ -592,15 +487,12 @@ class RoomSocketManager(
                 commands.send(SocketCommand.ClientReadFailed("与房主的连接已断开"))
             }
         }
-        return state.copy(
-            clientConnection = command.connection,
-            clientReadJob = readJob,
-            lastHostHeartbeatAt = System.currentTimeMillis(),
-        )
+        return state.copy(clientReadJob = readJob)
     }
 
     private fun handleClientHeartbeatReceived(state: SocketManagerState): SocketManagerState {
-        return state.copy(lastHostHeartbeatAt = System.currentTimeMillis())
+        heartbeatMonitor.markHeartbeatReceived(participantId = null)
+        return state
     }
 
     private suspend fun handleClientMessageReceived(
@@ -617,66 +509,27 @@ class RoomSocketManager(
     ): SocketManagerState {
         _events.tryEmit(RoomSocketEvent.HostConnectionLost(command.reason))
         state.clientReadJob?.cancel()
-        state.clientConnection?.close()
-        state.clientHeartbeatJob?.cancel()
+        clientConnectionHolder.clear()?.closeNow()
+        heartbeatMonitor.stopClientWatchdog()
+        heartbeatMonitor.clearHostHeartbeat()
         return state.copy(
-            clientConnection = null,
             clientReadJob = null,
-            clientHeartbeatJob = null,
-            lastHostHeartbeatAt = 0L,
         )
     }
 
-    private fun handleStartClientHeartbeatWatchdog(
-        state: SocketManagerState,
-        command: SocketCommand.StartClientHeartbeatWatchdog,
-    ): SocketManagerState {
-        state.clientHeartbeatJob?.cancel()
-        val watchdogJob = scope.launch {
-            while (isActive) {
-                delay(command.checkIntervalMs)
-                commands.send(SocketCommand.ClientHeartbeatCheck(command.heartbeatTimeoutMs))
-            }
-        }
-        return state.copy(clientHeartbeatJob = watchdogJob)
-    }
-
-    private fun handleClientHeartbeatCheck(
-        state: SocketManagerState,
-        command: SocketCommand.ClientHeartbeatCheck,
-    ): SocketManagerState {
-        val shouldStopWatchdog = state.clientConnection == null
-        val heartbeatExpired = !shouldStopWatchdog &&
-            state.lastHostHeartbeatAt != 0L &&
-            System.currentTimeMillis() - state.lastHostHeartbeatAt > command.heartbeatTimeoutMs
-
-        return if (shouldStopWatchdog) {
-            state.clientHeartbeatJob?.cancel()
-            state.copy(clientHeartbeatJob = null)
-        } else if (heartbeatExpired) {
-            _events.tryEmit(RoomSocketEvent.HostConnectionLost("与房主的连接已超时"))
-            state.clientReadJob?.cancel()
-            state.clientConnection?.close()
-            state.clientHeartbeatJob?.cancel()
-            state.copy(
-                clientConnection = null,
-                clientReadJob = null,
-                clientHeartbeatJob = null,
-                lastHostHeartbeatAt = 0L,
-            )
-        } else {
-            state
-        }
+    private fun handleHostHeartbeatTimedOut(state: SocketManagerState): SocketManagerState {
+        if (clientConnectionHolder.current() == null) return state
+        _events.tryEmit(RoomSocketEvent.HostConnectionLost("Host connection heartbeat timed out"))
+        state.clientReadJob?.cancel()
+        clientConnectionHolder.clear()?.closeNow()
+        heartbeatMonitor.clearHostHeartbeat()
+        return state.copy(clientReadJob = null)
     }
 
     private fun handleReplaceHostConnection(
         state: SocketManagerState,
         command: SocketCommand.ReplaceHostConnection,
     ): SocketManagerState {
-        state.participantConnections[command.participantId]?.let { oldConnection ->
-            oldConnection.readJob?.cancel()
-            oldConnection.connection.close()
-        }
         return handleAttachHostConnection(
             state = state,
             command = SocketCommand.AttachHostConnection(
@@ -686,65 +539,26 @@ class RoomSocketManager(
         )
     }
 
-    private fun handleSendToParticipant(
-        state: SocketManagerState,
-        command: SocketCommand.SendToParticipant,
-    ): SocketManagerState {
-        state.participantConnections[command.participantId]?.connection?.sendSafely(command.message)
-        return state
-    }
-
-    private fun handleSendToHost(
-        state: SocketManagerState,
-        command: SocketCommand.SendToHost,
-    ): SocketManagerState {
-        state.clientConnection?.sendSafely(command.message)
-        return state
-    }
-
-    private fun handleBroadcast(
-        state: SocketManagerState,
-        command: SocketCommand.Broadcast,
-    ): SocketManagerState {
-        state.participantConnections.values.forEach { roomConnection ->
-            roomConnection.connection.sendSafely(command.message)
-        }
-        return state
-    }
-
     private fun handleDisconnectParticipant(
         state: SocketManagerState,
         command: SocketCommand.DisconnectParticipant,
     ): SocketManagerState {
-        val roomConnection = state.participantConnections[command.participantId] ?: return state
-        roomConnection.readJob?.cancel()
-        roomConnection.connection.close()
-        return state.copy(
-            participantConnections = state.participantConnections - command.participantId,
-        )
-    }
-
-    private fun handleCloseClientConnection(state: SocketManagerState): SocketManagerState {
-        state.clientReadJob?.cancel()
-        state.clientConnection?.close()
-        return state.copy(
-            clientConnection = null,
-            clientReadJob = null,
-            lastHostHeartbeatAt = 0L,
-        )
+        state.hostReadJobs[command.participantId]?.cancel()
+        hostConnectionRegistry.remove(command.participantId)?.closeNow() ?: return state
+        heartbeatMonitor.removeParticipant(command.participantId)
+        return state.copy(hostReadJobs = state.hostReadJobs - command.participantId)
     }
 
     private fun handleShutdown(state: SocketManagerState): SocketManagerState {
         state.acceptJob?.cancel()
-        state.heartbeatJob?.cancel()
-        state.clientHeartbeatJob?.cancel()
         state.clientReadJob?.cancel()
         state.serverSocket?.closeSafely()
-        state.participantConnections.values.forEach { roomConnection ->
-            roomConnection.readJob?.cancel()
-            roomConnection.connection.close()
+        heartbeatMonitor.stop()
+        state.hostReadJobs.values.forEach { readJob -> readJob.cancel() }
+        hostConnectionRegistry.clear().forEach { connection ->
+            connection.closeNow()
         }
-        state.clientConnection?.close()
+        clientConnectionHolder.clear()?.closeNow()
         return SocketManagerState()
     }
 }

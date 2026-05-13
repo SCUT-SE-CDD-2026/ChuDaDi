@@ -117,8 +117,8 @@ class RoomViewModel(
             }
             RoomAction.ToggleReady -> bluetoothRoomRepository.handleToggleReady()
             RoomAction.StartGame -> startConfiguredGame()
-            RoomAction.EnableBluetoothBroadcast -> {
-                _externalEvents.tryEmit(RoomExternalEvent.RequestEnableBluetoothBroadcast)
+            RoomAction.StartHostListening -> {
+                _externalEvents.tryEmit(RoomExternalEvent.RequestStartHostListening)
             }
             RoomAction.ResetScores -> {
                 scoreAdjustments.value = emptyMap()
@@ -190,8 +190,8 @@ class RoomViewModel(
         )
     }
 
-    fun enableBluetoothBroadcast(hostDeviceName: String): Boolean {
-        val result = bluetoothRoomRepository.enableBluetoothBroadcast(hostDeviceName)
+    fun startHostListening(hostDeviceName: String): Boolean {
+        val result = bluetoothRoomRepository.startHostListening(hostDeviceName)
         return result.isSuccess
     }
 

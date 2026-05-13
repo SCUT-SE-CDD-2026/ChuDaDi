@@ -72,7 +72,7 @@ private val GoldAccent = Color(0xFFD4A85A)
 private val HostActionButtonHeight = 44.dp
 private val MemberActionButtonHeight = 44.dp
 private val BroadcastButtonHeight = 28.dp
-private val BroadcastButtonWidth = 108.dp
+private val BroadcastButtonWidth = 100.dp
 
 @Composable
 fun RoomScreen(
@@ -531,7 +531,7 @@ private fun ControlPanel(
             ) {
                 Text("蓝牙状态", style = MaterialTheme.typography.bodySmall, color = TextMuted)
                 Text(
-                    text = if (uiState.bluetoothVisible) "房间广播中" else "未广播",
+                    text = if (uiState.bluetoothVisible) "已开启" else "未开启",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (uiState.bluetoothVisible) StatusReady else TextMuted,
                 )
@@ -539,8 +539,8 @@ private fun ControlPanel(
             if (uiState.canEnableBroadcast) {
                 Spacer(modifier = Modifier.width(12.dp))
                 ChuButton(
-                    text = "开启广播",
-                    onClick = { onAction(RoomAction.EnableBluetoothBroadcast) },
+                    text = "启动蓝牙",
+                    onClick = { onAction(RoomAction.StartHostListening) },
                     style = ChuButtonStyle.SECONDARY,
                     modifier = Modifier
                         .width(BroadcastButtonWidth)

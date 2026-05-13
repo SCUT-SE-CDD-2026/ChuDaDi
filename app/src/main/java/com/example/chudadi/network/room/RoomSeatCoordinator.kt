@@ -6,6 +6,7 @@
 package com.example.chudadi.network.room
 
 import com.example.chudadi.R
+import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.ui.room.AiDifficulty
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
@@ -25,7 +26,7 @@ interface RoomSeatPort {
 
 class RoomSeatCoordinator(
     private val authorityStore: RoomAuthorityStore,
-    private val socketManager: RoomSocketManager,
+    private val roomTransport: RoomTransport,
     private val localParticipantIdProvider: () -> String,
     private val port: RoomSeatPort,
 ) {
@@ -104,7 +105,7 @@ class RoomSeatCoordinator(
             }
 
             SlotOccupantType.HUMAN_MEMBER -> {
-                socketManager.sendToParticipant(
+                roomTransport.sendToParticipant(
                     targetParticipantId,
                     RoomWireMessage.SwapSeatPromptMessage(
                         RemoteSwapRequest(
@@ -151,7 +152,7 @@ class RoomSeatCoordinator(
             port.publishConnectionHint("换位请求已被拒绝")
             return
         }
-        socketManager.sendToParticipant(
+        roomTransport.sendToParticipant(
             requesterParticipantId,
             RoomWireMessage.RoomSnapshotMessage(port.snapshotOfCurrentRoom()),
         )

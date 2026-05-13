@@ -8,6 +8,7 @@ package com.example.chudadi.network.room
 import com.example.chudadi.R
 import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
 import java.io.IOException
@@ -31,7 +32,7 @@ interface RoomMembershipPort {
 class RoomMembershipCoordinator(
     private val scope: CoroutineScope,
     private val authorityStore: RoomAuthorityStore,
-    private val socketManager: RoomSocketManager,
+    private val roomTransport: RoomTransport,
     private val matchCoordinator: NetworkMatchCoordinator,
     private val reconnectSessionRepository: ReconnectSessionRepository,
     private val port: RoomMembershipPort,
@@ -75,7 +76,7 @@ class RoomMembershipCoordinator(
     }
 
     fun handleRemoteLeave(participantId: String) {
-        socketManager.disconnectParticipant(participantId)
+        roomTransport.disconnectParticipant(participantId)
         removeParticipantFromRoom(participantId, clearSlot = true, reason = "已离开房间")
     }
 
@@ -114,7 +115,7 @@ class RoomMembershipCoordinator(
         participantId: String,
         existingSlotIndex: Int,
     ) {
-        socketManager.replaceHostConnection(participantId = participantId, connection = connection)
+        roomTransport.replaceHostConnection(participantId = participantId, connection = connection)
         authorityStore.update {
             it.copy(
                 slotAssignments = authorityStore.normalizedSlotAssignments(
@@ -147,7 +148,7 @@ class RoomMembershipCoordinator(
         matchCoordinator.sendMatchRecoveryMessage(
             participantId = participantId,
             authorityStore = authorityStore,
-            sendToParticipant = socketManager::sendToParticipant,
+            sendToParticipant = roomTransport::sendToParticipant,
         )
         port.broadcastSnapshot()
     }
@@ -179,7 +180,7 @@ class RoomMembershipCoordinator(
             )
         }
 
-        socketManager.attachHostReadLoop(participantId = participantId, connection = connection)
+        roomTransport.attachHostReadLoop(participantId = participantId, connection = connection)
         port.publishConnectionHint("${request.playerName} 已加入房间")
 
         connection.send(

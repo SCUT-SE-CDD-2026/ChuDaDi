@@ -13,7 +13,7 @@ sealed interface RoomAction {
     data object DeclineSwap : RoomAction
     data object ToggleReady : RoomAction
     data object StartGame : RoomAction
-    data object EnableBluetoothBroadcast : RoomAction
+    data object StartHostListening : RoomAction
     data object ResetScores : RoomAction
     data class AccumulateScores(val scores: List<RoundScore>) : RoomAction
     data class OpenAiDialog(val slotIndex: Int) : RoomAction

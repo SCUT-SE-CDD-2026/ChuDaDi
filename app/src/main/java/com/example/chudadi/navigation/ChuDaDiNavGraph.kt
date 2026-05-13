@@ -204,9 +204,9 @@ fun ChuDaDiNavGraph(
     LaunchedEffect(roomViewModel) {
         roomViewModel.externalEvents.collect { event ->
             when (event) {
-                com.example.chudadi.ui.room.RoomExternalEvent.RequestEnableBluetoothBroadcast -> {
+                com.example.chudadi.ui.room.RoomExternalEvent.RequestStartHostListening -> {
                     requestBluetoothHostReady {
-                        val created = roomViewModel.enableBluetoothBroadcast(localDeviceName)
+                        val created = roomViewModel.startHostListening(localDeviceName)
                         if (created) {
                             requestedRoute = AppFlowRoute.ROOM
                         }

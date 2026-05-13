@@ -1,5 +1,5 @@
 package com.example.chudadi.ui.room
 
 sealed interface RoomExternalEvent {
-    data object RequestEnableBluetoothBroadcast : RoomExternalEvent
+    data object RequestStartHostListening : RoomExternalEvent
 }
