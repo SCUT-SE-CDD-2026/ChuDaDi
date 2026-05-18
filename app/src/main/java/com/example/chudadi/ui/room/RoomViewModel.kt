@@ -171,7 +171,7 @@ class RoomViewModel(
         return result.isSuccess
     }
 
-    fun createHostRoom(hostDeviceName: String): Boolean {
+    suspend fun createHostRoom(hostDeviceName: String): Boolean {
         scoreAdjustments.value = emptyMap()
         val result = bluetoothRoomRepository.createHostRoom(
             playerName = playerName.value,
@@ -190,7 +190,7 @@ class RoomViewModel(
         )
     }
 
-    fun startHostListening(hostDeviceName: String): Boolean {
+    suspend fun startHostListening(hostDeviceName: String): Boolean {
         val result = bluetoothRoomRepository.startHostListening(hostDeviceName)
         return result.isSuccess
     }

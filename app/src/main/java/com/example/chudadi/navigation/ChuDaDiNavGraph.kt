@@ -206,9 +206,11 @@ fun ChuDaDiNavGraph(
             when (event) {
                 com.example.chudadi.ui.room.RoomExternalEvent.RequestStartHostListening -> {
                     requestBluetoothHostReady {
-                        val created = roomViewModel.startHostListening(localDeviceName)
-                        if (created) {
-                            requestedRoute = AppFlowRoute.ROOM
+                        scope.launch {
+                            val created = roomViewModel.startHostListening(localDeviceName)
+                            if (created) {
+                                requestedRoute = AppFlowRoute.ROOM
+                            }
                         }
                     }
                 }

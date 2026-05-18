@@ -20,9 +20,9 @@ class MatchTurnTimer(
             HUMAN_TURN_DURATION_MS
         }
         state = if (isAiDrivenTurn) {
-            TurnTimerState.AiThinking(deadlineAtMillis)
+            TurnTimerState.AiThinking(startedAtMillis = nowMillis, deadlineAtMillis = deadlineAtMillis)
         } else {
-            TurnTimerState.HumanTurn(deadlineAtMillis)
+            TurnTimerState.HumanTurn(startedAtMillis = nowMillis, deadlineAtMillis = deadlineAtMillis)
         }
     }
 
@@ -37,6 +37,10 @@ class MatchTurnTimer(
 
     fun isCurrentActorAi(): Boolean = state is TurnTimerState.AiThinking
 
+    fun snapshot(): MatchTurnTimerSnapshot? {
+        return state.snapshot
+    }
+
     companion object {
         const val HUMAN_TURN_DURATION_MS = 15_000L
         const val AI_DELAY_MIN_MS = 2_000L
@@ -44,12 +48,24 @@ class MatchTurnTimer(
     }
 }
 
+data class MatchTurnTimerSnapshot(
+    val startedAtMillis: Long,
+    val deadlineAtMillis: Long,
+    val isAiDrivenTurn: Boolean,
+)
+
 private sealed interface TurnTimerState {
     data object Idle : TurnTimerState
 
-    data class HumanTurn(val deadlineAtMillis: Long) : TurnTimerState
+    data class HumanTurn(
+        val startedAtMillis: Long,
+        val deadlineAtMillis: Long,
+    ) : TurnTimerState
 
-    data class AiThinking(val deadlineAtMillis: Long) : TurnTimerState
+    data class AiThinking(
+        val startedAtMillis: Long,
+        val deadlineAtMillis: Long,
+    ) : TurnTimerState
 }
 
 private val TurnTimerState.deadlineAtMillis: Long?
@@ -57,4 +73,19 @@ private val TurnTimerState.deadlineAtMillis: Long?
         TurnTimerState.Idle -> null
         is TurnTimerState.HumanTurn -> deadlineAtMillis
         is TurnTimerState.AiThinking -> deadlineAtMillis
+    }
+
+private val TurnTimerState.snapshot: MatchTurnTimerSnapshot?
+    get() = when (this) {
+        TurnTimerState.Idle -> null
+        is TurnTimerState.HumanTurn -> MatchTurnTimerSnapshot(
+            startedAtMillis = startedAtMillis,
+            deadlineAtMillis = deadlineAtMillis,
+            isAiDrivenTurn = false,
+        )
+        is TurnTimerState.AiThinking -> MatchTurnTimerSnapshot(
+            startedAtMillis = startedAtMillis,
+            deadlineAtMillis = deadlineAtMillis,
+            isAiDrivenTurn = true,
+        )
     }

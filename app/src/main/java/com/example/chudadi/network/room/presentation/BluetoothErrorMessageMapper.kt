@@ -1,6 +1,9 @@
 package com.example.chudadi.network.room.presentation
 
+import com.example.chudadi.network.room.UserVisibleRoomException
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
+import kotlinx.serialization.SerializationException
 
 /**
  * Maps bluetooth failures and known bluetooth error cases into user-facing messages.
@@ -17,13 +20,24 @@ class BluetoothErrorMessageMapper {
     val listenStartFailedMessage: String = "蓝牙房间监听启动失败"
     val connectFailedRetryMessage: String = "连接失败，请重试"
     val discoveryStartFailedMessage: String = "蓝牙扫描启动失败，请确认蓝牙已开启且当前未被系统占用"
+    val roomConnectionAbnormalMessage: String = "房间连接异常，请重新加入房间"
 
     fun toUserFacingMessage(error: Throwable, defaultMessage: String): String {
         val rawMessage = error.message?.trim().orEmpty()
-        if (rawMessage.isChineseText()) {
-            return rawMessage
+        return when {
+            error is UserVisibleRoomException && rawMessage.isNotBlank() -> rawMessage
+            error is CancellationException -> defaultMessage
+            error.isRoomProtocolFailure() -> roomConnectionAbnormalMessage
+            rawMessage.isUserFacingChineseText() -> rawMessage
+            else -> mapKnownFailure(error, rawMessage, defaultMessage)
         }
+    }
 
+    private fun mapKnownFailure(
+        error: Throwable,
+        rawMessage: String,
+        defaultMessage: String,
+    ): String {
         return when {
             error is SecurityException -> "缺少蓝牙权限，请授权后重试"
 
@@ -58,16 +72,32 @@ class BluetoothErrorMessageMapper {
                 "蓝牙连接失败，请确认房主已开启房间后重试"
             }
 
-            rawMessage.isNotBlank() && rawMessage.isChineseText() -> rawMessage
+            rawMessage.isNotBlank() && rawMessage.isUserFacingChineseText() -> rawMessage
             else -> defaultMessage
         }
+    }
+
+    private fun Throwable.isRoomProtocolFailure(): Boolean {
+        val rawMessage = message.orEmpty()
+        return this is SerializationException ||
+            cause is SerializationException ||
+            rawMessage.containsAnyIgnoreCase(
+                "Failed to decode room protocol message",
+                "Invalid room protocol message",
+            )
     }
 
     private fun String.containsAnyIgnoreCase(vararg keywords: String): Boolean {
         return keywords.any { keyword -> contains(keyword, ignoreCase = true) }
     }
 
-    private fun String.isChineseText(): Boolean {
-        return any { it in '\u4E00'..'\u9FFF' }
+    private fun String.isUserFacingChineseText(): Boolean {
+        return any { it in '\u4E00'..'\u9FFF' } &&
+            !containsAnyIgnoreCase(
+                "TimeoutCancellationException",
+                "SerializationException",
+                "IOException",
+                "CancellationException",
+            )
     }
 }

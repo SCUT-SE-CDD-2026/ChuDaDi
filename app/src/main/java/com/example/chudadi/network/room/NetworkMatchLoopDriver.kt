@@ -1,5 +1,6 @@
 package com.example.chudadi.network.room
 
+import com.example.chudadi.controller.server.AuthoritativeTurnSnapshot
 import com.example.chudadi.controller.server.BluetoothAuthoritativeMatchController
 import com.example.chudadi.model.game.entity.MatchPhase
 import kotlinx.coroutines.CoroutineScope
@@ -51,12 +52,14 @@ class NetworkMatchLoopDriver(
         if (match?.phase == MatchPhase.FINISHED) {
             result = LoopTickResult.FINISHED
         } else if (match != null) {
-            if (!hostMatchController.isCurrentTurnExpired()) {
+            val turnSnapshot = hostMatchController.currentTurnSnapshot()
+            if (turnSnapshot == null || !hostMatchController.isCurrentTurnExpired(turnSnapshot)) {
                 updateAllMatchSnapshots(null)
             } else {
-                val seatId = match.activeSeatIndex
+                val seatId = turnSnapshot.activeSeatIndex
                 val seatName = seatDisplayName(seatId)
                 val resolution = resolveExpiredTurn(
+                    turnSnapshot = turnSnapshot,
                     seatId = seatId,
                     seatName = seatName,
                     isSeatDisconnected = isSeatDisconnected,
@@ -70,32 +73,46 @@ class NetworkMatchLoopDriver(
     }
 
     private fun resolveExpiredTurn(
+        turnSnapshot: AuthoritativeTurnSnapshot,
         seatId: Int,
         seatName: String,
         isSeatDisconnected: (Int) -> Boolean,
     ): ExpiredTurnResolution {
         val resolution: ExpiredTurnResolution
-        if (hostMatchController.isCurrentActorAi()) {
+        if (hostMatchController.isCurrentActorAi(turnSnapshot)) {
             val thinkingMessage = buildThinkingMessage(seatId, seatName, isSeatDisconnected)
-            val result = hostMatchController.resolveCurrentSeatByAi(thinkingMessage)
+            val result = hostMatchController.resolveCurrentSeatByAi(
+                lastMessage = thinkingMessage,
+                expectedTurn = turnSnapshot,
+            )
             resolution = ExpiredTurnResolution(
                 message = result.message,
                 shouldUpdateSnapshot = result.success || result.message != null,
             )
         } else if (isSeatDisconnected(seatId)) {
-            hostMatchController.markDisconnected(seatId, disconnected = true)
+            val marked = hostMatchController.markDisconnected(
+                seatId = seatId,
+                disconnected = true,
+                expectedTurn = turnSnapshot,
+            )
             resolution = ExpiredTurnResolution(
                 message = "$seatName 托管中",
-                shouldUpdateSnapshot = true,
+                shouldUpdateSnapshot = marked,
             )
-        } else if (hostMatchController.canCurrentSeatPass()) {
-            val passResult = hostMatchController.handlePassRequest(seatId)
+        } else if (hostMatchController.canCurrentSeatPass(turnSnapshot)) {
+            val passResult = hostMatchController.handlePassRequest(
+                seatId = seatId,
+                expectedTurn = turnSnapshot,
+            )
             resolution = ExpiredTurnResolution(
                 message = if (passResult.success) "$seatName 超时过牌" else passResult.message,
                 shouldUpdateSnapshot = passResult.success || passResult.message != null,
             )
         } else {
-            val result = hostMatchController.resolveCurrentSeatByAi("$seatName 超时，系统已代出")
+            val result = hostMatchController.resolveCurrentSeatByAi(
+                lastMessage = "$seatName 超时，系统已代出",
+                expectedTurn = turnSnapshot,
+            )
             resolution = ExpiredTurnResolution(
                 message = result.message,
                 shouldUpdateSnapshot = result.success || result.message != null,

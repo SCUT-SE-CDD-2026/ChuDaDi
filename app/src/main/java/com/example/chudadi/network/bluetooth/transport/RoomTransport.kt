@@ -3,6 +3,7 @@
 package com.example.chudadi.network.bluetooth.transport
 
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
+import com.example.chudadi.network.room.RoomClientConnection
 import com.example.chudadi.network.room.RoomSocketConnection
 import com.example.chudadi.network.room.RoomWireMessage
 import java.util.UUID
@@ -18,7 +19,7 @@ import kotlinx.coroutines.flow.Flow
 interface RoomTransport {
     val events: Flow<RoomTransportEvent>
 
-    fun startHost(config: HostTransportConfig): Result<Unit>
+    suspend fun startHost(config: HostTransportConfig): Result<Unit>
 
     fun launchHostHeartbeat(
         heartbeatIntervalMs: Long,
@@ -28,7 +29,7 @@ interface RoomTransport {
     suspend fun connectToHost(
         device: BluetoothDiscoveredDevice,
         roomUuid: UUID,
-    ): Result<RoomSocketConnection>
+    ): Result<RoomClientConnection>
 
     /**
      * Compatibility entry point: membership code still decides when a host-side connection is accepted.
@@ -41,7 +42,7 @@ interface RoomTransport {
     /**
      * Compatibility entry point: repository code still completes the join handshake before client reads start.
      */
-    fun attachClientReadLoop(connection: RoomSocketConnection)
+    fun attachClientReadLoop(connection: RoomClientConnection)
 
     /**
      * Compatibility entry point for the current client heartbeat watchdog timing.
@@ -71,4 +72,8 @@ interface RoomTransport {
     fun disconnectParticipant(participantId: String)
 
     fun shutdown()
+
+    fun closeNow()
+
+    fun clearClientConnection()
 }

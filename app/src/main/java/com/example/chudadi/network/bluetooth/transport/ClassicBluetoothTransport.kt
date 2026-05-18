@@ -4,6 +4,7 @@ package com.example.chudadi.network.bluetooth.transport
 
 import android.bluetooth.BluetoothAdapter
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
+import com.example.chudadi.network.room.RoomClientConnection
 import com.example.chudadi.network.room.RoomFrameCodec
 import com.example.chudadi.network.room.RoomSocketConnection
 import com.example.chudadi.network.room.RoomSocketEvent
@@ -74,8 +75,8 @@ class ClassicBluetoothTransport private constructor(
         }
     }
 
-    override fun startHost(config: HostTransportConfig): Result<Unit> {
-        return socketManager.startServerSynchronously(
+    override suspend fun startHost(config: HostTransportConfig): Result<Unit> {
+        return socketManager.startServer(
             serviceName = config.serviceName,
             roomUuid = config.serviceUuid,
         ).onSuccess {
@@ -100,8 +101,9 @@ class ClassicBluetoothTransport private constructor(
     override suspend fun connectToHost(
         device: BluetoothDiscoveredDevice,
         roomUuid: UUID,
-    ): Result<RoomSocketConnection> {
+    ): Result<RoomClientConnection> {
         return socketManager.connectToHost(device = device, roomUuid = roomUuid)
+            .map { connection -> connection }
             .onSuccess {
                 _events.tryEmit(
                     RoomTransportEvent.ClientConnected(
@@ -122,8 +124,8 @@ class ClassicBluetoothTransport private constructor(
         socketManager.attachHostReadLoop(participantId = participantId, connection = connection)
     }
 
-    override fun attachClientReadLoop(connection: RoomSocketConnection) {
-        socketManager.attachClientReadLoop(connection)
+    override fun attachClientReadLoop(connection: RoomClientConnection) {
+        socketManager.attachClientReadLoop(connection as RoomSocketConnection)
     }
 
     override fun startClientHeartbeatWatchdog(
@@ -170,6 +172,15 @@ class ClassicBluetoothTransport private constructor(
     override fun shutdown() {
         socketManager.shutdown()
         _events.tryEmit(RoomTransportEvent.Closed)
+    }
+
+    override fun closeNow() {
+        socketManager.closeNow()
+        _events.tryEmit(RoomTransportEvent.Closed)
+    }
+
+    override fun clearClientConnection() {
+        socketManager.clearClientConnection()
     }
 
     private fun RoomSocketEvent.toTransportEvent(): RoomTransportEvent {
