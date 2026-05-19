@@ -56,6 +56,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -85,6 +86,7 @@ import com.example.chudadi.model.game.entity.Card as GameCard
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
+import com.example.chudadi.model.game.snapshot.ViewSeat
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.theme.AvatarBase
 import com.example.chudadi.ui.theme.AvatarRingIdle
@@ -125,10 +127,6 @@ import com.example.chudadi.ui.theme.TransparentColor
 import com.example.chudadi.ui.theme.WoodTint
 private val HumanPlayOffsetX = 26.dp
 private val OpponentPlayOffsetX = 26.dp
-private const val LEFT_SEAT_ID = 1
-private const val TOP_SEAT_ID = 2
-private const val RIGHT_SEAT_ID = 3
-private const val HUMAN_SEAT_ID = 0
 private val TableShape = RoundedCornerShape(28.dp)
 private val CardShape = RoundedCornerShape(10.dp)
 private const val HandCardMoveDurationMs = 150
@@ -139,6 +137,7 @@ private const val TableCardEnterDurationMs = 170
 private const val TableCardEnterDelayMs = 45
 private const val OpponentCardExitDurationMs = 150
 private const val HumanTurnPromptDurationMs = 220
+private val DisconnectedNameColor = Color(0xFFE57373)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -221,9 +220,9 @@ private fun GameTableLayout(
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
-    val topOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == TOP_SEAT_ID }
-    val leftOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == LEFT_SEAT_ID }
-    val rightOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == RIGHT_SEAT_ID }
+    val topOpponent = uiState.opponentSummaries.firstOrNull { it.viewSeat == ViewSeat.TOP }
+    val leftOpponent = uiState.opponentSummaries.firstOrNull { it.viewSeat == ViewSeat.LEFT }
+    val rightOpponent = uiState.opponentSummaries.firstOrNull { it.viewSeat == ViewSeat.RIGHT }
 
     Column(
         modifier = modifier,
@@ -231,6 +230,7 @@ private fun GameTableLayout(
     ) {
         TopSeatArea(
             opponent = topOpponent,
+            remainingTurnSeconds = uiState.remainingTurnSeconds,
             layoutSpec = layoutSpec,
             modifier = Modifier
                 .fillMaxWidth()
@@ -283,6 +283,7 @@ private fun GameTableLayout(
 @Composable
 private fun TopSeatArea(
     opponent: OpponentSummary?,
+    remainingTurnSeconds: Int?,
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
@@ -310,6 +311,10 @@ private fun TopSeatArea(
                         orientation = StackOrientation.Horizontal,
                         layoutSpec = layoutSpec,
                     )
+                }
+                remainingTurnSeconds?.let { seconds ->
+                    Spacer(modifier = Modifier.width(12.dp))
+                    ActionMessageBanner(message = "剩余 ${seconds}s")
                 }
             }
         }
@@ -411,41 +416,44 @@ private fun CenterPlayArea(
                 .padding(bottom = layoutSpec.centerPlayBottomClearance),
         ) {
             tablePlays.forEach { tablePlay ->
-                TablePlaySlot(
-                    tablePlay = tablePlay,
-                    layoutSpec = layoutSpec,
-                    modifier = Modifier.align(playAlignment(tablePlay.ownerSeatId)),
-                )
+                key(tablePlay.playId) {
+                    TablePlaySlot(
+                        tablePlay = tablePlay,
+                        layoutSpec = layoutSpec,
+                        modifier = Modifier
+                            .align(playAlignment(tablePlay.ownerViewSeat))
+                            .zIndex(tablePlay.stackOrder.toFloat()),
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
-private fun playAlignment(ownerSeatId: Int): Alignment {
-    return when (ownerSeatId) {
-        LEFT_SEAT_ID -> Alignment.CenterStart
-        TOP_SEAT_ID -> Alignment.TopCenter
-        RIGHT_SEAT_ID -> Alignment.CenterEnd
-        HUMAN_SEAT_ID -> Alignment.BottomCenter
-        else -> Alignment.Center
+private fun playAlignment(ownerViewSeat: ViewSeat): Alignment {
+    return when (ownerViewSeat) {
+        ViewSeat.LEFT -> Alignment.CenterStart
+        ViewSeat.TOP -> Alignment.TopCenter
+        ViewSeat.RIGHT -> Alignment.CenterEnd
+        ViewSeat.SELF -> Alignment.BottomCenter
     }
 }
 
-private fun playOffset(ownerSeatId: Int): Dp {
-    return when (ownerSeatId) {
-        HUMAN_SEAT_ID -> HumanPlayOffsetX
-        TOP_SEAT_ID -> -OpponentPlayOffsetX
+private fun playOffset(ownerViewSeat: ViewSeat): Dp {
+    return when (ownerViewSeat) {
+        ViewSeat.SELF -> HumanPlayOffsetX
+        ViewSeat.TOP -> -OpponentPlayOffsetX
         else -> 0.dp
     }
 }
 
 private fun playVerticalOffset(
-    ownerSeatId: Int,
+    ownerViewSeat: ViewSeat,
     layoutSpec: GameLayoutSpec,
 ): Dp {
-    return when (ownerSeatId) {
-        HUMAN_SEAT_ID -> layoutSpec.tableCardHeight / 4
+    return when (ownerViewSeat) {
+        ViewSeat.SELF -> layoutSpec.tableCardHeight / 4
         else -> 0.dp
     }
 }
@@ -456,14 +464,13 @@ private fun TablePlaySlot(
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
-    var animationKey by remember(tablePlay.ownerSeatId) { mutableIntStateOf(0) }
-    var previousSignature by remember(tablePlay.ownerSeatId) { mutableStateOf<String?>(null) }
-    val tablePlaySignature = remember(tablePlay.cardLabels) { tablePlay.cardLabels.joinToString(separator = "|") }
+    var animationKey by remember(tablePlay.playId) { mutableIntStateOf(0) }
+    var hasAnimated by remember(tablePlay.playId) { mutableStateOf(false) }
 
-    LaunchedEffect(tablePlaySignature) {
-        if (tablePlay.cardLabels.isNotEmpty() && previousSignature != tablePlaySignature) {
+    LaunchedEffect(tablePlay.playId) {
+        if (tablePlay.cardLabels.isNotEmpty() && !hasAnimated) {
             animationKey += 1
-            previousSignature = tablePlaySignature
+            hasAnimated = true
         }
     }
 
@@ -481,8 +488,8 @@ private fun TablePlaySlot(
         Box(
             modifier = Modifier
                 .offset(
-                    x = playOffset(tablePlay.ownerSeatId),
-                    y = playVerticalOffset(tablePlay.ownerSeatId, layoutSpec),
+                    x = playOffset(tablePlay.ownerViewSeat),
+                    y = playVerticalOffset(tablePlay.ownerViewSeat, layoutSpec),
                 )
                 .width(contentWidth)
                 .height(tableCardOuterHeight),
@@ -603,7 +610,9 @@ private fun OpponentInfoBadge(
             InfoBadgeStroke
         }
     val nameColor =
-        if (opponent.isCurrentActor) {
+        if (opponent.isDisconnected) {
+            DisconnectedNameColor
+        } else if (opponent.isCurrentActor) {
             InfoTextAccent.copy(alpha = 0.88f + 0.12f * pulse)
         } else {
             InfoTextAccent

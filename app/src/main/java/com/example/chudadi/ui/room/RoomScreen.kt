@@ -36,13 +36,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.R
 import com.example.chudadi.ui.ComposeTestTags
@@ -63,12 +62,17 @@ private val TextPrimary = Color(0xFFF7F1E4)
 private val TextSecondary = Color(0xFFB8A882)
 private val TextMuted = Color(0xFF7A6A50)
 private val StatusReady = Color(0xFF4CAF50)
+private val StatusConnected = Color(0xFFD4A85A)
 private val StatusNotReady = Color(0xFFFF9800)
 private val StatusDisconnected = Color(0xFF9E9E9E)
 private val ScorePositive = Color(0xFF81C784)
 private val ScoreNegative = Color(0xFFE57373)
 private val DividerColor = Color(0x33C8A96A)
 private val GoldAccent = Color(0xFFD4A85A)
+private val HostActionButtonHeight = 44.dp
+private val MemberActionButtonHeight = 44.dp
+private val BroadcastButtonHeight = 28.dp
+private val BroadcastButtonWidth = 100.dp
 
 @Composable
 fun RoomScreen(
@@ -214,14 +218,18 @@ private fun SlotsGrid(
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 0,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             SlotCard(
                 slot = uiState.slots[1],
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 1,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
         Row(
@@ -233,14 +241,18 @@ private fun SlotsGrid(
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 2,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             SlotCard(
                 slot = uiState.slots[3],
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 3,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
     }
@@ -262,14 +274,6 @@ private fun SlotCard(
         else -> SlotFilledBorder
     }
     val bgColor = if (isEmpty) SlotEmptyBg else SlotFilledBg
-    val handleClick = {
-        if (isEmpty) {
-            if (isHost) onAction(RoomAction.OpenAiDialog(slot.slotIndex))
-            else onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
-        } else {
-            onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex))
-        }
-    }
 
     Box(
         modifier = modifier
@@ -281,7 +285,7 @@ private fun SlotCard(
                 color = borderColor,
                 shape = RoundedCornerShape(14.dp),
             )
-            .clickable { handleClick() },
+            .clickable { onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex)) },
         contentAlignment = Alignment.Center,
     ) {
         if (isEmpty) {
@@ -290,7 +294,7 @@ private fun SlotCard(
             FilledSlotContent(slot = slot)
         }
 
-        if (showActionMenu && !isEmpty) {
+        if (showActionMenu) {
             Box(modifier = Modifier.align(Alignment.TopEnd)) {
                 SlotActionMenu(slot = slot, isHost = isHost, onAction = onAction)
             }
@@ -299,13 +303,26 @@ private fun SlotCard(
 }
 
 @Composable
-private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomAction) -> Unit) {
+private fun SlotActionMenu(
+    slot: SlotState,
+    isHost: Boolean,
+    onAction: (RoomAction) -> Unit,
+) {
     DropdownMenu(
         expanded = true,
         onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
         containerColor = Color(0xFF2A1F14),
     ) {
-        if (!slot.isLocalPlayer) {
+        if (slot.occupantType == null) {
+            if (isHost) {
+                DropdownMenuItem(
+                    text = { Text("添加 AI", color = GoldAccent) },
+                    onClick = {
+                        onAction(RoomAction.DismissSlotActionMenu)
+                        onAction(RoomAction.OpenAiDialog(slot.slotIndex))
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text("请求换位", color = GoldAccent) },
                 onClick = {
@@ -314,7 +331,16 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
                 },
             )
         }
-        if (isHost && !slot.isLocalPlayer) {
+        if (slot.occupantType != null && !slot.isLocalPlayer) {
+            DropdownMenuItem(
+                text = { Text("请求换位", color = GoldAccent) },
+                onClick = {
+                    onAction(RoomAction.DismissSlotActionMenu)
+                    onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
+                },
+            )
+        }
+        if (isHost && !slot.isLocalPlayer && slot.occupantType != null) {
             DropdownMenuItem(
                 text = { Text("移除", color = Color(0xFFE57373)) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },
@@ -341,21 +367,33 @@ private fun EmptySlotContent(slotIndex: Int) {
                 .border(1.dp, SlotEmptyBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = TextMuted, modifier = Modifier.size(24.dp))
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = TextMuted,
+                modifier = Modifier.size(24.dp),
+            )
         }
         Text(
             text = "位置 ${slotIndex + 1}",
             style = MaterialTheme.typography.labelMedium,
             color = TextMuted,
         )
+        Text(
+            text = "空位 / 可加入",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted,
+        )
     }
 }
 
-@Suppress("CyclomaticComplexMethod")
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 @Composable
 private fun FilledSlotContent(slot: SlotState) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(8.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
@@ -381,13 +419,27 @@ private fun FilledSlotContent(slot: SlotState) {
             }
         }
 
-        Text(
-            text = slot.displayName,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = slot.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+
+            val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
+            Text(
+                text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
+                style = MaterialTheme.typography.labelMedium,
+                color = scoreColor,
+            )
+        }
 
         Row(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -414,7 +466,7 @@ private fun FilledSlotContent(slot: SlotState) {
                 MemberConnectionStatus.READY -> StatusReady to "已准备"
                 MemberConnectionStatus.NOT_READY -> StatusNotReady to "未准备"
                 MemberConnectionStatus.DISCONNECTED -> StatusDisconnected to "掉线"
-                MemberConnectionStatus.CONNECTED -> StatusReady to "已连接"
+                MemberConnectionStatus.CONNECTED -> StatusConnected to "已连接"
                 null -> Color.Transparent to ""
             }
             if (statusText.isNotEmpty()) {
@@ -427,13 +479,22 @@ private fun FilledSlotContent(slot: SlotState) {
                 Text(statusText, style = MaterialTheme.typography.labelSmall, color = statusDot)
             }
         }
+    }
+}
 
-        val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
-        Text(
-            text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
-            style = MaterialTheme.typography.labelMedium,
-            color = scoreColor,
-        )
+@Composable
+private fun InfoRow(
+    label: String,
+    value: String,
+    valueColor: Color = TextSecondary,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        Text(value, style = MaterialTheme.typography.bodySmall, color = valueColor)
     }
 }
 
@@ -444,8 +505,6 @@ private fun ControlPanel(
     onAction: (RoomAction) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Use Column with explicit Spacer instead of Arrangement.spacedBy to avoid
-    // weight(1f) interaction issues that cause button height distortion
     Column(
         modifier = modifier
             .shadow(4.dp, RoundedCornerShape(16.dp))
@@ -460,23 +519,55 @@ private fun ControlPanel(
         Spacer(modifier = Modifier.height(2.dp))
         InfoRow(label = "当前规则", value = uiState.currentRule.label)
         Spacer(modifier = Modifier.height(2.dp))
-        InfoRow(
-            label = "蓝牙状态",
-            value = if (uiState.bluetoothVisible) "可被发现" else "未广播",
-            valueColor = if (uiState.bluetoothVisible) StatusReady else TextMuted,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("蓝牙状态", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Text(
+                    text = if (uiState.bluetoothVisible) "已开启" else "未开启",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (uiState.bluetoothVisible) StatusReady else TextMuted,
+                )
+            }
+            if (uiState.canEnableBroadcast) {
+                Spacer(modifier = Modifier.width(12.dp))
+                ChuButton(
+                    text = "启动蓝牙",
+                    onClick = { onAction(RoomAction.StartHostListening) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier
+                        .width(BroadcastButtonWidth)
+                        .height(BroadcastButtonHeight),
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(DividerColor),
         )
-        Spacer(modifier = Modifier.height(6.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         if (uiState.isHost) {
             Text("房主操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             ChuButton(
                 text = "切换: ${uiState.currentRule.label}",
                 onClick = { onAction(RoomAction.ToggleRule) },
                 style = ChuButtonStyle.SECONDARY,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(HostActionButtonHeight),
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -497,6 +588,7 @@ private fun ControlPanel(
                 enabled = uiState.canStartGame,
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(HostActionButtonHeight)
                     .testTag(ComposeTestTags.START_GAME_BUTTON),
             )
         } else {
@@ -506,7 +598,7 @@ private fun ControlPanel(
             Text("成员操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "已连接: ${uiState.hostDeviceName.ifEmpty { "房主" }}",
+                text = "已连接 ${uiState.hostDeviceName.ifEmpty { "房主" }}",
                 style = MaterialTheme.typography.bodySmall,
                 color = TextSecondary,
             )
@@ -517,7 +609,9 @@ private fun ControlPanel(
                 text = if (isReady) "取消准备" else "准备",
                 onClick = { onAction(RoomAction.ToggleReady) },
                 style = if (isReady) ChuButtonStyle.SECONDARY else ChuButtonStyle.PRIMARY,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(MemberActionButtonHeight),
             )
         }
 
@@ -532,22 +626,6 @@ private fun ControlPanel(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-    }
-}
-
-@Composable
-private fun InfoRow(
-    label: String,
-    value: String,
-    valueColor: Color = TextSecondary,
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = TextMuted)
-        Text(value, style = MaterialTheme.typography.bodySmall, color = valueColor)
     }
 }
 

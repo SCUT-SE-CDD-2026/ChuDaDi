@@ -48,6 +48,10 @@ object TurnResolver {
                     currentCombination = combination,
                     passCount = 0,
                     tablePlays = match.trickState.tablePlays + (seatIndex to combination),
+                    tablePlayOrders = match.trickState.tablePlayOrders + (
+                        seatIndex to match.trickState.nextTablePlayOrder
+                    ),
+                    nextTablePlayOrder = match.trickState.nextTablePlayOrder + 1,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
                 result = createResult(
@@ -71,6 +75,10 @@ object TurnResolver {
                 currentCombination = combination,
                 passCount = 0,
                 tablePlays = match.trickState.tablePlays + (seatIndex to combination),
+                tablePlayOrders = match.trickState.tablePlayOrders + (
+                    seatIndex to match.trickState.nextTablePlayOrder
+                ),
+                nextTablePlayOrder = match.trickState.nextTablePlayOrder + 1,
             ),
             playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
         )
@@ -117,6 +125,8 @@ object TurnResolver {
                     // 一轮结束重置包赔标记。若同一轮内有多个玩家触发包赔（极端情况），
                     // 后触发的玩家会覆盖前者；当前规则未定义多触发情形，以最后触发者为准。
                     baopeiSeatId = null,
+                    tablePlayOrders = emptyMap(),
+                    nextTablePlayOrder = 0,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",
             )
@@ -129,6 +139,7 @@ object TurnResolver {
                 trickState = match.trickState.copy(
                     passCount = nextPassCount,
                     tablePlays = tablePlaysAfterPass,
+                    tablePlayOrders = match.trickState.tablePlayOrders - seatIndex,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",
             )

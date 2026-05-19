@@ -5,20 +5,31 @@ import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.RoundScore
 
+enum class ViewSeat {
+    SELF,
+    LEFT,
+    TOP,
+    RIGHT,
+}
+
 data class OpponentSummary(
-    val seatId: Int,
+    val viewSeat: ViewSeat,
+    val authoritySeatId: Int = -1,
     val displayName: String,
     @param:DrawableRes val avatarResId: Int,
     val remainingCards: Int,
     val isCurrentActor: Boolean,
     val hasPassed: Boolean,
+    val isDisconnected: Boolean = false,
 )
 
 data class TablePlaySummary(
-    val ownerSeatId: Int,
+    val playId: String,
+    val ownerViewSeat: ViewSeat,
     val ownerName: String,
     val combinationLabel: String,
     val cardLabels: List<String>,
+    val stackOrder: Int = 0,
 )
 
 data class ResultSummary(
@@ -29,6 +40,7 @@ data class ResultSummary(
 
 data class MatchUiState(
     val phase: MatchPhase = MatchPhase.NOT_STARTED,
+    val matchId: String? = null,
     val playerHand: List<Card> = emptyList(),
     val selectedCards: Set<String> = emptySet(),
     val opponentSummaries: List<OpponentSummary> = emptyList(),
@@ -38,6 +50,8 @@ data class MatchUiState(
     val lastActionMessage: String? = null,
     val canSubmitPlay: Boolean = false,
     val canPass: Boolean = false,
+    val remainingTurnSeconds: Int? = null,
     val resultSummary: ResultSummary? = null,
     val isHumanTurn: Boolean = false,
+    val isLocalDisconnected: Boolean = false,
 )

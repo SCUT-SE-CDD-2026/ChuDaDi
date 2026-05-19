@@ -8,6 +8,8 @@ data class TrickState(
     val roundNumber: Int,
     val tablePlays: Map<Int, PlayCombination> = emptyMap(),
     val baopeiSeatId: Int? = null,
+    val tablePlayOrders: Map<Int, Int> = emptyMap(),
+    val nextTablePlayOrder: Int = 0,
 ) {
     init {
         require(passCount >= 0) { "passCount must be non-negative" }

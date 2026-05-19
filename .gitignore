@@ -8,6 +8,12 @@
 /.idea/assetWizardSettings.xml
 .vscode/
 *.iml
+.project
+.classpath
+.settings/
+**/.project
+**/.classpath
+**/.settings/
 
 # Android / Gradle local files
 .gradle

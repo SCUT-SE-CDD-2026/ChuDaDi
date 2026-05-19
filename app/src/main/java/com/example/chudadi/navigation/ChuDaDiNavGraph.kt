@@ -1,102 +1,343 @@
 package com.example.chudadi.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.LocalMatchViewModel
-import com.example.chudadi.model.game.entity.MatchPhase
-import com.example.chudadi.model.game.entity.SeatControllerType
-import com.example.chudadi.model.game.rule.GameRuleSet
+import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.ui.game.GameScreen
 import com.example.chudadi.ui.game.GameScreenActions
 import com.example.chudadi.ui.home.HomeScreen
 import com.example.chudadi.ui.result.ResultScreen
-import com.example.chudadi.ui.room.GameRuleDisplay
+import com.example.chudadi.ui.room.BluetoothSearchScreen
+import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomScreen
 import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.RoomViewModel
-import com.example.chudadi.ui.room.MemberConnectionStatus
-import com.example.chudadi.ui.room.SlotOccupantType
+import com.example.chudadi.ui.settings.SettingsScreen
+import com.example.chudadi.ui.settings.SettingsViewModel
+import kotlinx.coroutines.launch
 
-private const val HOME_ROUTE = "home"
-private const val ROOM_ROUTE = "room"
-private const val GAME_ROUTE = "game"
-private const val RESULT_ROUTE = "result"
-
+@Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
 @Composable
 fun ChuDaDiNavGraph(
     viewModel: LocalMatchViewModel = viewModel(),
-    roomViewModel: RoomViewModel = viewModel(),
+    roomViewModel: RoomViewModel,
+    playerPreferencesRepository: PlayerPreferencesRepository,
+    localDeviceName: String,
+    onRequestBluetoothEnable: (onComplete: () -> Unit) -> Unit,
+    onRequestBluetoothPermissions: (onComplete: () -> Unit) -> Unit,
 ) {
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
+    var requestedRoute by rememberSaveable { androidx.compose.runtime.mutableStateOf(AppFlowRoute.HOME) }
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
     val roomUiState = roomViewModel.uiState.collectAsStateWithLifecycle().value
+    val networkMatchUiState = roomViewModel.matchUiState.collectAsStateWithLifecycle().value
+    val appFlowState = remember(requestedRoute, uiState, roomUiState, networkMatchUiState) {
+        buildAppFlowState(
+            requestedRoute = requestedRoute,
+            localMatchUiState = uiState,
+            roomUiState = roomUiState,
+            networkMatchUiState = networkMatchUiState,
+        )
+    }
+    val playerName = roomViewModel.playerName.collectAsStateWithLifecycle().value
+    val runJoinFlow: () -> Unit = {
+        scope.launch {
+            val reconnected = roomViewModel.tryReconnectLastSession()
+            if (reconnected) {
+                requestedRoute = AppFlowRoute.ROOM
+            } else {
+                roomViewModel.loadJoinableDevices()
+                requestedRoute = AppFlowRoute.BLUETOOTH_SEARCH
+            }
+        }
+    }
+    val requestBluetoothConnectReady: ((() -> Unit) -> Unit) = { onReady ->
+        if (!roomViewModel.isBluetoothSupported()) {
+            roomViewModel.showHomeNotice("当前设备不支持蓝牙")
+        } else if (!roomViewModel.hasBluetoothConnectPermission()) {
+            onRequestBluetoothPermissions {
+                if (roomViewModel.hasBluetoothConnectPermission()) {
+                    if (roomViewModel.isBluetoothEnabled()) {
+                        onReady()
+                    } else {
+                        onRequestBluetoothEnable {
+                            if (roomViewModel.isBluetoothEnabled()) {
+                                onReady()
+                            } else {
+                                roomViewModel.showHomeNotice("未开启蓝牙，无法加入房间")
+                            }
+                        }
+                    }
+                } else {
+                    roomViewModel.showHomeNotice("缺少蓝牙连接权限，无法加入房间")
+                }
+            }
+        } else if (!roomViewModel.isBluetoothEnabled()) {
+            onRequestBluetoothEnable {
+                if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                } else {
+                    roomViewModel.showHomeNotice("未开启蓝牙，无法加入房间")
+                }
+            }
+        } else {
+            onReady()
+        }
+    }
+    val requestBluetoothHostReady: ((() -> Unit) -> Unit) = { onReady ->
+        if (!roomViewModel.isBluetoothSupported()) {
+            roomViewModel.showHomeNotice("当前设备不支持蓝牙，无法创建房间")
+        } else if (!roomViewModel.hasBluetoothConnectPermission()) {
+            onRequestBluetoothPermissions {
+                if (!roomViewModel.hasBluetoothConnectPermission()) {
+                    roomViewModel.showHomeNotice("缺少蓝牙连接权限，无法创建房间")
+                } else if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                } else {
+                    onRequestBluetoothEnable {
+                        if (roomViewModel.isBluetoothEnabled()) {
+                            onReady()
+                        } else {
+                            roomViewModel.showHomeNotice("未开启蓝牙，无法创建房间")
+                        }
+                    }
+                }
+            }
+        } else if (!roomViewModel.isBluetoothEnabled()) {
+            onRequestBluetoothEnable {
+                if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                } else {
+                    roomViewModel.showHomeNotice("未开启蓝牙，无法创建房间")
+                }
+            }
+        } else {
+            onReady()
+        }
+    }
+    val requestBluetoothDiscoveryReady: ((() -> Unit) -> Unit) = { onReady ->
+        if (!roomViewModel.isBluetoothSupported()) {
+            roomViewModel.showJoinError(
+                message = "当前设备不支持蓝牙",
+                title = "无法搜索房间",
+            )
+        } else if (!roomViewModel.hasBluetoothConnectPermission() || !roomViewModel.hasBluetoothScanPermission()) {
+            onRequestBluetoothPermissions {
+                if (roomViewModel.hasBluetoothConnectPermission() && roomViewModel.hasBluetoothScanPermission()) {
+                    if (roomViewModel.isBluetoothEnabled()) {
+                        onReady()
+                    } else {
+                        onRequestBluetoothEnable {
+                            if (roomViewModel.isBluetoothEnabled()) {
+                                onReady()
+                            } else {
+                                roomViewModel.showJoinError(
+                                    message = "未开启蓝牙，无法搜索房间",
+                                    title = "无法搜索房间",
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    roomViewModel.showJoinError(
+                        message = "缺少蓝牙权限，无法搜索房间",
+                        title = "无法搜索房间",
+                    )
+                }
+            }
+        } else if (!roomViewModel.isBluetoothEnabled()) {
+            onRequestBluetoothEnable {
+                if (roomViewModel.isBluetoothEnabled()) {
+                    onReady()
+                } else {
+                    roomViewModel.showJoinError(
+                        message = "未开启蓝牙，无法搜索房间",
+                        title = "无法搜索房间",
+                    )
+                }
+            }
+        } else {
+            onReady()
+        }
+    }
 
-    HandlePhaseNavigation(navController = navController, phase = uiState.phase)
+    LaunchedEffect(appFlowState.currentRoute) {
+        navigateToFlowRoute(navController, AppFlowNavigationEvent(route = appFlowState.currentRoute))
+    }
+    LaunchedEffect(roomViewModel) {
+        roomViewModel.appFlowEvents.collect { event ->
+            requestedRoute = event.route
+            navigateToFlowRoute(navController, event)
+        }
+    }
+    LaunchedEffect(roomViewModel) {
+        roomViewModel.gameLaunchEvents.collect { event ->
+            when (event) {
+                is com.example.chudadi.ui.room.RoomGameLaunchEvent.StartLocalMatch -> {
+                    viewModel.dispatch(
+                        LocalGameAction.StartLocalMatch(
+                            seatConfigs = event.seatConfigs,
+                            localSeatId = event.localSeatId,
+                            ruleSet = event.ruleSet,
+                        ),
+                    )
+                    requestedRoute = AppFlowRoute.GAME
+                }
+            }
+        }
+    }
+    LaunchedEffect(roomViewModel) {
+        roomViewModel.externalEvents.collect { event ->
+            when (event) {
+                com.example.chudadi.ui.room.RoomExternalEvent.RequestStartHostListening -> {
+                    requestBluetoothHostReady {
+                        scope.launch {
+                            val created = roomViewModel.startHostListening(localDeviceName)
+                            if (created) {
+                                requestedRoute = AppFlowRoute.ROOM
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
-        startDestination = HOME_ROUTE,
+        startDestination = AppFlowRoute.HOME.route,
     ) {
-        composable(HOME_ROUTE) {
+        composable(AppFlowRoute.HOME.route) {
             HomeScreen(
+                playerName = playerName,
+                noticeMessage = roomUiState.homeNoticeMessage,
+                onDismissNotice = { roomViewModel.dispatch(RoomAction.ConsumeHomeNotice) },
                 onCreateRoom = {
-                    roomViewModel.dispatch(RoomAction.ResetRoom)
-                    navController.navigate(ROOM_ROUTE)
+                    roomViewModel.createLocalRoom(localDeviceName)
+                    requestedRoute = AppFlowRoute.ROOM
                 },
                 onJoinRoom = {
-                    navController.navigate(ROOM_ROUTE)
+                    requestBluetoothConnectReady(runJoinFlow)
+                },
+                onSettings = {
+                    requestedRoute = AppFlowRoute.SETTINGS
                 },
             )
         }
-        composable(ROOM_ROUTE) {
+        composable(AppFlowRoute.SETTINGS.route) {
+            val settingsViewModel: SettingsViewModel = viewModel(
+                factory = SettingsViewModel.factory(playerPreferencesRepository),
+            )
+            SettingsScreen(
+                viewModel = settingsViewModel,
+                onNavigateBack = { requestedRoute = AppFlowRoute.HOME },
+            )
+        }
+        composable(AppFlowRoute.BLUETOOTH_SEARCH.route) {
+            val cancelPendingConnection = {
+                roomViewModel.dispatch(RoomAction.CancelPendingConnection)
+            }
+            val leaveBluetoothSearch = {
+                cancelPendingConnection()
+                roomViewModel.dispatch(RoomAction.ConsumeJoinError)
+                requestedRoute = AppFlowRoute.HOME
+            }
+            BackHandler {
+                leaveBluetoothSearch()
+            }
+            DisposableEffect(Unit) {
+                onDispose {
+                    roomViewModel.dispatch(RoomAction.StopBluetoothDiscovery)
+                    roomViewModel.dispatch(RoomAction.CancelPendingConnectionIfNotJoined)
+                }
+            }
+            BluetoothSearchScreen(
+                uiState = roomUiState,
+                onAction = { action ->
+                    when (action) {
+                        RoomAction.StartBluetoothDiscovery -> {
+                            requestBluetoothDiscoveryReady {
+                                roomViewModel.dispatch(action)
+                            }
+                        }
+
+                        is RoomAction.ConnectToBluetoothDevice -> roomViewModel.dispatch(action)
+
+                        else -> roomViewModel.dispatch(action)
+                    }
+                },
+                onNavigateBack = {
+                    leaveBluetoothSearch()
+                },
+                onDismissJoinError = {
+                    roomViewModel.dispatch(RoomAction.ConsumeJoinError)
+                },
+            )
+        }
+        composable(AppFlowRoute.ROOM.route) {
             RoomScreen(
                 uiState = roomUiState,
                 onAction = { action ->
                     when (action) {
                         is RoomAction.StartGame -> {
-                            val startAction = buildStartMatchAction(roomUiState)
-                            if (startAction != null) {
-                                viewModel.dispatch(startAction)
-                            }
+                            roomViewModel.dispatch(action)
                         }
+
                         is RoomAction.ExitRoom -> {
-                            navController.popBackStack()
+                            roomViewModel.dispatch(action)
+                            requestedRoute = AppFlowRoute.HOME
                         }
+
                         else -> roomViewModel.dispatch(action)
                     }
                 },
                 onNavigateBack = {
                     roomViewModel.dispatch(RoomAction.ResetRoom)
-                    navController.popBackStack()
+                    requestedRoute = AppFlowRoute.HOME
                 },
             )
         }
-        composable(GAME_ROUTE) {
-            GameScreenRoute(viewModel = viewModel, uiState = uiState)
+        composable(AppFlowRoute.GAME.route) {
+            GameScreenRoute(
+                localViewModel = viewModel,
+                roomViewModel = roomViewModel,
+                uiState = appFlowState.activeMatchUiState,
+                useNetworkMatch = appFlowState.useNetworkMatch,
+            )
         }
-        composable(RESULT_ROUTE) {
-            val roundScores = uiState.resultSummary?.roundScores.orEmpty()
-            LaunchedEffect(roundScores) {
-                if (roundScores.isNotEmpty()) {
+        composable(AppFlowRoute.RESULT.route) {
+            val roundScores = appFlowState.activeMatchUiState.resultSummary?.roundScores.orEmpty()
+            LaunchedEffect(roundScores, appFlowState.useNetworkMatch) {
+                if (!appFlowState.useNetworkMatch && roundScores.isNotEmpty()) {
                     roomViewModel.dispatch(RoomAction.AccumulateScores(roundScores))
                 }
             }
             ResultScreen(
-                uiState = uiState,
+                uiState = appFlowState.activeMatchUiState,
                 onReturnToRoom = {
-                    viewModel.dispatch(LocalGameAction.ExitToHome)
-                    navController.navigate(ROOM_ROUTE) {
-                        popUpTo(HOME_ROUTE)
+                    if (appFlowState.useNetworkMatch) {
+                        roomViewModel.dispatchGameAction(LocalGameAction.ExitToHome)
+                    } else {
+                        viewModel.dispatch(LocalGameAction.ExitToHome)
                     }
+                    requestedRoute = AppFlowRoute.ROOM
                 },
             )
         }
@@ -104,90 +345,53 @@ fun ChuDaDiNavGraph(
 }
 
 @Composable
-private fun GameScreenRoute(viewModel: LocalMatchViewModel, uiState: MatchUiState) {
+private fun GameScreenRoute(
+    localViewModel: LocalMatchViewModel,
+    roomViewModel: RoomViewModel,
+    uiState: MatchUiState,
+    useNetworkMatch: Boolean,
+) {
     GameScreen(
         uiState = uiState,
         actions = GameScreenActions(
             onToggleCardSelection = { cardId ->
-                viewModel.dispatch(LocalGameAction.ToggleCardSelection(cardId))
+                if (useNetworkMatch) {
+                    roomViewModel.dispatchGameAction(LocalGameAction.ToggleCardSelection(cardId))
+                } else {
+                    localViewModel.dispatch(LocalGameAction.ToggleCardSelection(cardId))
+                }
             },
-            onClearSelection = { viewModel.dispatch(LocalGameAction.ClearSelection) },
-            onSubmitSelectedCards = { viewModel.dispatch(LocalGameAction.SubmitSelectedCards) },
-            onPassTurn = { viewModel.dispatch(LocalGameAction.PassTurn) },
+            onClearSelection = {
+                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.ClearSelection)
+                else localViewModel.dispatch(LocalGameAction.ClearSelection)
+            },
+            onSubmitSelectedCards = {
+                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.SubmitSelectedCards)
+                else localViewModel.dispatch(LocalGameAction.SubmitSelectedCards)
+            },
+            onPassTurn = {
+                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.PassTurn)
+                else localViewModel.dispatch(LocalGameAction.PassTurn)
+            },
         ),
     )
 }
 
-private fun buildStartMatchAction(roomUiState: RoomUiState): LocalGameAction.StartLocalMatch? {
-    if (!roomUiState.canStartMatch()) {
-        return null
-    }
-
-    val seatConfigs = roomUiState.slots
-        .map { slot ->
-            val name = slot.displayName.ifEmpty { "玩家${slot.slotIndex + 1}" }
-            val controllerType = if (slot.occupantType == SlotOccupantType.AI) {
-                SeatControllerType.RULE_BASED_AI
-            } else {
-                SeatControllerType.HUMAN
-            }
-            Triple(slot.seatId, name, controllerType)
-        }
-    val localSeatId = roomUiState.slots.firstOrNull { it.isLocalPlayer }?.seatId ?: return null
-    val ruleSet = when (roomUiState.currentRule) {
-        GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
-        GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
-    }
-    return LocalGameAction.StartLocalMatch(
-        seatConfigs = seatConfigs,
-        localSeatId = localSeatId,
-        ruleSet = ruleSet,
-    )
-}
-
-private fun RoomUiState.canStartMatch(): Boolean {
-    val allFilled = slots.all { it.occupantType != null }
-    val allReady = slots.all { it.connectionStatus == MemberConnectionStatus.READY }
-    val slotIndexesStable = slots.withIndex().all { (index, slot) -> slot.slotIndex == index }
-    val seatIdsDistinct = slots.map { it.seatId }.distinct().size == slots.size
-    val localPlayerExists = slots.any { it.isLocalPlayer }
-    return allFilled && allReady && slotIndexesStable && seatIdsDistinct && localPlayerExists
-}
-
-@Composable
-private fun HandlePhaseNavigation(    navController: NavHostController,
-    phase: MatchPhase,
+private fun navigateToFlowRoute(
+    navController: androidx.navigation.NavHostController,
+    event: AppFlowNavigationEvent,
 ) {
-    LaunchedEffect(phase) {
-        when (phase) {
-            MatchPhase.NOT_STARTED -> {
-                if (navController.currentDestination?.route != HOME_ROUTE &&
-                    navController.currentDestination?.route != ROOM_ROUTE
-                ) {
-                    navController.navigate(HOME_ROUTE) {
-                        popUpTo(navController.graph.startDestinationId) {
-                            inclusive = true
-                        }
-                        launchSingleTop = true
-                    }
-                }
-            }
-
-            MatchPhase.FINISHED -> {
-                if (navController.currentDestination?.route != RESULT_ROUTE) {
-                    navController.navigate(RESULT_ROUTE) {
-                        launchSingleTop = true
-                    }
-                }
-            }
-
-            else -> {
-                if (navController.currentDestination?.route != GAME_ROUTE) {
-                    navController.navigate(GAME_ROUTE) {
-                        launchSingleTop = true
-                    }
-                }
+    if (navController.currentDestination?.route == event.route.route &&
+        event.popUpTo == null
+    ) {
+        return
+    }
+    navController.navigate(event.route.route) {
+        event.popUpTo?.let { target ->
+            popUpTo(target.route) {
+                inclusive = event.inclusive
             }
         }
+        launchSingleTop = true
     }
 }

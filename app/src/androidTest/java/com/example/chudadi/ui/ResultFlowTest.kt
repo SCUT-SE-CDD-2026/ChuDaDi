@@ -5,7 +5,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
 import com.example.chudadi.controller.game.LocalMatchViewModel
+import com.example.chudadi.data.repository.PlayerPreferencesRepository
+import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
@@ -21,6 +24,7 @@ import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.entity.TrickState
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.navigation.ChuDaDiNavGraph
+import com.example.chudadi.network.room.BluetoothRoomRepository
 import com.example.chudadi.ui.room.AiDifficulty
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomViewModel
@@ -33,10 +37,29 @@ class ResultFlowTest {
 
     @Test
     fun returnToRoomFromResult_navigatesBackToRoom() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val playerPreferencesRepository = PlayerPreferencesRepository(context)
+        val reconnectSessionRepository = ReconnectSessionRepository(context)
+        val bluetoothRoomRepository = BluetoothRoomRepository(context, reconnectSessionRepository)
+        val roomViewModel = RoomViewModel(
+            playerPrefsRepository = playerPreferencesRepository,
+            bluetoothRoomRepository = bluetoothRoomRepository,
+            reconnectSessionRepository = reconnectSessionRepository,
+        ).apply {
+            createHostRoom(hostDeviceName = "Test Device")
+            dispatch(RoomAction.AddAiToSlot(1, AiDifficulty.RULE_BASED))
+            dispatch(RoomAction.AddAiToSlot(2, AiDifficulty.RULE_BASED))
+            dispatch(RoomAction.AddAiToSlot(3, AiDifficulty.RULE_BASED))
+        }
+
         composeRule.setContent {
             ChuDaDiNavGraph(
                 viewModel = LocalMatchViewModel(engine = ScriptedGameEngine(finishedMatch())),
-                roomViewModel = filledRoomViewModel(),
+                roomViewModel = roomViewModel,
+                playerPreferencesRepository = playerPreferencesRepository,
+                localDeviceName = "Test Device",
+                onRequestBluetoothEnable = { onComplete -> onComplete() },
+                onRequestBluetoothPermissions = { onComplete -> onComplete() },
             )
         }
 
@@ -50,14 +73,6 @@ class ResultFlowTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag(ComposeTestTags.ROOM_SCREEN).assertIsDisplayed()
-    }
-
-    private fun filledRoomViewModel(): RoomViewModel {
-        val vm = RoomViewModel()
-        vm.dispatch(RoomAction.AddAiToSlot(1, AiDifficulty.RULE_BASED))
-        vm.dispatch(RoomAction.AddAiToSlot(2, AiDifficulty.RULE_BASED))
-        vm.dispatch(RoomAction.AddAiToSlot(3, AiDifficulty.RULE_BASED))
-        return vm
     }
 
     private class ScriptedGameEngine(

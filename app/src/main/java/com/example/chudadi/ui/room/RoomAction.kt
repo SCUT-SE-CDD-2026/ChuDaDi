@@ -3,6 +3,11 @@ package com.example.chudadi.ui.room
 import com.example.chudadi.model.game.entity.RoundScore
 
 sealed interface RoomAction {
+    data object StartBluetoothDiscovery : RoomAction
+    data object StopBluetoothDiscovery : RoomAction
+    data class ConnectToBluetoothDevice(val address: String) : RoomAction
+    data object CancelPendingConnection : RoomAction
+    data object CancelPendingConnectionIfNotJoined : RoomAction
     data object ToggleRule : RoomAction
     data class AddAiToSlot(val slotIndex: Int, val difficulty: AiDifficulty) : RoomAction
     data class RemoveSlotOccupant(val slotIndex: Int) : RoomAction
@@ -11,6 +16,7 @@ sealed interface RoomAction {
     data object DeclineSwap : RoomAction
     data object ToggleReady : RoomAction
     data object StartGame : RoomAction
+    data object StartHostListening : RoomAction
     data object ResetScores : RoomAction
     data class AccumulateScores(val scores: List<RoundScore>) : RoomAction
     data class OpenAiDialog(val slotIndex: Int) : RoomAction
@@ -19,4 +25,8 @@ sealed interface RoomAction {
     data object DismissSlotActionMenu : RoomAction
     data object ExitRoom : RoomAction
     data object ResetRoom : RoomAction
+    data object ResetRoomAsHost : RoomAction
+    data object ConsumeRoomExitNotice : RoomAction
+    data object ConsumeHomeNotice : RoomAction
+    data object ConsumeJoinError : RoomAction
 }
