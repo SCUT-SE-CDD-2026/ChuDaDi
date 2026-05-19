@@ -78,6 +78,7 @@ class MatchUiStateMapper(
                 match.phase != MatchPhase.FINISHED &&
                 match.activeSeatIndex == localSeatId,
             debugOpponentHands = buildDebugHands(match, localSeatId, localSeat != null),
+            localSeatId = localSeatId,
         )
     }
 

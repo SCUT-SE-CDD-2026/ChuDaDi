@@ -131,7 +131,7 @@ object AIFactory {
                 val errorMsg = "ONNX模型加载失败，已降级到规则型AI"
                 Log.w(TAG, "[$seatIndex] $errorMsg")
                 AICreationResult(
-                    controller = controller,
+                    controller = createRuleBasedAIPlayer(seatIndex, difficulty),
                     isFallback = true,
                     errorMessage = errorMsg,
                 )
@@ -177,8 +177,11 @@ object AIFactory {
             AIDifficulty.NORMAL,
         ),
     ): List<AIPlayerController> {
-        return createAIPlayersForMatchWithStatus(context, onnxSeatIndices, difficulties)
-            .map { it.controller }
+        return createAIPlayersForMatchWithStatus(
+            context = context,
+            onnxSeatIndices = onnxSeatIndices,
+            difficulties = difficulties,
+        ).map { it.controller }
     }
 
     /**
@@ -191,6 +194,7 @@ object AIFactory {
      */
     fun createAIPlayersForMatchWithStatus(
         context: Context,
+        seatIndices: List<Int> = listOf(1, 2, 3),
         onnxSeatIndices: Set<Int> = emptySet(),
         difficulties: List<AIDifficulty> = listOf(
             AIDifficulty.NORMAL,
@@ -198,10 +202,12 @@ object AIFactory {
             AIDifficulty.NORMAL,
         ),
     ): List<AICreationResult> {
-        require(difficulties.size == 3) { "Expected exactly 3 difficulty settings for 3 AI players" }
+        require(difficulties.size == seatIndices.size) {
+            "Expected difficulties.size (${difficulties.size}) to match seatIndices.size (${seatIndices.size})"
+        }
 
-        return difficulties.mapIndexed { index, diff ->
-            val seatIndex = index + 1
+        return seatIndices.mapIndexed { index, seatIndex ->
+            val diff = difficulties[index]
             val isOnnxAI = seatIndex in onnxSeatIndices
             createAIPlayerWithStatus(context, seatIndex = seatIndex, difficulty = diff, isOnnxAI = isOnnxAI)
         }

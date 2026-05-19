@@ -278,13 +278,8 @@ class OnnxAIPlayerController(
         handCards: List<Card>,
         generator: CombinationGenerator
     ): List<List<Card>> {
-        return try {
-            val combinations = generator.generateAllValidCombinations(handCards)
-            combinations.map { it.cards }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to generate combinations", e)
-            emptyList()
-        }
+        val combinations = generator.generateAllValidCombinations(handCards)
+        return combinations.map { it.cards }
     }
 
     private fun generateValidResponses(
@@ -293,15 +288,10 @@ class OnnxAIPlayerController(
         generator: CombinationGenerator,
         comparator: CombinationComparator
     ): List<List<Card>> {
-        return try {
-            val allCombinations = generator.generateAllValidCombinations(handCards)
-            allCombinations
-                .filter { comparator.canBeat(it, currentCombination) }
-                .map { it.cards }
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to generate responses", e)
-            emptyList()
-        }
+        val allCombinations = generator.generateAllValidCombinations(handCards)
+        return allCombinations
+            .filter { comparator.canBeat(it, currentCombination) }
+            .map { it.cards }
     }
 
     private fun isValidDecision(

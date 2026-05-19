@@ -23,6 +23,7 @@ import com.example.chudadi.model.game.snapshot.MatchUiState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelChildren
@@ -61,6 +62,7 @@ class OnnxMatchViewModel(
     private var lastAiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
     private val inferenceFailureCountBySeat: MutableMap<Int, Int> = mutableMapOf()
     private val lastInferenceErrorReportAtBySeat: MutableMap<Int, Long> = mutableMapOf()
+    private var aiTurnJob: Job? = null
 
     init {
         AIFactory.preloadModels(context)
@@ -218,7 +220,8 @@ class OnnxMatchViewModel(
     }
 
     private fun maybeResolveAiTurns() {
-        aiScope.launch(Dispatchers.Default) {
+        aiTurnJob?.cancel()
+        aiTurnJob = aiScope.launch(Dispatchers.Default) {
             var chainCount = 0
             val maxChain = if (localSeatId == MatchUiStateMapper.NO_LOCAL_SEAT_ID) {
                 MAX_FULL_AI_CHAIN
@@ -257,19 +260,13 @@ class OnnxMatchViewModel(
                         null
                     } catch (e: CancellationException) {
                         throw e
+                    } catch (e: Error) {
+                        throw e
                     } catch (e: Exception) {
-                        android.util.Log.e("OnnxMatchViewModel", "Unexpected AI error, stop AI resolution", e)
-                        val criticalMessage =
+                        android.util.Log.e("OnnxMatchViewModel", "Unexpected AI error, attempting fallback", e)
+                        aiErrorMessage =
                             "Seat $activeSeat AI unexpected failure: ${e.localizedMessage ?: "unknown error"}"
-                        _errorState.value = AIErrorState.CriticalError(
-                            message = criticalMessage,
-                            exception = e,
-                        )
-                        lastActionMessage = criticalMessage
-                        launch(Dispatchers.Main) {
-                            pushUiState()
-                        }
-                        return@launch
+                        null
                     }
                 } else {
                     null

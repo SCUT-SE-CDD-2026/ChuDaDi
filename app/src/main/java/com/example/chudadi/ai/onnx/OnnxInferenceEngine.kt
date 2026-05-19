@@ -7,6 +7,7 @@ import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -169,6 +170,9 @@ class OnnxInferenceEngine(modelPath: String) {
             Log.i(TAG, "Input names: $modelInputNames")
             Log.i(TAG, "Output names: $modelOutputNames, using: ${ioContract.outputName}")
             logModelInfo()
+        } catch (e: InterruptedException) {
+            Thread.currentThread().interrupt()
+            throw OnnxInitializationException("ONNX initialization interrupted", e)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to load ONNX model", e)
             throw OnnxInitializationException("Failed to initialize ONNX model", e)
@@ -314,10 +318,12 @@ class OnnxInferenceEngine(modelPath: String) {
     fun close() {
         try {
             val oldSession: OrtSession?
-            synchronized(this) {
-                oldSession = session
-                session = null
-                isInitialized = false
+            runBlocking {
+                sessionLock.withLock {
+                    oldSession = session
+                    session = null
+                    isInitialized = false
+                }
             }
             oldSession?.close()
             if (oldSession != null) {

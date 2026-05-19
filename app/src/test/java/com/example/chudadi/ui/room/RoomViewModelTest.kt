@@ -64,7 +64,7 @@ class RoomViewModelTest {
     }
 
     @Test
-    fun toggleAiPlaySpeed_cyclesIncludingVfast() {
+    fun toggleAiPlaySpeed_cyclesThroughAvailableSpeeds() {
         val viewModel = RoomViewModel()
 
         assertEquals(AiPlaySpeed.NORMAL, viewModel.uiState.value.aiPlaySpeed)
@@ -75,8 +75,10 @@ class RoomViewModelTest {
         viewModel.dispatch(RoomAction.ToggleAiPlaySpeed)
         assertEquals(AiPlaySpeed.VFAST, viewModel.uiState.value.aiPlaySpeed)
 
-        viewModel.dispatch(RoomAction.ToggleAiPlaySpeed)
-        assertEquals(AiPlaySpeed.DEBUG_100_ROUNDS, viewModel.uiState.value.aiPlaySpeed)
+        if (com.example.chudadi.BuildConfig.DEBUG) {
+            viewModel.dispatch(RoomAction.ToggleAiPlaySpeed)
+            assertEquals(AiPlaySpeed.DEBUG_100_ROUNDS, viewModel.uiState.value.aiPlaySpeed)
+        }
 
         viewModel.dispatch(RoomAction.ToggleAiPlaySpeed)
         assertEquals(AiPlaySpeed.SLOW, viewModel.uiState.value.aiPlaySpeed)

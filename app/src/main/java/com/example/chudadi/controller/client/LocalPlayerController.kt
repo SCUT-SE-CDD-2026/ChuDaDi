@@ -179,7 +179,13 @@ class LocalPlayerController(
                         return@launch
                     }
 
-                    val decision = aiPlayer.decideAction(latestMatch, latestMatch.activeSeatIndex)
+                    @Suppress("TooGenericExceptionCaught")
+                    val decision = try {
+                        aiPlayer.decideAction(latestMatch, latestMatch.activeSeatIndex)
+                    } catch (e: Exception) {
+                        android.util.Log.e("LocalPlayerController", "AI decision failed", e)
+                        return@launch
+                    }
                     val result =
                         when (decision) {
                             is AiDecision.Play ->

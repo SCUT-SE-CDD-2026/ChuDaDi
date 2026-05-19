@@ -131,10 +131,8 @@ import com.example.chudadi.ui.theme.TransparentColor
 import com.example.chudadi.ui.theme.WoodTint
 private val HumanPlayOffsetX = 26.dp
 private val OpponentPlayOffsetX = 26.dp
-private const val LEFT_SEAT_ID = 1
-private const val TOP_SEAT_ID = 2
-private const val RIGHT_SEAT_ID = 3
-private const val HUMAN_SEAT_ID = 0
+// Seat positions are now dynamically computed relative to localSeatId
+// to support seat swapping in the room.
 private val TableShape = RoundedCornerShape(28.dp)
 private val CardShape = RoundedCornerShape(10.dp)
 private const val HandCardMoveDurationMs = 150
@@ -286,9 +284,14 @@ private fun GameTableLayout(
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
-    val topOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == TOP_SEAT_ID }
-    val leftOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == LEFT_SEAT_ID }
-    val rightOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == RIGHT_SEAT_ID }
+    val localSeatId = uiState.localSeatId
+    val leftSeatId = (localSeatId + 1) % 4
+    val topSeatId = (localSeatId + 2) % 4
+    val rightSeatId = (localSeatId + 3) % 4
+
+    val topOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == topSeatId }
+    val leftOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == leftSeatId }
+    val rightOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == rightSeatId }
 
     Column(
         modifier = modifier,
@@ -478,8 +481,9 @@ private fun CenterPlayArea(
             tablePlays.forEach { tablePlay ->
                 TablePlaySlot(
                     tablePlay = tablePlay,
+                    localSeatId = uiState.localSeatId,
                     layoutSpec = layoutSpec,
-                    modifier = Modifier.align(playAlignment(tablePlay.ownerSeatId)),
+                    modifier = Modifier.align(playAlignment(tablePlay.ownerSeatId, uiState.localSeatId)),
                 )
             }
         }
@@ -487,30 +491,34 @@ private fun CenterPlayArea(
     }
 }
 
-private fun playAlignment(ownerSeatId: Int): Alignment {
-    return when (ownerSeatId) {
-        LEFT_SEAT_ID -> Alignment.CenterStart
-        TOP_SEAT_ID -> Alignment.TopCenter
-        RIGHT_SEAT_ID -> Alignment.CenterEnd
-        HUMAN_SEAT_ID -> Alignment.BottomCenter
+private fun playAlignment(ownerSeatId: Int, localSeatId: Int): Alignment {
+    val relative = (ownerSeatId - localSeatId + 4) % 4
+    return when (relative) {
+        1 -> Alignment.CenterStart
+        2 -> Alignment.TopCenter
+        3 -> Alignment.CenterEnd
+        0 -> Alignment.BottomCenter
         else -> Alignment.Center
     }
 }
 
-private fun playOffset(ownerSeatId: Int): Dp {
-    return when (ownerSeatId) {
-        HUMAN_SEAT_ID -> HumanPlayOffsetX
-        TOP_SEAT_ID -> -OpponentPlayOffsetX
+private fun playOffset(ownerSeatId: Int, localSeatId: Int): Dp {
+    val relative = (ownerSeatId - localSeatId + 4) % 4
+    return when (relative) {
+        0 -> HumanPlayOffsetX
+        2 -> -OpponentPlayOffsetX
         else -> 0.dp
     }
 }
 
 private fun playVerticalOffset(
     ownerSeatId: Int,
+    localSeatId: Int,
     layoutSpec: GameLayoutSpec,
 ): Dp {
-    return when (ownerSeatId) {
-        HUMAN_SEAT_ID -> layoutSpec.tableCardHeight / 4
+    val relative = (ownerSeatId - localSeatId + 4) % 4
+    return when (relative) {
+        0 -> layoutSpec.tableCardHeight / 4
         else -> 0.dp
     }
 }
@@ -518,6 +526,7 @@ private fun playVerticalOffset(
 @Composable
 private fun TablePlaySlot(
     tablePlay: TablePlaySummary,
+    localSeatId: Int,
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
@@ -546,8 +555,8 @@ private fun TablePlaySlot(
         Box(
             modifier = Modifier
                 .offset(
-                    x = playOffset(tablePlay.ownerSeatId),
-                    y = playVerticalOffset(tablePlay.ownerSeatId, layoutSpec),
+                    x = playOffset(tablePlay.ownerSeatId, localSeatId),
+                    y = playVerticalOffset(tablePlay.ownerSeatId, localSeatId, layoutSpec),
                 )
                 .width(contentWidth)
                 .height(tableCardOuterHeight),

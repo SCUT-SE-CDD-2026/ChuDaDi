@@ -47,4 +47,5 @@ data class MatchUiState(
     val resultSummary: ResultSummary? = null,
     val isHumanTurn: Boolean = false,
     val debugOpponentHands: List<DebugHandSummary> = emptyList(),
+    val localSeatId: Int = 0,
 )

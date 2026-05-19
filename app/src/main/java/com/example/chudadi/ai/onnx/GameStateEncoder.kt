@@ -67,7 +67,10 @@ class GameStateEncoder {
      */
     fun encode(match: Match, seatIndex: Int): FloatArray {
         val tensor = FloatArray(INPUT_DIM)
-        val seat = match.seats.getOrNull(seatIndex) ?: return tensor
+        val seat = match.seats.getOrNull(seatIndex)
+            ?: throw IllegalArgumentException(
+                "Invalid seatIndex=$seatIndex, seats=${match.seats.size}"
+            )
 
         var offset = 0
         val currentSeatPosition = seatIndex

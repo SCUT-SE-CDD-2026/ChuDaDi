@@ -35,6 +35,8 @@ class OnnxModel(modelPath: String) {
         } catch (e: Exception) {
             Log.e(TAG, "Unexpected error initializing ONNX model", e)
             isLoaded = false
+        } catch (e: Error) {
+            throw e
         }
     }
 

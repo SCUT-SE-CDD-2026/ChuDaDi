@@ -112,7 +112,9 @@ object AssetCopier {
                 return false
             }
             if (!destFile.delete()) {
-                Log.w(TAG, "Failed to delete existing model file before overwrite: ${destFile.name}")
+                throw IOException(
+                    "Failed to delete existing model file before overwrite: ${destFile.absolutePath}"
+                )
             } else {
                 Log.d(TAG, "Deleted existing model file: ${destFile.name}")
             }
