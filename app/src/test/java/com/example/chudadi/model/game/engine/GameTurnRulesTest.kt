@@ -91,6 +91,11 @@ class GameTurnRulesTest {
                     0 to combination,
                     1 to combination,
                 ),
+                tablePlayOrders = mapOf(
+                    0 to 0,
+                    1 to 1,
+                ),
+                nextTablePlayOrder = 2,
             ),
         )
 
@@ -99,7 +104,25 @@ class GameTurnRulesTest {
         assertTrue(result.success)
         assertEquals("AI 1 passed", result.message)
         assertFalse(result.match.trickState.tablePlays.containsKey(1))
+        assertFalse(result.match.trickState.tablePlayOrders.containsKey(1))
         assertTrue(result.match.trickState.tablePlays.containsKey(0))
+        assertEquals(0, result.match.trickState.tablePlayOrders[0])
+    }
+
+    @Test
+    fun submitSelectedCards_recordsTablePlayOrderOnlyAfterSuccessfulPlay() {
+        val match = MatchFixtureFactory.localMatch(activeSeatIndex = 0)
+        val selectedCardId = MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS).id
+
+        val result = engine.submitSelectedCards(
+            match = match,
+            seatIndex = 0,
+            selectedCardIds = setOf(selectedCardId),
+        )
+
+        assertTrue(result.success)
+        assertEquals(0, result.match.trickState.tablePlayOrders[0])
+        assertEquals(1, result.match.trickState.nextTablePlayOrder)
     }
 
     @Test

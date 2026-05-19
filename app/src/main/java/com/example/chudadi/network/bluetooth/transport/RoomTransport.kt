@@ -6,8 +6,20 @@ import com.example.chudadi.network.room.BluetoothDiscoveredDevice
 import com.example.chudadi.network.room.RoomClientConnection
 import com.example.chudadi.network.room.RoomSocketConnection
 import com.example.chudadi.network.room.RoomWireMessage
+import java.io.IOException
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+
+data class BroadcastResult(
+    val failedTargets: List<String> = emptyList(),
+) {
+    val isSuccess: Boolean get() = failedTargets.isEmpty()
+}
+
+class BroadcastSendException(
+    val failedTargets: List<String>,
+    cause: Throwable?,
+) : IOException("Bluetooth broadcast failed for targets: ${failedTargets.joinToString()}", cause)
 
 /**
  * Defines the bluetooth room transport boundary used by room orchestration code.
@@ -60,14 +72,14 @@ interface RoomTransport {
         connection: RoomSocketConnection,
     )
 
-    fun sendToHost(message: RoomWireMessage)
+    fun sendToHost(message: RoomWireMessage): Result<Unit>
 
     fun sendToParticipant(
         participantId: String,
         message: RoomWireMessage,
-    )
+    ): Result<Unit>
 
-    fun broadcast(message: RoomWireMessage)
+    fun broadcast(message: RoomWireMessage): Result<BroadcastResult>
 
     fun disconnectParticipant(participantId: String)
 

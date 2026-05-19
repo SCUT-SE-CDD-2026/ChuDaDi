@@ -35,6 +35,12 @@ sealed interface RoomTransportEvent {
         val cause: Throwable?,
     ) : RoomTransportEvent
 
+    data class SendFailed(
+        val participantId: String?,
+        val messageType: String,
+        val cause: Throwable,
+    ) : RoomTransportEvent
+
     data class TransportError(
         val cause: Throwable,
     ) : RoomTransportEvent

@@ -76,6 +76,7 @@ fun BluetoothSearchScreen(
                     searchState = uiState.searchState,
                     onNavigateBack = onNavigateBack,
                     onRefresh = { onAction(RoomAction.StartBluetoothDiscovery) },
+                    refreshEnabled = uiState.searchState != BluetoothSearchState.CONNECTING,
                 )
                 Box(
                     modifier = Modifier
@@ -138,6 +139,7 @@ private fun SearchTopBar(
     searchState: BluetoothSearchState,
     onNavigateBack: () -> Unit,
     onRefresh: () -> Unit,
+    refreshEnabled: Boolean,
 ) {
     Row(
         modifier = Modifier
@@ -168,11 +170,11 @@ private fun SearchTopBar(
             style = MaterialTheme.typography.labelMedium,
             color = if (searchState == BluetoothSearchState.FAILED) Color(0xFFE57373) else SearchHighlight,
         )
-        IconButton(onClick = onRefresh) {
+        IconButton(onClick = onRefresh, enabled = refreshEnabled) {
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "重新扫描",
-                tint = SearchTextSecondary,
+                tint = if (refreshEnabled) SearchTextSecondary else SearchTextMuted,
             )
         }
     }
@@ -264,6 +266,7 @@ private fun SearchDevicePanel(
             ChuButton(
                 text = "重新扫描",
                 onClick = onRefresh,
+                enabled = uiState.searchState != BluetoothSearchState.CONNECTING,
                 style = ChuButtonStyle.SECONDARY,
                 modifier = Modifier.width(120.dp),
             )
@@ -293,6 +296,7 @@ private fun SearchDevicePanel(
                             device = device,
                             isConnecting = uiState.selectedDeviceAddress == device.address &&
                                 uiState.searchState == BluetoothSearchState.CONNECTING,
+                            enabled = uiState.searchState != BluetoothSearchState.CONNECTING,
                             onConnect = { onConnect(device.address) },
                         )
                     }
@@ -325,6 +329,7 @@ private fun EmptyDeviceList(searchState: BluetoothSearchState) {
 private fun DeviceRow(
     device: DiscoveredDeviceUiState,
     isConnecting: Boolean,
+    enabled: Boolean,
     onConnect: () -> Unit,
 ) {
     Row(
@@ -382,7 +387,7 @@ private fun DeviceRow(
         ChuButton(
             text = if (isConnecting) "连接中" else "连接",
             onClick = onConnect,
-            enabled = !isConnecting,
+            enabled = enabled,
             style = if (isConnecting) ChuButtonStyle.SECONDARY else ChuButtonStyle.PRIMARY,
             modifier = Modifier.width(108.dp),
         )

@@ -10,7 +10,6 @@
 
 package com.example.chudadi.network.room
 
-import android.annotation.SuppressLint
 import android.content.Context
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.data.repository.ReconnectSession
@@ -32,6 +31,7 @@ import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.RoomMode
 import com.example.chudadi.ui.room.RoomUiState
+import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.room.SlotState
 import com.example.chudadi.ui.room.SwapRequest
 import java.util.UUID
@@ -174,6 +174,7 @@ class BluetoothRoomRepository private constructor(
 
                     is RoomTransportEvent.MessageReceived -> handleTransportMessage(event)
                     is RoomTransportEvent.ConnectionLost -> handleTransportConnectionLost(event)
+                    is RoomTransportEvent.SendFailed -> handleTransportSendFailed(event)
                     RoomTransportEvent.HostStarted,
                     is RoomTransportEvent.HostStartFailed,
                     is RoomTransportEvent.ClientConnected,
@@ -196,13 +197,11 @@ class BluetoothRoomRepository private constructor(
 
     fun isBluetoothDiscoverabilitySupported(): Boolean = requireDiscoverabilityController().isDiscoverabilitySupported()
 
-    @SuppressLint("MissingPermission")
     fun loadBondedDevices() {
         val devices = discoveryService.loadBondedDevices()
         _roomUiState.update { roomUiStateMapper.withBondedDevices(it, devices) }
     }
 
-    @SuppressLint("MissingPermission")
     fun startDiscovery() {
         if (!requirePermissionChecker().isBluetoothSupported()) {
             _roomUiState.update {
@@ -214,6 +213,7 @@ class BluetoothRoomRepository private constructor(
             return
         }
         if (!requirePermissionChecker().hasScanPermission()) {
+            discoveryService.stopDiscovery()
             _roomUiState.update {
                 it.copy(
                     searchState = BluetoothSearchState.FAILED,
@@ -228,9 +228,9 @@ class BluetoothRoomRepository private constructor(
             it.copy(searchState = BluetoothSearchState.SCANNING, connectionHint = "正在搜索蓝牙房间...")
         }
         discoveryService.startDiscovery()
+            .onFailure { error -> publishDiscoveryStartFailure(error) }
     }
 
-    @SuppressLint("MissingPermission")
     fun getBondedDevices(): List<BluetoothDiscoveredDevice> = discoveryService.getBondedDevices()
 
     fun createLocalRoom(
@@ -325,6 +325,8 @@ class BluetoothRoomRepository private constructor(
         playerName: String,
         avatarResId: Int?,
         resumeParticipantId: String? = null,
+        shouldAcceptResult: () -> Boolean = { true },
+        onClientJoinAccepted: () -> Unit = {},
     ): Result<Unit> {
         if (!requirePermissionChecker().isBluetoothSupported()) {
             return Result.failure(IllegalStateException(errorMessageMapper.connectUnsupportedBluetoothMessage))
@@ -332,7 +334,9 @@ class BluetoothRoomRepository private constructor(
         if (!requirePermissionChecker().hasConnectPermission()) {
             return Result.failure(IllegalStateException(errorMessageMapper.missingConnectPermissionMessage))
         }
+        ensureClientJoinStillCurrent(shouldAcceptResult)
         shutdownCurrentRole()
+        ensureClientJoinStillCurrent(shouldAcceptResult)
         _roomUiState.update {
             it.copy(
                 searchState = BluetoothSearchState.CONNECTING,
@@ -341,6 +345,7 @@ class BluetoothRoomRepository private constructor(
             )
         }
         discoveryService.stopDiscovery()
+        ensureClientJoinStillCurrent(shouldAcceptResult)
         val joinConnector = BluetoothClientJoinConnector(
             roomTransport = roomTransport,
             roomUuid = ROOM_UUID,
@@ -355,15 +360,23 @@ class BluetoothRoomRepository private constructor(
             avatarResId = avatarResId,
             resumeParticipantId = resumeParticipantId,
         )
+        ensureClientJoinStillCurrent(shouldAcceptResult)
         val joinError = joinResult.exceptionOrNull()
         return if (joinError != null) {
             publishJoinFailure(device, joinError)
             Result.failure(joinError)
         } else {
+            val session = requireNotNull(joinResult.getOrNull())
+            ensureClientJoinStillCurrent(shouldAcceptResult) {
+                cleanupFailedClientJoin(session.connection)
+            }
             val setupResult = completeClientJoinAfterConnect(
-                session = requireNotNull(joinResult.getOrNull()),
+                session = session,
                 device = device,
+                shouldAcceptResult = shouldAcceptResult,
+                onClientJoinAccepted = onClientJoinAccepted,
             )
+            ensureClientJoinStillCurrent(shouldAcceptResult)
             setupResult.exceptionOrNull()?.let { error -> publishJoinFailure(device, error) }
             setupResult
         }
@@ -373,13 +386,18 @@ class BluetoothRoomRepository private constructor(
     private suspend fun completeClientJoinAfterConnect(
         session: ClientJoinSession,
         device: BluetoothDiscoveredDevice,
+        shouldAcceptResult: () -> Boolean,
+        onClientJoinAccepted: () -> Unit,
     ): Result<Unit> {
         return try {
             val accepted = session.accepted
+            ensureClientJoinStillCurrent(shouldAcceptResult)
+            onClientJoinAccepted()
             acceptClientJoin(
                 accepted = accepted,
                 selectedDeviceAddress = device.address,
             )
+            ensureClientJoinStillCurrent(shouldAcceptResult)
             persistReconnectSession(
                 participantId = accepted.localParticipantId,
                 hostAddress = device.address,
@@ -387,6 +405,7 @@ class BluetoothRoomRepository private constructor(
                 roomName = accepted.snapshot.roomName,
             )
             roomTransport.attachClientReadLoop(session.connection)
+            ensureClientJoinStillCurrent(shouldAcceptResult)
             roomTransport.startClientHeartbeatWatchdog(
                 heartbeatTimeoutMs = HEARTBEAT_TIMEOUT_MS,
                 clientHeartbeatCheckIntervalMs = CLIENT_HEARTBEAT_CHECK_INTERVAL_MS,
@@ -404,6 +423,32 @@ class BluetoothRoomRepository private constructor(
     private fun cleanupFailedClientJoin(connection: RoomClientConnection) {
         roomTransport.cleanupFailedClientJoin(connection)
         resetClientJoinStateAfterSetupFailure()
+    }
+
+    fun cancelPendingClientConnection() {
+        roomTransport.clearClientConnection()
+        _roomUiState.update {
+            if (it.searchState == BluetoothSearchState.CONNECTING) {
+                it.copy(
+                    searchState = BluetoothSearchState.IDLE,
+                    selectedDeviceAddress = null,
+                    connectionHint = "",
+                    joinErrorMessage = null,
+                    joinErrorTitle = "鏃犳硶鍔犲叆鎴块棿",
+                )
+            } else {
+                it
+            }
+        }
+    }
+
+    private fun ensureClientJoinStillCurrent(
+        shouldAcceptResult: () -> Boolean,
+        cleanup: () -> Unit = {},
+    ) {
+        if (shouldAcceptResult()) return
+        cleanup()
+        throw CancellationException("Client join was cancelled")
     }
 
     private fun resetClientJoinStateAfterSetupFailure() {
@@ -452,6 +497,7 @@ class BluetoothRoomRepository private constructor(
                 val currentSlot = _roomUiState.value.slots.firstOrNull { it.isLocalPlayer } ?: return
                 val nextReady = currentSlot.connectionStatus != MemberConnectionStatus.READY
                 roomTransport.sendToHost(RoomWireMessage.ReadyStateChangeMessage(nextReady))
+                    .onFailure { error -> publishSendFailure("准备状态", error) }
             }
 
             RoomRole.Idle -> Unit
@@ -460,11 +506,17 @@ class BluetoothRoomRepository private constructor(
 
     fun startNetworkMatch() {
         if (roomRole !is RoomRole.Host || _roomUiState.value.roomMode != RoomMode.BLUETOOTH_HOST) return
-        matchCoordinator.startNetworkMatch(
+        val startResult = matchCoordinator.startNetworkMatch(
             authorityStore = authorityStore,
             localParticipantId = localParticipantId(),
             sendToParticipant = roomTransport::sendToParticipant,
+            onMatchStartedSendFailed = ::handleMatchStartedSendFailure,
         )
+        if (startResult.isFailure) {
+            matchCoordinator.reset()
+            publishSendFailure("开始游戏", requireNotNull(startResult.exceptionOrNull()))
+            return
+        }
         matchCoordinator.startMatchLoop(
             updateAllMatchSnapshots = ::updateAllMatchSnapshots,
             seatDisplayName = ::seatDisplayName,
@@ -493,10 +545,20 @@ class BluetoothRoomRepository private constructor(
                     return
                 }
                 matchCoordinator.onLocalGameActionAsClient(action, roomTransport::sendToHost)
+                    .onFailure { error -> publishSendFailure("游戏消息", error) }
             }
 
             RoomRole.Idle -> Unit
         }
+    }
+
+    private fun handleMatchStartedSendFailure(participantId: String, error: Throwable) {
+        authorityStore.updateParticipant(participantId) {
+            it.copy(connectionStatus = MemberConnectionStatus.DISCONNECTED)
+        }
+        matchCoordinator.onParticipantDisconnected(participantId, authorityStore)
+        publishSendFailure("MatchStarted", error)
+        broadcastSnapshot()
     }
 
     fun handleToggleRule() {
@@ -521,18 +583,48 @@ class BluetoothRoomRepository private constructor(
     }
 
     fun handleRemoveSlotOccupant(slotIndex: Int) {
-        if (roomRole !is RoomRole.Host) return
-        val participantId = authorityStore.occupantAt(slotIndex) ?: return
-        if (participantId == HOST_PARTICIPANT_ID) return
-        roomTransport.sendToParticipant(participantId, RoomWireMessage.RemovedFromRoom("你已被房主移出房间"))
+        val participantId = authorityStore.occupantAt(slotIndex)
+        if (roomRole !is RoomRole.Host || participantId == null || participantId == HOST_PARTICIPANT_ID) return
+        val participant = authorityStore.state.participants[participantId]
+        val notifyFailure = participant?.let {
+            tryNotifyRemovedFromRoomIfNeeded(participantId = participantId, participant = it)
+        }
+        clearSlotOccupantAuthoritatively(
+            slotIndex = slotIndex,
+            participantId = participantId,
+            notifyFailure = notifyFailure,
+        )
+    }
+
+    private fun tryNotifyRemovedFromRoomIfNeeded(
+        participantId: String,
+        participant: ParticipantRecord,
+    ): Throwable? {
+        if (participant.occupantType != SlotOccupantType.HUMAN_MEMBER ||
+            participant.connectionStatus == MemberConnectionStatus.DISCONNECTED
+        ) {
+            return null
+        }
+        return roomTransport.sendToParticipant(
+            participantId,
+            RoomWireMessage.RemovedFromRoom("你已被房主移出房间"),
+        ).exceptionOrNull()
+    }
+
+    private fun clearSlotOccupantAuthoritatively(
+        slotIndex: Int,
+        participantId: String,
+        notifyFailure: Throwable?,
+    ) {
         authorityStore.update {
             it.copy(
                 participants = it.participants - participantId,
                 slotAssignments = it.slotAssignments + (slotIndex to null),
             )
         }
+        val notificationSuffix = notifyFailure?.message?.let { "，移除通知发送失败：$it" }.orEmpty()
         publishUiState(
-            connectionHint = "已移除位置 ${slotIndex + 1} 的成员",
+            connectionHint = "已移除位置 ${slotIndex + 1} 的成员$notificationSuffix",
             showSlotActionMenu = false,
             slotActionMenuTarget = -1,
             pendingSwapRequest = null,
@@ -546,6 +638,7 @@ class BluetoothRoomRepository private constructor(
             is RoomRole.Host -> seatCoordinator.handleHostSwapRequest(role.localParticipantId, targetSlotIndex)
             is RoomRole.Client -> {
                 roomTransport.sendToHost(RoomWireMessage.SwapSeatRequestMessage(targetSlotIndex))
+                    .onFailure { error -> publishSendFailure("换位请求", error) }
             }
 
             RoomRole.Idle -> Unit
@@ -571,14 +664,18 @@ class BluetoothRoomRepository private constructor(
             }
 
             is RoomRole.Client -> {
-                _roomUiState.update { it.copy(pendingSwapRequest = null) }
-                roomTransport.sendToHost(
+                val sendResult = roomTransport.sendToHost(
                     RoomWireMessage.SwapSeatDecisionMessage(
                         requesterSlotIndex = request.requesterSlotIndex,
                         targetSlotIndex = request.targetSlotIndex,
                         accepted = accepted,
                     ),
                 )
+                if (sendResult.isSuccess) {
+                    _roomUiState.update { it.copy(pendingSwapRequest = null) }
+                } else {
+                    publishSendFailure(if (accepted) "换位确认" else "换位拒绝", requireNotNull(sendResult.exceptionOrNull()))
+                }
             }
 
             RoomRole.Idle -> Unit
@@ -607,9 +704,13 @@ class BluetoothRoomRepository private constructor(
 
     fun leaveRoom() {
         when (roomRole) {
-            is RoomRole.Client -> roomTransport.sendToHost(RoomWireMessage.LeaveRoomMessage)
+            is RoomRole.Client -> {
+                roomTransport.sendToHost(RoomWireMessage.LeaveRoomMessage)
+                    .onFailure { error -> publishSendFailure("离房消息", error) }
+            }
             is RoomRole.Host -> {
                 roomTransport.broadcast(RoomWireMessage.RoomClosedByHost("房主已关闭房间"))
+                    .onFailure { error -> publishSendFailure("关闭房间消息", error) }
             }
 
             RoomRole.Idle -> Unit
@@ -673,7 +774,14 @@ class BluetoothRoomRepository private constructor(
         }
     }
 
-    @SuppressLint("MissingPermission")
+    private fun publishDiscoveryStartFailure(error: Throwable) {
+        val userMessage = errorMessageMapper.toUserFacingMessage(error, errorMessageMapper.discoveryStartFailedMessage)
+        showJoinError(
+            message = userMessage,
+            title = "扫描启动失败",
+        )
+    }
+
     fun loadBondedDevicesWithFeedback() {
         if (!requirePermissionChecker().hasConnectPermission()) {
             showJoinError(
@@ -691,7 +799,6 @@ class BluetoothRoomRepository private constructor(
         }
     }
 
-    @SuppressLint("MissingPermission")
     fun startDiscoveryWithFeedback() {
         if (!requirePermissionChecker().isBluetoothSupported()) {
             showJoinError(
@@ -701,6 +808,7 @@ class BluetoothRoomRepository private constructor(
             return
         }
         if (!requirePermissionChecker().hasScanPermission()) {
+            discoveryService.stopDiscovery()
             showJoinError(
                 message = errorMessageMapper.missingScanPermissionMessage,
                 title = "无法搜索房间",
@@ -708,12 +816,9 @@ class BluetoothRoomRepository private constructor(
             return
         }
         loadBondedDevicesWithFeedback()
-        val started = discoveryService.startDiscovery()
-        if (!started) {
-            showJoinError(
-                message = errorMessageMapper.discoveryStartFailedMessage,
-                title = "扫描启动失败",
-            )
+        val startResult = discoveryService.startDiscovery()
+        if (startResult.isFailure) {
+            publishDiscoveryStartFailure(requireNotNull(startResult.exceptionOrNull()))
             return
         }
         _roomUiState.update {
@@ -723,6 +828,17 @@ class BluetoothRoomRepository private constructor(
                 joinErrorMessage = null,
                 joinErrorTitle = "无法加入房间",
             )
+        }
+    }
+
+    fun stopDiscovery() {
+        discoveryService.stopDiscovery()
+        _roomUiState.update {
+            if (it.searchState == BluetoothSearchState.SCANNING) {
+                it.copy(searchState = BluetoothSearchState.IDLE)
+            } else {
+                it
+            }
         }
     }
 
@@ -785,6 +901,18 @@ class BluetoothRoomRepository private constructor(
         } else {
             membershipCoordinator.markParticipantDisconnected(participantId)
         }
+    }
+
+    private fun handleTransportSendFailed(event: RoomTransportEvent.SendFailed) {
+        publishSendFailure(
+            operation = event.messageType,
+            error = event.cause,
+        )
+    }
+
+    private fun publishSendFailure(operation: String, error: Throwable) {
+        val detail = error.message?.takeIf { it.isNotBlank() } ?: "蓝牙写入失败"
+        publishUiState(connectionHint = "$operation 发送失败：$detail")
     }
 
     private fun publishJoinFailure(device: BluetoothDiscoveredDevice, error: Throwable) {
@@ -959,6 +1087,7 @@ class BluetoothRoomRepository private constructor(
     private fun broadcastSnapshot() {
         if (roomRole !is RoomRole.Host) return
         roomTransport.broadcast(RoomWireMessage.RoomSnapshotMessage(snapshotOfCurrentRoom()))
+            .onFailure { error -> publishSendFailure("房间状态同步", error) }
     }
 
     private fun snapshotOfCurrentRoom(): RemoteRoomSnapshot {
@@ -994,6 +1123,7 @@ class BluetoothRoomRepository private constructor(
             }
             .onFailure { error ->
                 val userMessage = errorMessageMapper.toUserFacingMessage(error, errorMessageMapper.listenStartFailedMessage)
+                roomTransport.shutdown()
                 authorityStore.update { state -> state.copy(bluetoothVisible = false) }
                 publishUiState(
                     connectionHint = userMessage,
@@ -1139,7 +1269,7 @@ internal interface BluetoothDiscoveryServicePort {
 
     fun getBondedDevices(): List<BluetoothDiscoveredDevice>
 
-    fun startDiscovery(): Boolean
+    fun startDiscovery(): Result<Unit>
 
     fun stopDiscovery()
 
@@ -1156,7 +1286,7 @@ private class AndroidBluetoothDiscoveryServicePort(
 
     override fun getBondedDevices(): List<BluetoothDiscoveredDevice> = discoveryService.getBondedDevices()
 
-    override fun startDiscovery(): Boolean = discoveryService.startDiscovery()
+    override fun startDiscovery(): Result<Unit> = discoveryService.startDiscovery()
 
     override fun stopDiscovery() {
         discoveryService.stopDiscovery()

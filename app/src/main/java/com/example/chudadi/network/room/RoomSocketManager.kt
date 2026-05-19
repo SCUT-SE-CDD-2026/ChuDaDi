@@ -35,6 +35,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.serialization.SerializationException
 
 sealed interface RoomSocketEvent {
     data class IncomingConnection(val connection: RoomSocketConnection) : RoomSocketEvent
@@ -159,6 +161,7 @@ class RoomSocketManager(
     private val clientConnectionHolder: ClientConnectionHolder = ClientConnectionHolder(),
     private val heartbeatMonitor: HeartbeatMonitor = HeartbeatMonitor(scope),
     private val connectionFactory: RoomSocketConnectionFactory = DefaultRoomSocketConnectionFactory,
+    private val serverSocketFactory: RoomServerSocketFactory = DefaultRoomServerSocketFactory,
 ) {
     private val _events = MutableSharedFlow<RoomSocketEvent>(extraBufferCapacity = 32)
     private val commands = Channel<SocketCommand>(capacity = Channel.UNLIMITED)
@@ -205,10 +208,15 @@ class RoomSocketManager(
                 result.await()
             }
         } catch (e: TimeoutCancellationException) {
-            Result.failure(IOException(HOST_START_TIMEOUT_MESSAGE, e))
+            val error = IOException(HOST_START_TIMEOUT_MESSAGE, e)
+            completeStartFailure(result, error)
+            commands.trySend(SocketCommand.Shutdown)
+            Result.failure(error)
         } catch (e: CancellationException) {
+            commands.trySend(SocketCommand.Shutdown)
             throw e
         } catch (e: Throwable) {
+            commands.trySend(SocketCommand.Shutdown)
             Result.failure(e)
         }
     }
@@ -430,40 +438,94 @@ class RoomSocketManager(
     }
 
     @SuppressLint("MissingPermission")
-    private fun handleStartServer(
+    private suspend fun handleStartServer(
         state: SocketManagerState,
         command: SocketCommand.StartServer,
     ): SocketManagerState {
         val adapter = bluetoothAdapter
-        if (adapter == null) {
-            command.result.complete(Result.failure(IllegalStateException("当前设备不支持蓝牙")))
-            return state
+        return when {
+            !command.result.isActive -> shutdownServerInternal(state)
+            state.serverSocket != null && state.acceptJob?.isActive == true -> {
+                command.result.complete(Result.success(Unit))
+                state
+            }
+            adapter == null -> {
+                val error = IllegalStateException("Bluetooth adapter is not available")
+                completeStartFailure(command.result, error)
+                logHostStartFailure(phase = "start server / adapter unavailable", state = state, error = error)
+                shutdownServerInternal(state)
+            }
+            else -> startServerWithAdapter(state = state, command = command, adapter = adapter)
         }
+    }
 
-        state.acceptJob?.cancel()
-        heartbeatMonitor.stopHostHeartbeat()
-        state.serverSocket?.closeSafely()
+    @Suppress("TooGenericExceptionCaught")
+    private suspend fun startServerWithAdapter(
+        state: SocketManagerState,
+        command: SocketCommand.StartServer,
+        adapter: BluetoothAdapter,
+    ): SocketManagerState {
+        var nextState = stopServerListeningInternal(state)
+        var phase = "create server socket"
 
         return try {
-            val serverSocket = adapter.listenUsingRfcommWithServiceRecord(command.serviceName, command.roomUuid)
+            val serverSocket = serverSocketFactory.create(adapter, command.serviceName, command.roomUuid)
+            phase = "start accept loop"
+            val acceptLoopReady = CompletableDeferred<Unit>()
+            val acceptLoopStartupFailure = CompletableDeferred<Result<Unit>>()
             val acceptJob = scope.launch(Dispatchers.IO) {
-                while (isActive) {
-                    try {
-                        val clientSocket = serverSocket.accept() ?: continue
-                        commands.send(SocketCommand.ServerAccepted(clientSocket))
-                    } catch (_: IOException) {
-                        break
-                    }
-                }
+                runServerAcceptLoop(
+                    scope = scope,
+                    serverSocket = serverSocket,
+                    commands = commands,
+                    stateProvider = { currentState },
+                    ready = acceptLoopReady,
+                    startupFailure = acceptLoopStartupFailure,
+                )
             }
-            command.result.complete(Result.success(Unit))
-            state.copy(
+            val listeningState = nextState.copy(
                 serverSocket = serverSocket,
                 acceptJob = acceptJob,
             )
+            val startupResult = awaitAcceptLoopStartup(
+                ready = acceptLoopReady,
+                startupFailure = acceptLoopStartupFailure,
+            )
+            if (startupResult.isSuccess) {
+                command.result.complete(Result.success(Unit))
+                listeningState
+            } else {
+                val error = requireNotNull(startupResult.exceptionOrNull())
+                completeStartFailure(command.result, error)
+                nextState = shutdownServerInternal(listeningState)
+                logHostStartFailure(phase = phase, state = nextState, error = error)
+                nextState
+            }
+        } catch (error: CancellationException) {
+            completeStartFailure(command.result, error)
+            nextState = shutdownServerInternal(nextState)
+            logHostStartFailure(phase = phase, state = nextState, error = error)
+            throw error
         } catch (error: IOException) {
-            command.result.complete(Result.failure(error))
-            state
+            completeStartFailure(command.result, error)
+            nextState = shutdownServerInternal(nextState)
+            logHostStartFailure(phase = phase, state = nextState, error = error)
+            nextState
+        } catch (error: SecurityException) {
+            completeStartFailure(command.result, error)
+            nextState = shutdownServerInternal(nextState)
+            logHostStartFailure(phase = phase, state = nextState, error = error)
+            nextState
+        } catch (error: IllegalStateException) {
+            completeStartFailure(command.result, error)
+            nextState = shutdownServerInternal(nextState)
+            logHostStartFailure(phase = phase, state = nextState, error = error)
+            nextState
+        } catch (error: Throwable) {
+            completeStartFailure(command.result, error)
+            nextState = shutdownServerInternal(nextState)
+            logHostStartFailure(phase = phase, state = nextState, error = error)
+            nextState
         }
     }
 
@@ -602,8 +664,19 @@ class RoomSocketManager(
                 command.connection.readLoop { message ->
                     when (message) {
                         RoomWireMessage.HeartbeatPing -> {
-                            command.connection.sendSafely(RoomWireMessage.HeartbeatPong)
-                            commands.send(SocketCommand.ClientHeartbeatReceived)
+                            val sendResult = command.connection.sendSafely(
+                                message = RoomWireMessage.HeartbeatPong,
+                                targetId = "host",
+                            )
+                            if (sendResult.isSuccess) {
+                                commands.send(SocketCommand.ClientHeartbeatReceived)
+                            } else {
+                                commands.send(
+                                    SocketCommand.ClientReadFailed(
+                                        sendResult.exceptionOrNull()?.message ?: "Host heartbeat pong send failed",
+                                    ),
+                                )
+                            }
                         }
 
                         else -> commands.send(SocketCommand.ClientMessageReceived(message))
@@ -682,16 +755,131 @@ class RoomSocketManager(
     }
 
     private fun handleShutdown(state: SocketManagerState): SocketManagerState {
+        return shutdownServerInternal(state)
+    }
+
+    private fun stopServerListeningInternal(state: SocketManagerState): SocketManagerState {
         state.acceptJob?.cancel()
-        state.clientReadJob?.closeAndCancel()
         state.serverSocket?.closeSafely()
+        heartbeatMonitor.stopHostHeartbeat()
+        return state.copy(
+            serverSocket = null,
+            acceptJob = null,
+        )
+    }
+
+    private fun shutdownServerInternal(state: SocketManagerState): SocketManagerState {
+        val stoppedState = stopServerListeningInternal(state)
+        stoppedState.clientReadJob?.closeAndCancel()
         heartbeatMonitor.stop()
-        state.hostReadJobs.values.forEach { readJob -> readJob.closeAndCancel() }
+        stoppedState.hostReadJobs.values.forEach { readJob -> readJob.closeAndCancel() }
         hostConnectionRegistry.clear().forEach { connection ->
             connection.closeNow()
         }
         clientConnectionHolder.clear()?.closeNow()
         return SocketManagerState()
+    }
+
+}
+
+@Suppress("TooGenericExceptionCaught")
+private suspend fun runServerAcceptLoop(
+    scope: CoroutineScope,
+    serverSocket: BluetoothServerSocket,
+    commands: Channel<SocketCommand>,
+    stateProvider: () -> SocketManagerState,
+    ready: CompletableDeferred<Unit>,
+    startupFailure: CompletableDeferred<Result<Unit>>,
+) {
+    if (!ready.isCompleted) {
+        ready.complete(Unit)
+    }
+    while (scope.isActive) {
+        try {
+            val clientSocket = serverSocket.accept()
+            if (clientSocket == null) continue
+            commands.send(SocketCommand.ServerAccepted(clientSocket))
+        } catch (error: CancellationException) {
+            completeStartFailure(startupFailure, error)
+            throw error
+        } catch (error: IOException) {
+            completeStartFailure(startupFailure, error)
+            stopAcceptLoopAfterFailure(error = error, commands = commands, stateProvider = stateProvider)
+            break
+        } catch (error: SecurityException) {
+            completeStartFailure(startupFailure, error)
+            stopAcceptLoopAfterFailure(error = error, commands = commands, stateProvider = stateProvider)
+            break
+        } catch (error: IllegalStateException) {
+            completeStartFailure(startupFailure, error)
+            stopAcceptLoopAfterFailure(error = error, commands = commands, stateProvider = stateProvider)
+            break
+        } catch (error: Throwable) {
+            completeStartFailure(startupFailure, error)
+            stopAcceptLoopAfterFailure(error = error, commands = commands, stateProvider = stateProvider)
+            break
+        }
+    }
+}
+
+private suspend fun awaitAcceptLoopStartup(
+    ready: CompletableDeferred<Unit>,
+    startupFailure: CompletableDeferred<Result<Unit>>,
+): Result<Unit> {
+    return withContext(Dispatchers.IO) {
+        val readyStarted = withTimeoutOrNull(ACCEPT_LOOP_START_GRACE_MS) {
+            ready.await()
+        }
+        if (readyStarted == null) {
+            Result.failure(IOException(ACCEPT_LOOP_START_TIMEOUT_MESSAGE))
+        } else {
+            withTimeoutOrNull(ACCEPT_LOOP_START_GRACE_MS) {
+                startupFailure.await()
+            } ?: Result.success(Unit)
+        }
+    }
+}
+
+private fun stopAcceptLoopAfterFailure(
+    error: Throwable,
+    commands: Channel<SocketCommand>,
+    stateProvider: () -> SocketManagerState,
+) {
+    logHostStartFailure(phase = "accept loop", state = stateProvider(), error = error)
+    commands.trySend(SocketCommand.Shutdown)
+}
+
+private fun completeStartFailure(
+    result: CompletableDeferred<Result<Unit>>,
+    error: Throwable,
+) {
+    if (!result.isCompleted) {
+        result.complete(Result.failure(error))
+    }
+}
+
+private fun logHostStartFailure(
+    phase: String,
+    state: SocketManagerState,
+    error: Throwable,
+) {
+    try {
+        Log.e(
+            "RoomSocketManager",
+            "Bluetooth host listen failed: phase=$phase, state=${state.serverStateLabel()}, " +
+                "exception=${error.javaClass.simpleName}, message=${error.message}",
+            error,
+        )
+    } catch (_: RuntimeException) {
+        // Android Log is not available in local JVM unit tests.
+    }
+}
+
+private fun SocketManagerState.serverStateLabel(): String {
+    return when {
+        serverSocket != null && acceptJob?.isActive == true -> "started"
+        serverSocket != null || acceptJob != null -> "starting"
+        else -> "stopped"
     }
 }
 
@@ -699,9 +887,28 @@ fun interface RoomSocketConnectionFactory {
     fun create(socket: BluetoothSocket, frameCodec: RoomFrameCodec): RoomSocketConnection
 }
 
+fun interface RoomServerSocketFactory {
+    fun create(
+        adapter: BluetoothAdapter,
+        serviceName: String,
+        roomUuid: UUID,
+    ): BluetoothServerSocket
+}
+
 private object DefaultRoomSocketConnectionFactory : RoomSocketConnectionFactory {
     override fun create(socket: BluetoothSocket, frameCodec: RoomFrameCodec): RoomSocketConnection {
         return RoomSocketConnection(socket = socket, frameCodec = frameCodec)
+    }
+}
+
+private object DefaultRoomServerSocketFactory : RoomServerSocketFactory {
+    @SuppressLint("MissingPermission")
+    override fun create(
+        adapter: BluetoothAdapter,
+        serviceName: String,
+        roomUuid: UUID,
+    ): BluetoothServerSocket {
+        return adapter.listenUsingRfcommWithServiceRecord(serviceName, roomUuid)
     }
 }
 
@@ -741,11 +948,27 @@ class RoomSocketConnection(
         }
     }
 
-    fun sendSafely(message: RoomWireMessage) {
-        try {
+    fun sendSafely(
+        message: RoomWireMessage,
+        targetId: String = remoteAddress.ifBlank { "unknown" },
+    ): Result<Unit> {
+        return try {
             frameCodec.writeMessage(output, message)
-        } catch (_: IOException) {
+            Result.success(Unit)
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: IOException) {
+            logSendFailure(targetId = targetId, message = message, error = error)
             close()
+            Result.failure(error)
+        } catch (error: SerializationException) {
+            logSendFailure(targetId = targetId, message = message, error = error)
+            close()
+            Result.failure(error)
+        } catch (error: IllegalArgumentException) {
+            logSendFailure(targetId = targetId, message = message, error = error)
+            close()
+            Result.failure(error)
         }
     }
 
@@ -772,6 +995,23 @@ class RoomSocketConnection(
             // ignore close failure
         } catch (_: RuntimeException) {
             // ignore close failure
+        }
+    }
+
+    private fun logSendFailure(
+        targetId: String,
+        message: RoomWireMessage,
+        error: Exception,
+    ) {
+        try {
+            Log.e(
+                "RoomSocketManager",
+                "Bluetooth room send failed: target=$targetId, messageType=${message.javaClass.simpleName}, " +
+                    "cause=${error.message}",
+                error,
+            )
+        } catch (_: RuntimeException) {
+            // Android Log is not available in local JVM unit tests.
         }
     }
 }
@@ -811,6 +1051,8 @@ private fun IOException.isRoomProtocolFailure(): Boolean {
 }
 
 private const val HOST_START_TIMEOUT_MS = 8_000L
+private const val ACCEPT_LOOP_START_GRACE_MS = 50L
 private const val HOST_START_TIMEOUT_MESSAGE = "开启蓝牙房间超时"
+private const val ACCEPT_LOOP_START_TIMEOUT_MESSAGE = "蓝牙房间监听循环启动超时"
 private const val ROOM_CONNECTION_ABNORMAL_MESSAGE = "房间连接异常，请重新加入房间"
 private const val JOIN_REJECTED_DEFAULT_MESSAGE = "房主拒绝了入房请求"

@@ -1,10 +1,12 @@
 package com.example.chudadi.navigation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -249,6 +251,23 @@ fun ChuDaDiNavGraph(
             )
         }
         composable(AppFlowRoute.BLUETOOTH_SEARCH.route) {
+            val cancelPendingConnection = {
+                roomViewModel.dispatch(RoomAction.CancelPendingConnection)
+            }
+            val leaveBluetoothSearch = {
+                cancelPendingConnection()
+                roomViewModel.dispatch(RoomAction.ConsumeJoinError)
+                requestedRoute = AppFlowRoute.HOME
+            }
+            BackHandler {
+                leaveBluetoothSearch()
+            }
+            DisposableEffect(Unit) {
+                onDispose {
+                    roomViewModel.dispatch(RoomAction.StopBluetoothDiscovery)
+                    roomViewModel.dispatch(RoomAction.CancelPendingConnectionIfNotJoined)
+                }
+            }
             BluetoothSearchScreen(
                 uiState = roomUiState,
                 onAction = { action ->
@@ -265,8 +284,7 @@ fun ChuDaDiNavGraph(
                     }
                 },
                 onNavigateBack = {
-                    roomViewModel.dispatch(RoomAction.ConsumeJoinError)
-                    requestedRoute = AppFlowRoute.HOME
+                    leaveBluetoothSearch()
                 },
                 onDismissJoinError = {
                     roomViewModel.dispatch(RoomAction.ConsumeJoinError)

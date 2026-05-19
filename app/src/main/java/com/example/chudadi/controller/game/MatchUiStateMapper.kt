@@ -33,7 +33,7 @@ class MatchUiStateMapper(
         val currentTablePlay = buildCurrentTablePlay(
             match = match,
             localSeatId = localSeatId,
-            stackOrder = tablePlays.size,
+            stackOrder = (tablePlays.maxOfOrNull { it.stackOrder } ?: -1) + 1,
         )
 
         return MatchUiState(
@@ -97,7 +97,7 @@ class MatchUiStateMapper(
                 localSeatId = localSeatId,
                 owner = owner,
                 combination = combination,
-                stackOrder = index,
+                stackOrder = match.trickState.tablePlayOrders[seatId] ?: index,
             )
         }
     }

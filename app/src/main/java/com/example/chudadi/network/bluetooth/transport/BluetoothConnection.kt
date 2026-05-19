@@ -24,8 +24,11 @@ class BluetoothConnection(
         rawConnection.send(message)
     }
 
-    fun sendSafely(message: RoomWireMessage) {
-        rawConnection.sendSafely(message)
+    fun sendSafely(
+        message: RoomWireMessage,
+        targetId: String = id,
+    ): Result<Unit> {
+        return rawConnection.sendSafely(message = message, targetId = targetId)
     }
 
     suspend fun readLoop(onMessage: suspend (RoomWireMessage) -> Unit) {

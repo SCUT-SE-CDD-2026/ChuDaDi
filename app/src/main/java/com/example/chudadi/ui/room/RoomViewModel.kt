@@ -18,6 +18,9 @@ import com.example.chudadi.navigation.AppFlowNavigationEvent
 import com.example.chudadi.navigation.AppFlowRoute
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
 import com.example.chudadi.network.room.BluetoothRoomRepository
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -30,6 +33,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 
 class RoomViewModel(
@@ -56,6 +60,9 @@ class RoomViewModel(
     private val _appFlowEvents = MutableSharedFlow<AppFlowNavigationEvent>(extraBufferCapacity = 8)
     private val _gameLaunchEvents = MutableSharedFlow<RoomGameLaunchEvent>(extraBufferCapacity = 4)
     private val _externalEvents = MutableSharedFlow<RoomExternalEvent>(extraBufferCapacity = 4)
+    private var connectJob: Job? = null
+    private var connectionCancelRequested: Boolean = false
+    private var clientJoinCompleted: Boolean = false
 
     val matchUiState: StateFlow<MatchUiState> = bluetoothRoomRepository.matchUiState
         .stateIn(
@@ -103,8 +110,14 @@ class RoomViewModel(
     @Suppress("CyclomaticComplexMethod")
     fun dispatch(action: RoomAction) {
         when (action) {
-            RoomAction.StartBluetoothDiscovery -> bluetoothRoomRepository.startDiscoveryWithFeedback()
+            RoomAction.StartBluetoothDiscovery -> {
+                cancelPendingConnection()
+                bluetoothRoomRepository.startDiscoveryWithFeedback()
+            }
+            RoomAction.StopBluetoothDiscovery -> bluetoothRoomRepository.stopDiscovery()
             is RoomAction.ConnectToBluetoothDevice -> connectToBluetoothDevice(action.address)
+            RoomAction.CancelPendingConnection -> cancelPendingConnection()
+            RoomAction.CancelPendingConnectionIfNotJoined -> cancelPendingConnectionIfNotJoined()
             RoomAction.ToggleRule -> bluetoothRoomRepository.handleToggleRule()
             is RoomAction.AddAiToSlot -> bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
             is RoomAction.RemoveSlotOccupant -> bluetoothRoomRepository.handleRemoveSlotOccupant(action.slotIndex)
@@ -129,8 +142,14 @@ class RoomViewModel(
             RoomAction.DismissAiDialog -> bluetoothRoomRepository.dismissMenus()
             is RoomAction.OpenSlotActionMenu -> bluetoothRoomRepository.openSlotActionMenu(action.slotIndex)
             RoomAction.DismissSlotActionMenu -> bluetoothRoomRepository.dismissMenus()
-            RoomAction.ExitRoom -> bluetoothRoomRepository.leaveRoom()
-            RoomAction.ResetRoom -> bluetoothRoomRepository.leaveRoom()
+            RoomAction.ExitRoom -> {
+                cancelPendingConnection()
+                bluetoothRoomRepository.leaveRoom()
+            }
+            RoomAction.ResetRoom -> {
+                cancelPendingConnection()
+                bluetoothRoomRepository.leaveRoom()
+            }
             RoomAction.ResetRoomAsHost -> Unit
             RoomAction.ConsumeRoomExitNotice -> bluetoothRoomRepository.consumeRoomExitNotice()
             RoomAction.ConsumeHomeNotice -> bluetoothRoomRepository.consumeHomeNotice()
@@ -139,6 +158,7 @@ class RoomViewModel(
     }
 
     fun loadJoinableDevices() {
+        cancelPendingConnection()
         bluetoothRoomRepository.loadBondedDevicesWithFeedback()
     }
 
@@ -168,7 +188,11 @@ class RoomViewModel(
             avatarResId = avatarResId.value,
             session = session,
         )
-        return result.isSuccess
+        if (result.isFailure) {
+            reconnectSessionRepository.clearSession()
+            return false
+        }
+        return true
     }
 
     suspend fun createHostRoom(hostDeviceName: String): Boolean {
@@ -199,19 +223,72 @@ class RoomViewModel(
         bluetoothRoomRepository.onLocalGameAction(action)
     }
 
+    @Suppress("TooGenericExceptionCaught")
     private fun connectToBluetoothDevice(address: String) {
+        if (connectJob?.isActive == true) return
         val target = uiState.value.discoveredDevices.firstOrNull { it.address == address } ?: return
-        viewModelScope.launch {
-            bluetoothRoomRepository.connectToHost(
-                device = BluetoothDiscoveredDevice(
-                    name = target.name,
-                    address = target.address,
-                    isBonded = target.isBonded,
-                ),
-                playerName = playerName.value,
-                avatarResId = avatarResId.value,
-            )
+        val device = BluetoothDiscoveredDevice(
+            name = target.name,
+            address = target.address,
+            isBonded = target.isBonded,
+        )
+        clientJoinCompleted = false
+        connectionCancelRequested = false
+        val job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+            val currentJob = coroutineContext.job
+            try {
+                val result = bluetoothRoomRepository.connectToHost(
+                    device = device,
+                    playerName = playerName.value,
+                    avatarResId = avatarResId.value,
+                    shouldAcceptResult = { connectJob === currentJob && currentJob.isActive },
+                    onClientJoinAccepted = { clientJoinCompleted = true },
+                )
+                if (connectJob !== currentJob) return@launch
+                val error = result.exceptionOrNull()
+                if (error != null && uiState.value.joinErrorMessage == null) {
+                    clientJoinCompleted = false
+                    bluetoothRoomRepository.showJoinError(error.message ?: "连接失败，请重试")
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (connectJob !== currentJob) return@launch
+                clientJoinCompleted = false
+                bluetoothRoomRepository.showJoinError(error.message ?: "连接失败，请重试")
+            } finally {
+                if (connectJob === currentJob) {
+                    connectJob = null
+                    if (!hasJoinedBluetoothRoom()) {
+                        clientJoinCompleted = false
+                    }
+                    connectionCancelRequested = false
+                }
+            }
         }
+        connectJob = job
+        job.start()
+    }
+
+    private fun cancelPendingConnection() {
+        if (clientJoinCompleted || hasJoinedBluetoothRoom()) return
+        val job = connectJob
+        connectJob = null
+        val hasConnectionInUiState = uiState.value.searchState == BluetoothSearchState.CONNECTING
+        if (job != null || (hasConnectionInUiState && !connectionCancelRequested)) {
+            connectionCancelRequested = true
+            job?.cancel()
+            bluetoothRoomRepository.cancelPendingClientConnection()
+        }
+    }
+
+    private fun cancelPendingConnectionIfNotJoined() {
+        if (clientJoinCompleted || hasJoinedBluetoothRoom()) return
+        cancelPendingConnection()
+    }
+
+    private fun hasJoinedBluetoothRoom(): Boolean {
+        return uiState.value.roomMode == RoomMode.BLUETOOTH_CLIENT
     }
 
     private fun accumulateScores(scores: List<RoundScore>) {
@@ -311,6 +388,7 @@ class RoomViewModel(
     }
 
     override fun onCleared() {
+        cancelPendingConnection()
         bluetoothRoomRepository.clear()
         super.onCleared()
     }

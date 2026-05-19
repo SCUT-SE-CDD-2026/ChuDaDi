@@ -24,7 +24,7 @@ class HostConnectionRegistry {
     fun all(): List<BluetoothConnection> = connections.values.toList()
 
     @Synchronized
-    fun broadcastTargets(): List<BluetoothConnection> = all()
+    fun broadcastTargets(): List<Pair<String, BluetoothConnection>> = connections.toList()
 
     @Synchronized
     fun clear(): List<BluetoothConnection> {

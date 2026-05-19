@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * for RoomTransport, with RoomSocketManager, HostConnectionRegistry, ClientConnectionHolder, and
  * HeartbeatMonitor as its collaborators.
  */
-class ClassicBluetoothTransport private constructor(
+class ClassicBluetoothTransport internal constructor(
     private val socketManager: RoomSocketManager,
     private val hostConnectionRegistry: HostConnectionRegistry,
     private val clientConnectionHolder: ClientConnectionHolder,
@@ -94,7 +94,7 @@ class ClassicBluetoothTransport private constructor(
             heartbeatIntervalMs = heartbeatIntervalMs,
             heartbeatTimeoutMs = heartbeatTimeoutMs,
         ) { participantId ->
-            hostConnectionRegistry.find(participantId)?.sendSafely(RoomWireMessage.HeartbeatPing)
+            sendToParticipant(participantId, RoomWireMessage.HeartbeatPing)
         }
     }
 
@@ -145,23 +145,80 @@ class ClassicBluetoothTransport private constructor(
         socketManager.replaceHostConnection(participantId = participantId, connection = connection)
     }
 
-    override fun sendToHost(message: RoomWireMessage) {
-        clientConnectionHolder.current()?.sendSafely(message)
+    override fun sendToHost(message: RoomWireMessage): Result<Unit> {
+        val connection = clientConnectionHolder.current()
+            ?: return missingConnectionFailure(
+                participantId = null,
+                message = message,
+                targetLabel = "host",
+            )
+        return connection.sendSafely(message = message, targetId = "host")
+            .onFailure { cause ->
+                _events.tryEmit(
+                    RoomTransportEvent.SendFailed(
+                        participantId = null,
+                        messageType = message.messageTypeName(),
+                        cause = cause,
+                    ),
+                )
+                clientConnectionHolder.clear()
+                _events.tryEmit(RoomTransportEvent.ConnectionLost(participantId = null, cause = cause))
+            }
     }
 
     override fun sendToParticipant(
         participantId: String,
         message: RoomWireMessage,
-    ) {
-        hostConnectionRegistry.find(participantId)?.sendSafely(message)
+    ): Result<Unit> {
+        val connection = hostConnectionRegistry.find(participantId)
+            ?: return missingConnectionFailure(
+                participantId = participantId,
+                message = message,
+                targetLabel = "participantId=$participantId",
+            )
+        return connection.sendSafely(message = message, targetId = "participantId=$participantId")
+            .onFailure { cause ->
+                _events.tryEmit(
+                    RoomTransportEvent.SendFailed(
+                        participantId = participantId,
+                        messageType = message.messageTypeName(),
+                        cause = cause,
+                    ),
+                )
+                socketManager.disconnectParticipant(participantId)
+                _events.tryEmit(RoomTransportEvent.ConnectionLost(participantId = participantId, cause = cause))
+            }
     }
 
     /**
      * Sends one room message to every currently registered host-side participant connection.
      */
-    override fun broadcast(message: RoomWireMessage) {
-        hostConnectionRegistry.broadcastTargets().forEach { connection ->
-            connection.sendSafely(message)
+    override fun broadcast(message: RoomWireMessage): Result<BroadcastResult> {
+        val failedTargets = mutableListOf<String>()
+        var firstFailure: Throwable? = null
+        hostConnectionRegistry.broadcastTargets().forEach { (participantId, connection) ->
+            connection.sendSafely(message = message, targetId = "broadcast target participantId=$participantId")
+                .onFailure { cause ->
+                    failedTargets += participantId
+                    if (firstFailure == null) {
+                        firstFailure = cause
+                    }
+                    _events.tryEmit(
+                        RoomTransportEvent.SendFailed(
+                            participantId = participantId,
+                            messageType = message.messageTypeName(),
+                            cause = cause,
+                        ),
+                    )
+                    socketManager.disconnectParticipant(participantId)
+                    _events.tryEmit(RoomTransportEvent.ConnectionLost(participantId = participantId, cause = cause))
+                }
+        }
+        val result = BroadcastResult(failedTargets = failedTargets)
+        return if (result.isSuccess) {
+            Result.success(result)
+        } else {
+            Result.failure(BroadcastSendException(failedTargets, firstFailure))
         }
     }
 
@@ -207,6 +264,24 @@ class ClassicBluetoothTransport private constructor(
             )
         }
     }
+
+    private fun missingConnectionFailure(
+        participantId: String?,
+        message: RoomWireMessage,
+        targetLabel: String,
+    ): Result<Unit> {
+        val error = IllegalStateException("Bluetooth connection is not available: $targetLabel")
+        _events.tryEmit(
+            RoomTransportEvent.SendFailed(
+                participantId = participantId,
+                messageType = message.messageTypeName(),
+                cause = error,
+            ),
+        )
+        return Result.failure(error)
+    }
+
+    private fun RoomWireMessage.messageTypeName(): String = javaClass.simpleName
 }
 
 private class TransportComponents(

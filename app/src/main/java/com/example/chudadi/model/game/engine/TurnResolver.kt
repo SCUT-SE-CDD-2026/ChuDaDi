@@ -47,6 +47,10 @@ object TurnResolver {
                     currentCombination = combination,
                     passCount = 0,
                     tablePlays = match.trickState.tablePlays + (seatIndex to combination),
+                    tablePlayOrders = match.trickState.tablePlayOrders + (
+                        seatIndex to match.trickState.nextTablePlayOrder
+                    ),
+                    nextTablePlayOrder = match.trickState.nextTablePlayOrder + 1,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
                 totalBombCount = nextBombCount,
@@ -69,6 +73,10 @@ object TurnResolver {
                 currentCombination = combination,
                 passCount = 0,
                 tablePlays = match.trickState.tablePlays + (seatIndex to combination),
+                tablePlayOrders = match.trickState.tablePlayOrders + (
+                    seatIndex to match.trickState.nextTablePlayOrder
+                ),
+                nextTablePlayOrder = match.trickState.nextTablePlayOrder + 1,
             ),
             playHistory = match.playHistory + "${currentSeat.displayName} played ${combination.displayName}",
             totalBombCount = nextBombCount,
@@ -111,6 +119,8 @@ object TurnResolver {
                     passCount = 0,
                     roundNumber = match.trickState.roundNumber + 1,
                     tablePlays = emptyMap(),
+                    tablePlayOrders = emptyMap(),
+                    nextTablePlayOrder = 0,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",
             )
@@ -122,6 +132,7 @@ object TurnResolver {
                 trickState = match.trickState.copy(
                     passCount = nextPassCount,
                     tablePlays = tablePlaysAfterPass,
+                    tablePlayOrders = match.trickState.tablePlayOrders - seatIndex,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",
             )

@@ -1,5 +1,6 @@
 package com.example.chudadi.network.room
 
+import com.example.chudadi.network.bluetooth.transport.BroadcastResult
 import com.example.chudadi.network.bluetooth.transport.HostTransportConfig
 import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
@@ -227,14 +228,14 @@ class BluetoothClientJoinConnectorTest {
             connection: RoomSocketConnection,
         ) = Unit
 
-        override fun sendToHost(message: RoomWireMessage) = Unit
+        override fun sendToHost(message: RoomWireMessage): Result<Unit> = Result.success(Unit)
 
         override fun sendToParticipant(
             participantId: String,
             message: RoomWireMessage,
-        ) = Unit
+        ): Result<Unit> = Result.success(Unit)
 
-        override fun broadcast(message: RoomWireMessage) = Unit
+        override fun broadcast(message: RoomWireMessage): Result<BroadcastResult> = Result.success(BroadcastResult())
 
         override fun disconnectParticipant(participantId: String) = Unit
 

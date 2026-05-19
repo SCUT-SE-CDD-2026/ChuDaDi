@@ -105,7 +105,7 @@ class RoomSeatCoordinator(
             }
 
             SlotOccupantType.HUMAN_MEMBER -> {
-                roomTransport.sendToParticipant(
+                val sendResult = roomTransport.sendToParticipant(
                     targetParticipantId,
                     RoomWireMessage.SwapSeatPromptMessage(
                         RemoteSwapRequest(
@@ -115,7 +115,13 @@ class RoomSeatCoordinator(
                         ),
                     ),
                 )
-                port.publishConnectionHint("已向 ${targetParticipant.displayName} 发送换位请求")
+                if (sendResult.isFailure) {
+                    port.publishConnectionHint(
+                        "换位请求发送失败：${sendResult.exceptionOrNull()?.message ?: "蓝牙写入失败"}",
+                    )
+                } else {
+                    port.publishConnectionHint("已向 ${targetParticipant.displayName} 发送换位请求")
+                }
             }
         }
     }
@@ -155,6 +161,8 @@ class RoomSeatCoordinator(
         roomTransport.sendToParticipant(
             requesterParticipantId,
             RoomWireMessage.RoomSnapshotMessage(port.snapshotOfCurrentRoom()),
-        )
+        ).onFailure { error ->
+            port.publishConnectionHint("换位拒绝同步失败：${error.message ?: "蓝牙写入失败"}")
+        }
     }
 }

@@ -60,14 +60,16 @@ class NetworkMatchCoordinator(
     fun startNetworkMatch(
         authorityStore: RoomAuthorityStore,
         localParticipantId: String,
-        sendToParticipant: (String, RoomWireMessage) -> Unit,
-    ) {
+        sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
+        onMatchStartedSendFailed: (String, Throwable) -> Unit,
+    ): Result<Unit> {
         activeMatchSeatAssignments = buildActiveMatchSeatAssignments(authorityStore)
-        actionRouter.startNetworkMatch(
+        return actionRouter.startNetworkMatch(
             authorityStore = authorityStore,
             localParticipantId = localParticipantId,
             activeMatchSeatAssignments = activeMatchSeatAssignments,
             sendToParticipant = sendToParticipant,
+            onMatchStartedSendFailed = onMatchStartedSendFailed,
             localSeatId = ::localSeatId,
         )
     }
@@ -89,9 +91,9 @@ class NetworkMatchCoordinator(
 
     fun onLocalGameActionAsClient(
         action: LocalGameAction,
-        sendToHost: (RoomWireMessage) -> Unit,
-    ) {
-        actionRouter.onLocalGameActionAsClient(action, sendToHost)
+        sendToHost: (RoomWireMessage) -> Result<Unit>,
+    ): Result<Unit> {
+        return actionRouter.onLocalGameActionAsClient(action, sendToHost)
     }
 
     fun handleClientGameEnvelope(
@@ -105,7 +107,7 @@ class NetworkMatchCoordinator(
         participantId: String,
         message: GameWireMessage,
         authorityStore: RoomAuthorityStore,
-        sendToParticipant: (String, RoomWireMessage) -> Unit,
+        sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
         updateAllMatchSnapshots: (String?) -> Unit,
     ) {
         actionRouter.handleHostGameEnvelope(
@@ -131,7 +133,7 @@ class NetworkMatchCoordinator(
     fun updateAllMatchSnapshots(
         authorityStore: RoomAuthorityStore,
         localParticipantId: String,
-        sendToParticipant: (String, RoomWireMessage) -> Unit,
+        sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
         onMatchFinished: (List<RoundScore>) -> Unit,
         lastActionMessage: String?,
     ) {
@@ -166,7 +168,7 @@ class NetworkMatchCoordinator(
     fun sendMatchRecoveryMessage(
         participantId: String,
         authorityStore: RoomAuthorityStore,
-        sendToParticipant: (String, RoomWireMessage) -> Unit,
+        sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
     ) {
         actionRouter.sendMatchRecoveryMessage(
             participantId = participantId,

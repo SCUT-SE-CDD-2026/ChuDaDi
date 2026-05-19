@@ -9,6 +9,8 @@ import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.network.game.GameWireMessage
 import com.example.chudadi.network.game.toRemoteMatchSnapshot
 import com.example.chudadi.ui.room.GameRuleDisplay
+import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.SlotOccupantType
 
 class NetworkMatchActionRouter(
     private val hostMatchController: BluetoothAuthoritativeMatchController,
@@ -16,7 +18,7 @@ class NetworkMatchActionRouter(
 ) {
     data class HostGameEnvelopeContext(
         val authorityStore: RoomAuthorityStore,
-        val sendToParticipant: (String, RoomWireMessage) -> Unit,
+        val sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
         val updateAllMatchSnapshots: (String?) -> Unit,
         val matchSeatIdOfParticipant: (String, RoomAuthorityStore) -> Int?,
     )
@@ -25,25 +27,28 @@ class NetworkMatchActionRouter(
         val authorityStore: RoomAuthorityStore,
         val localParticipantId: String,
         val activeMatchSeatAssignments: Map<String, Int>,
-        val sendToParticipant: (String, RoomWireMessage) -> Unit,
+        val sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
         val onMatchFinished: (List<RoundScore>) -> Unit,
         val localSeatId: (String, RoomAuthorityStore) -> Int?,
         val onMatchEnded: () -> Unit,
     )
 
+    @Suppress("LongParameterList")
     fun startNetworkMatch(
         authorityStore: RoomAuthorityStore,
         localParticipantId: String,
         activeMatchSeatAssignments: Map<String, Int>,
-        sendToParticipant: (String, RoomWireMessage) -> Unit,
+        sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
+        onMatchStartedSendFailed: (String, Throwable) -> Unit,
         localSeatId: (String, RoomAuthorityStore) -> Int?,
-    ) {
+    ): Result<Unit> {
+        val hostSeatId = localSeatId(localParticipantId, authorityStore)
+            ?: return Result.failure(IllegalStateException("Host match seat is not available"))
         val seatConfigs = authorityStore.buildSeatConfigs()
         hostMatchController.startMatch(
             seatConfigs = seatConfigs,
             ruleSet = authorityStore.state.currentRule.toGameRuleSet(),
         )
-        val hostSeatId = localSeatId(localParticipantId, authorityStore) ?: return
         val hostSnapshot = hostMatchController.buildSnapshotForSeat(localSeatId = hostSeatId)
         localMatchController.onMatchStarted(
             GameWireMessage.MatchStarted(
@@ -55,13 +60,20 @@ class NetworkMatchActionRouter(
         )
         activeMatchSeatAssignments.forEach { (participantId, seatId) ->
             if (participantId == HOST_PARTICIPANT_ID) return@forEach
-            sendToParticipant(
+            val participant = authorityStore.state.participants[participantId] ?: return@forEach
+            if (!participant.shouldReceiveMatchStarted()) return@forEach
+            val sendResult = sendToParticipant(
                 participantId,
                 RoomWireMessage.GameEnvelope(
                     hostMatchController.buildMatchStartedMessage(localSeatId = seatId),
                 ),
             )
+            val failure = sendResult.exceptionOrNull()
+            if (failure != null) {
+                onMatchStartedSendFailed(participantId, failure)
+            }
         }
+        return Result.success(Unit)
     }
 
     fun onLocalGameActionAsHost(
@@ -94,27 +106,36 @@ class NetworkMatchActionRouter(
 
     fun onLocalGameActionAsClient(
         action: LocalGameAction,
-        sendToHost: (RoomWireMessage) -> Unit,
-    ) {
+        sendToHost: (RoomWireMessage) -> Result<Unit>,
+    ): Result<Unit> {
         when (action) {
             is LocalGameAction.ToggleCardSelection -> localMatchController.onToggleCardSelection(action.cardId)
             LocalGameAction.ClearSelection -> localMatchController.onClearSelection()
             LocalGameAction.SubmitSelectedCards -> {
-                sendToHost(
+                val sendResult = sendToHost(
                     RoomWireMessage.GameEnvelope(
                         GameWireMessage.PlayCardsRequest(localMatchController.selectedCardIds()),
                     ),
                 )
+                if (sendResult.isFailure) {
+                    localMatchController.onActionRejected("游戏消息发送失败")
+                    return sendResult
+                }
             }
 
             LocalGameAction.PassTurn -> {
-                sendToHost(RoomWireMessage.GameEnvelope(GameWireMessage.PassRequest))
+                val sendResult = sendToHost(RoomWireMessage.GameEnvelope(GameWireMessage.PassRequest))
+                if (sendResult.isFailure) {
+                    localMatchController.onActionRejected("游戏消息发送失败")
+                    return sendResult
+                }
             }
 
             LocalGameAction.ExitToHome -> Unit
             LocalGameAction.RestartMatch -> Unit
             is LocalGameAction.StartLocalMatch -> Unit
         }
+        return Result.success(Unit)
     }
 
     fun handleClientGameEnvelope(
@@ -141,41 +162,43 @@ class NetworkMatchActionRouter(
         message: GameWireMessage,
         context: HostGameEnvelopeContext,
     ) {
-        val seatId = context.matchSeatIdOfParticipant(participantId, context.authorityStore) ?: return
-        when (message) {
-            is GameWireMessage.PlayCardsRequest -> {
-                val result = hostMatchController.handlePlayRequest(seatId, message.selectedCardIds)
-                if (!result.success) {
-                    context.sendToParticipant(
-                        participantId,
-                        RoomWireMessage.GameEnvelope(
-                            GameWireMessage.ActionRejected(result.message ?: "出牌失败"),
-                        ),
-                    )
-                    return
+        val seatId = context.matchSeatIdOfParticipant(participantId, context.authorityStore)
+        if (seatId != null) {
+            when (message) {
+                is GameWireMessage.PlayCardsRequest -> {
+                    val result = hostMatchController.handlePlayRequest(seatId, message.selectedCardIds)
+                    if (result.success) {
+                        context.updateAllMatchSnapshots(result.message)
+                    } else {
+                        context.sendToParticipant(
+                            participantId,
+                            RoomWireMessage.GameEnvelope(
+                                GameWireMessage.ActionRejected(result.message ?: "出牌失败"),
+                            ),
+                        )
+                    }
                 }
-                context.updateAllMatchSnapshots(result.message)
-            }
 
-            GameWireMessage.PassRequest -> {
-                val result = hostMatchController.handlePassRequest(seatId)
-                if (!result.success) {
-                    context.sendToParticipant(
-                        participantId,
-                        RoomWireMessage.GameEnvelope(
-                            GameWireMessage.ActionRejected(result.message ?: "过牌失败"),
-                        ),
-                    )
-                    return
+                GameWireMessage.PassRequest -> {
+                    val result = hostMatchController.handlePassRequest(seatId)
+                    if (result.success) {
+                        context.updateAllMatchSnapshots(result.message)
+                    } else {
+                        context.sendToParticipant(
+                            participantId,
+                            RoomWireMessage.GameEnvelope(
+                                GameWireMessage.ActionRejected(result.message ?: "过牌失败"),
+                            ),
+                        )
+                    }
                 }
-                context.updateAllMatchSnapshots(result.message)
-            }
 
-            is GameWireMessage.MatchStarted,
-            is GameWireMessage.MatchSnapshotMessage,
-            is GameWireMessage.ActionRejected,
-            is GameWireMessage.MatchClosed,
-            -> Unit
+                is GameWireMessage.MatchStarted,
+                is GameWireMessage.MatchSnapshotMessage,
+                is GameWireMessage.ActionRejected,
+                is GameWireMessage.MatchClosed,
+                -> Unit
+            }
         }
     }
 
@@ -198,7 +221,7 @@ class NetworkMatchActionRouter(
                 RoomWireMessage.GameEnvelope(
                     hostMatchController.buildSnapshotMessage(seatId, lastActionMessage),
                 ),
-            )
+            ).onFailure { return@forEach }
         }
         if (match.phase == MatchPhase.FINISHED) {
             val roundScores = match.result?.scoreSummary?.roundScores.orEmpty()
@@ -210,7 +233,7 @@ class NetworkMatchActionRouter(
     fun sendMatchRecoveryMessage(
         participantId: String,
         authorityStore: RoomAuthorityStore,
-        sendToParticipant: (String, RoomWireMessage) -> Unit,
+        sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
         matchSeatIdOfParticipant: (String, RoomAuthorityStore) -> Int?,
     ) {
         val seatId = matchSeatIdOfParticipant(participantId, authorityStore)
@@ -224,7 +247,7 @@ class NetworkMatchActionRouter(
             RoomWireMessage.GameEnvelope(
                 hostMatchController.buildMatchStartedMessage(localSeatId = seatId),
             ),
-        )
+        ).onFailure { return }
     }
 
     private fun GameRuleDisplay.toGameRuleSet(): GameRuleSet {
@@ -267,4 +290,9 @@ class NetworkMatchActionRouter(
             localMatchController.onActionRejected(result.message ?: "过牌失败")
         }
     }
+}
+
+private fun ParticipantRecord.shouldReceiveMatchStarted(): Boolean {
+    return occupantType == SlotOccupantType.HUMAN_MEMBER &&
+        connectionStatus != MemberConnectionStatus.DISCONNECTED
 }
