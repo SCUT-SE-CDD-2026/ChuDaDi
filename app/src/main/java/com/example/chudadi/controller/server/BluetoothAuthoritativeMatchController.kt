@@ -53,11 +53,14 @@ class BluetoothAuthoritativeMatchController private constructor(
     private var currentMatch: Match? = null
     private val turnTimer = MatchTurnTimer()
     private var disconnectedSeatIds: Set<Int> = emptySet()
+    private var aiMoveDelayMillis: Long = MatchTurnTimer.AI_DELAY_MIN_MS
 
     fun startMatch(
         seatConfigs: List<Triple<Int, String, SeatControllerType>>,
         ruleSet: GameRuleSet,
+        aiMoveDelayMillis: Long = MatchTurnTimer.AI_DELAY_MIN_MS,
     ): Match = synchronized(lock) {
+        this.aiMoveDelayMillis = aiMoveDelayMillis.coerceAtLeast(0L)
         val match = engine.startLocalMatch(ruleSet = ruleSet, seatConfigs = seatConfigs)
         currentMatch = match
         disconnectedSeatIds = emptySet()
@@ -255,7 +258,10 @@ class BluetoothAuthoritativeMatchController private constructor(
         }
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = !forceHumanWindow && isAiDrivenSeatLocked(activeSeat.seatId, activeSeat.controllerType)
-        turnTimer.scheduleTurn(isAiDrivenTurn = isAiDrivenTurn)
+        turnTimer.scheduleTurn(
+            isAiDrivenTurn = isAiDrivenTurn,
+            aiDelayMillis = if (isAiDrivenTurn) aiMoveDelayMillis else 0L,
+        )
     }
 
     private fun isAiDrivenSeatLocked(seatId: Int, controllerType: SeatControllerType): Boolean {

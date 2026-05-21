@@ -358,7 +358,10 @@ class RoomViewModel(
     private fun startConfiguredGame() {
         when (uiState.value.roomMode) {
             RoomMode.LOCAL -> emitLocalGameLaunch()
-            RoomMode.BLUETOOTH_HOST -> bluetoothRoomRepository.startNetworkMatch()
+            RoomMode.BLUETOOTH_HOST -> {
+                val aiMoveDelayMillis = localAiState.value.aiPlaySpeed.delayMillis
+                bluetoothRoomRepository.startNetworkMatch(aiMoveDelayMillis = aiMoveDelayMillis)
+            }
             RoomMode.BLUETOOTH_CLIENT -> Unit
         }
     }

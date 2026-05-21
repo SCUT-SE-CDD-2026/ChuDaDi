@@ -3,6 +3,7 @@ package com.example.chudadi.controller.game
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.chudadi.ai.AIFactory
 import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.base.AIDifficulty
@@ -10,7 +11,6 @@ import com.example.chudadi.ai.base.AIPlayerController
 import com.example.chudadi.ai.onnx.OnnxAIPlayerController
 import com.example.chudadi.ai.onnx.OnnxInferenceException
 import com.example.chudadi.ai.onnx.OnnxTimeoutException
-import com.example.chudadi.ai.rulebased.AiDecision as RuleBasedDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.engine.ActionResult
@@ -20,8 +20,8 @@ import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +32,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import com.example.chudadi.ai.rulebased.AiDecision as RuleBasedDecision
 
 class OnnxMatchViewModel(
     application: Application,
@@ -63,6 +64,7 @@ class OnnxMatchViewModel(
     private val inferenceFailureCountBySeat: MutableMap<Int, Int> = mutableMapOf()
     private val lastInferenceErrorReportAtBySeat: MutableMap<Int, Long> = mutableMapOf()
     private var aiTurnJob: Job? = null
+    private val turnTimer = MatchTurnTimer()
 
     init {
         AIFactory.preloadModels(context)
@@ -88,57 +90,62 @@ class OnnxMatchViewModel(
             ?.sortedBy { it.seatId }
             ?: buildDefaultAiSeatConfigs(localSeatId)
 
-        var loadError: AIErrorState? = null
-        aiControllersBySeatId = try {
-            val creationResultsBySeat = aiSeatConfigs.associate { config ->
-                val result = AIFactory.createAIPlayerWithStatus(
-                    context = context,
-                    seatIndex = config.seatId,
-                    difficulty = config.aiDifficulty ?: AIDifficulty.NORMAL,
-                    isOnnxAI = config.controllerType == SeatControllerType.ONNX_RL_AI,
-                )
-                config.seatId to result
-            }
+        viewModelScope.launch {
+            var loadError: AIErrorState? = null
+            aiControllersBySeatId = try {
+                val creationResultsBySeat = aiSeatConfigs.associate { config ->
+                    val result = AIFactory.createAIPlayerWithStatus(
+                        context = context,
+                        seatIndex = config.seatId,
+                        difficulty = config.aiDifficulty ?: AIDifficulty.NORMAL,
+                        isOnnxAI = config.controllerType == SeatControllerType.ONNX_RL_AI,
+                    )
+                    config.seatId to result
+                }
 
-            val fallbackEntries = creationResultsBySeat.filterValues { it.isFallback }
-            if (fallbackEntries.isNotEmpty()) {
-                val seatIds = fallbackEntries.keys.sorted()
-                val errorMessages = fallbackEntries.values.mapNotNull { it.errorMessage }.distinct()
+                val fallbackEntries = creationResultsBySeat.filterValues { it.isFallback }
+                if (fallbackEntries.isNotEmpty()) {
+                    val seatIds = fallbackEntries.keys.sorted()
+                    val errorMessages = fallbackEntries.values.mapNotNull { it.errorMessage }.distinct()
+                    loadError = AIErrorState.ModelLoadFailed(
+                        message = errorMessages.firstOrNull() ?: "Some AI seats have fallen back to rule-based AI",
+                        fallbackToRuleBased = true,
+                    )
+                    android.util.Log.w(
+                        "OnnxMatchViewModel",
+                        "AI fallback seats: $seatIds, errors: $errorMessages",
+                    )
+                }
+
+                creationResultsBySeat.mapValues { it.value.controller }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                android.util.Log.e("OnnxMatchViewModel", "Failed to create AI players", e)
                 loadError = AIErrorState.ModelLoadFailed(
-                    message = errorMessages.firstOrNull() ?: "Some AI seats have fallen back to rule-based AI",
+                    message = "AI initialization failed: ${e.localizedMessage ?: "unknown error"}",
                     fallbackToRuleBased = true,
                 )
-                android.util.Log.w(
-                    "OnnxMatchViewModel",
-                    "AI fallback seats: $seatIds, errors: $errorMessages",
-                )
+                emptyMap()
             }
 
-            creationResultsBySeat.mapValues { it.value.controller }
-        } catch (e: Exception) {
-            android.util.Log.e("OnnxMatchViewModel", "Failed to create AI players", e)
-            loadError = AIErrorState.ModelLoadFailed(
-                message = "AI initialization failed: ${e.localizedMessage ?: "unknown error"}",
-                fallbackToRuleBased = true,
-            )
-            emptyMap()
+            _errorState.value = loadError
+
+            currentMatch = if (seatConfigs != null) {
+                serverController.startLocalMatch(
+                    ruleSet = currentRuleSet,
+                    seatConfigs = seatConfigs.map { Triple(it.seatId, it.name, it.controllerType) },
+                )
+            } else {
+                serverController.startLocalMatch(ruleSet = currentRuleSet)
+            }
+
+            selectedCardIds = emptySet()
+            lastActionMessage = loadError?.message
+            scheduleCurrentTurn()
+            pushUiState()
+            maybeResolveAiTurns()
         }
-
-        _errorState.value = loadError
-
-        currentMatch = if (seatConfigs != null) {
-            serverController.startLocalMatch(
-                ruleSet = currentRuleSet,
-                seatConfigs = seatConfigs.map { Triple(it.seatId, it.name, it.controllerType) },
-            )
-        } else {
-            serverController.startLocalMatch(ruleSet = currentRuleSet)
-        }
-
-        selectedCardIds = emptySet()
-        lastActionMessage = loadError?.message
-        pushUiState()
-        maybeResolveAiTurns()
     }
 
     fun onToggleCardSelection(cardId: String) {
@@ -169,6 +176,7 @@ class OnnxMatchViewModel(
         lastActionMessage = formatActionMessage(result.message, result.error)
         if (result.success) {
             selectedCardIds = emptySet()
+            scheduleCurrentTurn()
         }
         pushUiState()
         if (result.success) {
@@ -187,6 +195,7 @@ class OnnxMatchViewModel(
         lastActionMessage = formatActionMessage(result.message, result.error)
         if (result.success) {
             selectedCardIds = emptySet()
+            scheduleCurrentTurn()
         }
         pushUiState()
         if (result.success) {
@@ -216,6 +225,7 @@ class OnnxMatchViewModel(
         releaseAiControllers()
         inferenceFailureCountBySeat.clear()
         lastInferenceErrorReportAtBySeat.clear()
+        turnTimer.reset()
         pushUiState()
     }
 
@@ -363,6 +373,7 @@ class OnnxMatchViewModel(
                     ?: resolvedResult.message
                     ?: com.example.chudadi.controller.client.GameActionMessageFormatter.format(resolvedResult.error)
                 selectedCardIds = emptySet()
+                scheduleCurrentTurn()
 
                 launch(Dispatchers.Main) {
                     pushUiState()
@@ -457,6 +468,21 @@ class OnnxMatchViewModel(
             selectedCardIds = selectedCardIds,
             lastActionMessage = lastActionMessage,
             localSeatId = localSeatId,
+        ).copy(remainingTurnSeconds = turnTimer.remainingTurnSeconds())
+    }
+
+    private fun scheduleCurrentTurn() {
+        val match = currentMatch
+        if (match == null || match.phase == MatchPhase.FINISHED) {
+            turnTimer.reset()
+            return
+        }
+        val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
+        val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
+        turnTimer.scheduleTurn(
+            isAiDrivenTurn = isAiDrivenTurn,
+            aiDelayMillis = if (isAiDrivenTurn) aiMoveDelayMillis else 0L,
         )
     }
 

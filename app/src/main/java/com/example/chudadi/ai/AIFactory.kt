@@ -7,6 +7,11 @@ import com.example.chudadi.ai.base.AIPlayerController
 import com.example.chudadi.ai.onnx.OnnxAIPlayerController
 import com.example.chudadi.ai.rulebased.RuleBasedAIAdapter
 import com.example.chudadi.utils.AssetCopier
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 
 /**
  * AI创建结果
@@ -44,7 +49,7 @@ object AIFactory {
      * @param isOnnxAI 是否为ONNX AI（true=ONNX AI, false=规则型AI）
      * @return AI玩家控制器实例
      */
-    fun createAIPlayer(
+    suspend fun createAIPlayer(
         context: Context,
         seatIndex: Int,
         difficulty: AIDifficulty = AIDifficulty.NORMAL,
@@ -66,7 +71,7 @@ object AIFactory {
      * @param isOnnxAI 是否为ONNX AI（true=ONNX AI, false=规则型AI）
      * @return AICreationResult 包含控制器和降级状态
      */
-    fun createAIPlayerWithStatus(
+    suspend fun createAIPlayerWithStatus(
         context: Context,
         seatIndex: Int,
         difficulty: AIDifficulty = AIDifficulty.NORMAL,
@@ -87,12 +92,13 @@ object AIFactory {
 
     /**
      * 创建ONNX AI玩家（带降级状态）
+     * 在 IO 线程执行模型加载，避免阻塞主线程
      */
-    private fun createOnnxAIPlayerWithStatus(
+    private suspend fun createOnnxAIPlayerWithStatus(
         context: Context,
         seatIndex: Int,
         difficulty: AIDifficulty,
-    ): AICreationResult {
+    ): AICreationResult = withContext(Dispatchers.IO) {
         Log.i(TAG, "Creating ONNX AI player for seat $seatIndex")
 
         // 尝试复制模型文件到私有目录（如果存在）
@@ -108,42 +114,42 @@ object AIFactory {
         // 检查模型文件是否真的存在
         val modelFileExists = modelPath?.let { java.io.File(it).exists() } ?: false
 
-        return if (!modelFileExists) {
+        if (!modelFileExists) {
             // 模型文件不存在，降级到规则型AI
             val errorMsg = "模型文件不存在，已降级到规则型AI"
             Log.w(TAG, "[$seatIndex] $errorMsg")
-            AICreationResult(
+            return@withContext AICreationResult(
                 controller = createRuleBasedAIPlayer(seatIndex, difficulty),
                 isFallback = true,
                 errorMessage = errorMsg,
             )
-        } else {
-            // 创建ONNX AI
-            val controller = OnnxAIPlayerController(
-                seatIndex = seatIndex,
-                difficulty = difficulty,
-                modelPath = modelPath ?: "",
-            )
-
-            // 检查ONNX AI是否成功加载（OnnxAIPlayerController内部也有降级逻辑）
-            val isOnnxLoaded = controller.isAvailable()
-            if (!isOnnxLoaded) {
-                val errorMsg = "ONNX模型加载失败，已降级到规则型AI"
-                Log.w(TAG, "[$seatIndex] $errorMsg")
-                AICreationResult(
-                    controller = createRuleBasedAIPlayer(seatIndex, difficulty),
-                    isFallback = true,
-                    errorMessage = errorMsg,
-                )
-            } else {
-                Log.i(TAG, "[$seatIndex] ONNX AI created successfully")
-                AICreationResult(
-                    controller = controller,
-                    isFallback = false,
-                    errorMessage = null,
-                )
-            }
         }
+
+        // 创建ONNX AI（在 IO 线程执行，避免阻塞主线程）
+        val controller = OnnxAIPlayerController(
+            seatIndex = seatIndex,
+            difficulty = difficulty,
+            modelPath = modelPath ?: "",
+        )
+
+        // 检查ONNX AI是否成功加载（OnnxAIPlayerController内部也有降级逻辑）
+        val isOnnxLoaded = controller.isAvailable()
+        if (!isOnnxLoaded) {
+            val errorMsg = "ONNX模型加载失败，已降级到规则型AI"
+            Log.w(TAG, "[$seatIndex] $errorMsg")
+            return@withContext AICreationResult(
+                controller = createRuleBasedAIPlayer(seatIndex, difficulty),
+                isFallback = true,
+                errorMessage = errorMsg,
+            )
+        }
+
+        Log.i(TAG, "[$seatIndex] ONNX AI created successfully")
+        AICreationResult(
+            controller = controller,
+            isFallback = false,
+            errorMessage = null,
+        )
     }
 
     /**
@@ -168,7 +174,7 @@ object AIFactory {
      * @param difficulties 每个AI的难度配置列表，长度应为3（座位1、2、3）
      * @return AI玩家控制器列表
      */
-    fun createAIPlayersForMatch(
+    suspend fun createAIPlayersForMatch(
         context: Context,
         onnxSeatIndices: Set<Int> = emptySet(),
         difficulties: List<AIDifficulty> = listOf(
@@ -192,7 +198,7 @@ object AIFactory {
      * @param difficulties 每个AI的难度配置列表，长度应为3
      * @return AICreationResult列表，包含控制器和降级状态
      */
-    fun createAIPlayersForMatchWithStatus(
+    suspend fun createAIPlayersForMatchWithStatus(
         context: Context,
         seatIndices: List<Int> = listOf(1, 2, 3),
         onnxSeatIndices: Set<Int> = emptySet(),
@@ -206,10 +212,14 @@ object AIFactory {
             "Expected difficulties.size (${difficulties.size}) to match seatIndices.size (${seatIndices.size})"
         }
 
-        return seatIndices.mapIndexed { index, seatIndex ->
-            val diff = difficulties[index]
-            val isOnnxAI = seatIndex in onnxSeatIndices
-            createAIPlayerWithStatus(context, seatIndex = seatIndex, difficulty = diff, isOnnxAI = isOnnxAI)
+        return coroutineScope {
+            seatIndices.mapIndexed { index, seatIndex ->
+                async {
+                    val diff = difficulties[index]
+                    val isOnnxAI = seatIndex in onnxSeatIndices
+                    createAIPlayerWithStatus(context, seatIndex = seatIndex, difficulty = diff, isOnnxAI = isOnnxAI)
+                }
+            }.awaitAll()
         }
     }
 

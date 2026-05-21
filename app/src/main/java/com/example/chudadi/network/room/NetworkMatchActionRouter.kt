@@ -41,6 +41,7 @@ class NetworkMatchActionRouter(
         sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
         onMatchStartedSendFailed: (String, Throwable) -> Unit,
         localSeatId: (String, RoomAuthorityStore) -> Int?,
+        aiMoveDelayMillis: Long = 0L,
     ): Result<Unit> {
         val hostSeatId = localSeatId(localParticipantId, authorityStore)
             ?: return Result.failure(IllegalStateException("Host match seat is not available"))
@@ -48,6 +49,7 @@ class NetworkMatchActionRouter(
         hostMatchController.startMatch(
             seatConfigs = seatConfigs,
             ruleSet = authorityStore.state.currentRule.toGameRuleSet(),
+            aiMoveDelayMillis = aiMoveDelayMillis,
         )
         val hostSnapshot = hostMatchController.buildSnapshotForSeat(localSeatId = hostSeatId)
         localMatchController.onMatchStarted(

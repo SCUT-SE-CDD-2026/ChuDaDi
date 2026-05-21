@@ -62,6 +62,7 @@ class NetworkMatchCoordinator(
         localParticipantId: String,
         sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
         onMatchStartedSendFailed: (String, Throwable) -> Unit,
+        aiMoveDelayMillis: Long = 0L,
     ): Result<Unit> {
         activeMatchSeatAssignments = buildActiveMatchSeatAssignments(authorityStore)
         return actionRouter.startNetworkMatch(
@@ -71,6 +72,7 @@ class NetworkMatchCoordinator(
             sendToParticipant = sendToParticipant,
             onMatchStartedSendFailed = onMatchStartedSendFailed,
             localSeatId = ::localSeatId,
+            aiMoveDelayMillis = aiMoveDelayMillis,
         )
     }
 

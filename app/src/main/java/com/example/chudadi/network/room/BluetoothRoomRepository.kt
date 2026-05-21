@@ -506,13 +506,14 @@ class BluetoothRoomRepository private constructor(
         }
     }
 
-    fun startNetworkMatch() {
+    fun startNetworkMatch(aiMoveDelayMillis: Long = 0L) {
         if (roomRole !is RoomRole.Host || _roomUiState.value.roomMode != RoomMode.BLUETOOTH_HOST) return
         val startResult = matchCoordinator.startNetworkMatch(
             authorityStore = authorityStore,
             localParticipantId = localParticipantId(),
             sendToParticipant = roomTransport::sendToParticipant,
             onMatchStartedSendFailed = ::handleMatchStartedSendFailure,
+            aiMoveDelayMillis = aiMoveDelayMillis,
         )
         if (startResult.isFailure) {
             matchCoordinator.reset()
