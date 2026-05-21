@@ -26,11 +26,29 @@ class CombinationComparator(
                     )
 
                 candidate.cardCount != current.cardCount -> false
-                candidate.type != current.type -> false
+                candidate.type != current.type ->
+                    canBeatWithTypePower(candidate, current)
                 else -> compareSameType(candidate, current) > 0
             }
 
         return result
+    }
+
+    /**
+     * 当牌型不同时，检查是否可以通过 typePower 压牌。
+     * 主要用于5张牌牌型之间的比较：顺子 < 同花 < 葫芦 < 铁支 < 同花顺
+     */
+    private fun canBeatWithTypePower(
+        candidate: PlayCombination,
+        current: PlayCombination,
+    ): Boolean {
+        if (candidate.cardCount != current.cardCount) {
+            return false
+        }
+        if (!rules.crossTypeFiveCardAllowed && candidate.cardCount == FIVE_CARD_COUNT) {
+            return false
+        }
+        return candidate.type.typePower > current.type.typePower
     }
 
     fun compareForSorting(
@@ -45,6 +63,13 @@ class CombinationComparator(
         }
     }
 
+    /**
+     * 同牌型比较：先比 primaryRank（主点数），若相同再比 primarySuit（主花色）。
+     *
+     * 对于葫芦（FULL_HOUSE）和铁支（FOUR_WITH_ONE），规则文档未明确同点数时的花色
+     * 比较策略。此处统一以组成主牌型的牌中最大花色作为 primarySuit 进行比较，
+     * 保证同点数时仍有确定性的全序关系。
+     */
     private fun compareSameType(
         left: PlayCombination,
         right: PlayCombination,
@@ -52,15 +77,6 @@ class CombinationComparator(
         val primaryRankComparison = left.primaryRank.compareTo(right.primaryRank)
         if (primaryRankComparison != 0) {
             return primaryRankComparison
-        }
-
-        if (left.type == CombinationType.FLUSH) {
-            left.rankVector.zip(right.rankVector).forEach { (leftRank, rightRank) ->
-                val comparison = leftRank.compareTo(rightRank)
-                if (comparison != 0) {
-                    return comparison
-                }
-            }
         }
 
         return left.primarySuit.compareTo(right.primarySuit)
@@ -73,31 +89,18 @@ class CombinationComparator(
         currentIsBomb: Boolean,
     ): Boolean {
         if (candidateIsBomb && currentIsBomb) {
-            return compareBomb(candidate, current) > 0
+            return bombPower(candidate) > bombPower(current)
         }
-        if (!candidateIsBomb) {
-            return false
+        if (candidateIsBomb) {
+            return true
         }
-        return true
-    }
-
-    private fun compareBomb(
-        left: PlayCombination,
-        right: PlayCombination,
-    ): Int {
-        val bombPowerComparison = bombPower(left).compareTo(bombPower(right))
-        if (bombPowerComparison != 0) {
-            return bombPowerComparison
-        }
-        return compareSameType(left, right)
+        return false
     }
 
     private fun bombPower(combination: PlayCombination): Int {
         return when (combination.type) {
-            CombinationType.FOUR_OF_A_KIND_BOMB -> STANDARD_BOMB_POWER
             CombinationType.FOUR_WITH_ONE -> STANDARD_BOMB_POWER
-            CombinationType.FOUR_WITH_TWO -> if (rules.fourWithTwoIsBomb) STANDARD_BOMB_POWER else NO_BOMB_POWER
-            CombinationType.STRAIGHT_FLUSH -> if (rules.straightFlushIsBomb) HIGH_BOMB_POWER else NO_BOMB_POWER
+            CombinationType.STRAIGHT_FLUSH -> HIGH_BOMB_POWER
             else -> NO_BOMB_POWER
         }
     }
@@ -106,5 +109,6 @@ class CombinationComparator(
         const val NO_BOMB_POWER = 0
         const val STANDARD_BOMB_POWER = 1
         const val HIGH_BOMB_POWER = 2
+        const val FIVE_CARD_COUNT = 5
     }
 }

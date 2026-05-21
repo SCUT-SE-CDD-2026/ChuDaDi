@@ -15,9 +15,17 @@ enum class MemberConnectionStatus {
     NOT_READY,
 }
 
+enum class BluetoothSearchState {
+    IDLE,
+    SCANNING,
+    CONNECTING,
+    FAILED,
+}
+
 data class SlotState(
     val slotIndex: Int,
     val seatId: Int = slotIndex,
+    val participantId: String? = null,
     val occupantType: SlotOccupantType? = null,
     val displayName: String = "",
     @get:DrawableRes val avatarResId: Int? = null,
@@ -83,6 +91,7 @@ enum class AiPlaySpeed(
 
 data class RoomUiState(
     val isHost: Boolean = true,
+    val roomMode: RoomMode = RoomMode.LOCAL,
     val roomName: String = "",
     val hostDeviceName: String = "",
     val totalGamesPlayed: Int = 0,
@@ -91,9 +100,22 @@ data class RoomUiState(
     val slots: List<SlotState> = List(4) { SlotState(slotIndex = it) },
     val bluetoothVisible: Boolean = false,
     val connectionHint: String = "",
+    val homeNoticeMessage: String? = null,
+    val discoveredDevices: List<DiscoveredDeviceUiState> = emptyList(),
+    val searchState: BluetoothSearchState = BluetoothSearchState.IDLE,
+    val selectedDeviceAddress: String? = null,
     val canStartGame: Boolean = false,
+    val canStartLocalGame: Boolean = false,
+    val canStartNetworkGame: Boolean = false,
+    val canEnableBroadcast: Boolean = false,
+    val canManageAiSeats: Boolean = false,
     val pendingSwapRequest: SwapRequest? = null,
     val showRoomAiDifficultyDialog: Boolean = false,
+    val removedFromRoom: Boolean = false,
+    val roomClosedByHost: Boolean = false,
+    val joinErrorMessage: String? = null,
+    val joinErrorTitle: String = "无法加入房间",
+    val showAiDifficultyDialog: Boolean = false,
     val aiDialogTargetSlot: Int = -1,
     val aiSelectionStep: AiSelectionStep = AiSelectionStep.SELECT_TYPE,
     val selectedAiType: AIType? = null,
@@ -105,6 +127,11 @@ enum class AiSelectionStep {
     SELECT_TYPE,
     SELECT_DIFFICULTY,
 }
+data class DiscoveredDeviceUiState(
+    val name: String,
+    val address: String,
+    val isBonded: Boolean,
+)
 
 data class SwapRequest(
     val requesterSlotIndex: Int,

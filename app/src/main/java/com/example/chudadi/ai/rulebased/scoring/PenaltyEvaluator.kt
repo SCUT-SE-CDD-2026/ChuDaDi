@@ -1,9 +1,5 @@
 package com.example.chudadi.ai.rulebased.scoring
 
-import com.example.chudadi.ai.rulebased.BOMB_BREAK_BASE_PENALTY
-import com.example.chudadi.ai.rulebased.BOMB_CONTROL_LOSS_FACTOR
-import com.example.chudadi.ai.rulebased.BOMB_OVERKILL_PENALTY
-import com.example.chudadi.ai.rulebased.BOMB_OVERKILL_RANK_FACTOR
 import com.example.chudadi.ai.rulebased.CONTROL_LOSS_ACE_PENALTY
 import com.example.chudadi.ai.rulebased.CONTROL_LOSS_KING_PENALTY
 import com.example.chudadi.ai.rulebased.CONTROL_LOSS_TWO_PENALTY
@@ -68,12 +64,11 @@ internal class PenaltyEvaluator(
             CombinationType.STRAIGHT,
             CombinationType.FLUSH,
             CombinationType.FULL_HOUSE,
+            CombinationType.FOUR_WITH_ONE,
+            CombinationType.FOUR_OF_A_KIND_BOMB,
+            CombinationType.FOUR_WITH_TWO,
             CombinationType.STRAIGHT_FLUSH,
             -> STRUCTURE_PLAY_BASE_BREAK_PENALTY
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_WITH_TWO,
-            -> BOMB_BREAK_BASE_PENALTY
         }
 
     fun computeControlLossPenalty(candidate: PlayCombination): Double {
@@ -85,12 +80,11 @@ internal class PenaltyEvaluator(
                 CombinationType.STRAIGHT,
                 CombinationType.FLUSH,
                 CombinationType.FULL_HOUSE,
+                CombinationType.FOUR_WITH_ONE,
+                CombinationType.FOUR_OF_A_KIND_BOMB,
+                CombinationType.FOUR_WITH_TWO,
                 CombinationType.STRAIGHT_FLUSH,
                 -> FIVE_CARD_CONTROL_LOSS_FACTOR
-                CombinationType.FOUR_OF_A_KIND_BOMB,
-                CombinationType.FOUR_WITH_ONE,
-                CombinationType.FOUR_WITH_TWO,
-                -> BOMB_CONTROL_LOSS_FACTOR
             }
 
         var penalty = ZERO_SCORE
@@ -120,10 +114,6 @@ internal class PenaltyEvaluator(
         candidate: PlayCombination,
         currentCombination: PlayCombination,
     ): Double {
-        if (context.rules.isBomb(candidate.type) && !context.rules.isBomb(currentCombination.type)) {
-            return BOMB_OVERKILL_PENALTY
-        }
-
         var penalty = ZERO_SCORE
         if (candidate.cardCount == currentCombination.cardCount) {
             val typeGap = candidate.type.typePower - currentCombination.type.typePower
@@ -143,12 +133,11 @@ internal class PenaltyEvaluator(
                     CombinationType.STRAIGHT,
                     CombinationType.FLUSH,
                     CombinationType.FULL_HOUSE,
+                    CombinationType.FOUR_WITH_ONE,
+                    CombinationType.FOUR_OF_A_KIND_BOMB,
+                    CombinationType.FOUR_WITH_TWO,
                     CombinationType.STRAIGHT_FLUSH,
                     -> FIVE_CARD_OVERKILL_RANK_FACTOR
-                    CombinationType.FOUR_OF_A_KIND_BOMB,
-                    CombinationType.FOUR_WITH_ONE,
-                    CombinationType.FOUR_WITH_TWO,
-                    -> BOMB_OVERKILL_RANK_FACTOR
                 }
 
             penalty += rankGap * rankFactor

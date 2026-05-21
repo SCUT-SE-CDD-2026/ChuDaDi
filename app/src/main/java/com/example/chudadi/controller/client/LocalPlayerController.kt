@@ -1,19 +1,24 @@
+@file:Suppress("TooManyFunctions")
+
 package com.example.chudadi.controller.client
 
 import com.example.chudadi.ai.rulebased.AiDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
+import com.example.chudadi.controller.game.MatchTurnTimer
 import com.example.chudadi.controller.game.MatchUiStateMapper
 import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.network.protocol.PassCommand
 import com.example.chudadi.network.protocol.PlayCardCommand
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -31,13 +36,15 @@ class LocalPlayerController(
     private var currentMatch: Match? = null
     private var selectedCardIds: Set<String> = emptySet()
     private var lastActionMessage: String? = null
-    private var aiTurnJob: Job? = null
+    private var turnLoopJob: Job? = null
     private var localSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
+    private val turnTimer = MatchTurnTimer()
+
     private var lastSeatConfigs: List<SeatConfig>? = null
     private var lastLocalSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
     private var lastRuleSet: GameRuleSet = GameRuleSet.SOUTHERN
-    private var aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
     private var lastAiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
+    private var aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
 
     fun onRequestStartLocalMatch(
         seatConfigs: List<SeatConfig>? = null,
@@ -45,37 +52,38 @@ class LocalPlayerController(
         ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
         aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS,
     ) {
-        aiTurnJob?.cancel()
-        val effectiveSeatConfigs = seatConfigs ?: lastSeatConfigs
-        val effectiveLocalSeatId = if (seatConfigs != null) localSeatId else lastLocalSeatId
-        val effectiveRuleSet = if (seatConfigs != null) ruleSet else lastRuleSet
-        val effectiveAiMoveDelayMillis = if (seatConfigs != null) {
-            aiMoveDelayMillis.coerceAtLeast(0L)
+        turnLoopJob?.cancel()
+
+        val effectiveSeatConfigs: List<SeatConfig>
+        val effectiveLocalSeatId: Int
+        val effectiveRuleSet: GameRuleSet
+
+        if (seatConfigs != null) {
+            lastSeatConfigs = seatConfigs
+            lastLocalSeatId = localSeatId
+            lastRuleSet = ruleSet
+            lastAiMoveDelayMillis = aiMoveDelayMillis
+            effectiveSeatConfigs = seatConfigs
+            effectiveLocalSeatId = localSeatId
+            effectiveRuleSet = ruleSet
         } else {
-            lastAiMoveDelayMillis
+            effectiveSeatConfigs = lastSeatConfigs ?: emptyList()
+            effectiveLocalSeatId = lastLocalSeatId
+            effectiveRuleSet = lastRuleSet
         }
+
         this.localSeatId = effectiveLocalSeatId
-        this.aiMoveDelayMillis = effectiveAiMoveDelayMillis
-        lastSeatConfigs = effectiveSeatConfigs
-        lastLocalSeatId = effectiveLocalSeatId
-        lastRuleSet = effectiveRuleSet
-        lastAiMoveDelayMillis = effectiveAiMoveDelayMillis
-        currentMatch = if (effectiveSeatConfigs != null) {
-            // 转换SeatConfig为Triple格式
-            val tripleConfigs = effectiveSeatConfigs.map {
-                Triple(it.seatId, it.name, it.controllerType)
-            }
-            serverController.startLocalMatch(
-                ruleSet = effectiveRuleSet,
-                seatConfigs = tripleConfigs,
-            )
-        } else {
-            serverController.startLocalMatch(ruleSet = effectiveRuleSet)
-        }
+        this.aiMoveDelayMillis = effectiveSeatConfigs.let { lastAiMoveDelayMillis }
+
+        currentMatch = serverController.startLocalMatch(
+            ruleSet = effectiveRuleSet,
+            seatConfigs = effectiveSeatConfigs.map { Triple(it.seatId, it.name, it.controllerType) },
+        )
         selectedCardIds = emptySet()
         lastActionMessage = null
+        scheduleCurrentTurn()
         pushUiState()
-        maybeResolveAiTurns()
+        startTurnLoop()
     }
 
     fun onToggleCardSelection(cardId: String) {
@@ -111,11 +119,9 @@ class LocalPlayerController(
         lastActionMessage = result.message ?: GameActionMessageFormatter.format(result.error)
         if (result.success) {
             selectedCardIds = emptySet()
+            scheduleCurrentTurn()
         }
         pushUiState()
-        if (result.success) {
-            maybeResolveAiTurns()
-        }
     }
 
     fun onRequestPass() {
@@ -129,89 +135,126 @@ class LocalPlayerController(
         lastActionMessage = result.message ?: GameActionMessageFormatter.format(result.error)
         if (result.success) {
             selectedCardIds = emptySet()
+            scheduleCurrentTurn()
         }
         pushUiState()
-        if (result.success) {
-            maybeResolveAiTurns()
-        }
     }
 
     fun onRequestRestartMatch() {
-        onRequestStartLocalMatch(
-            seatConfigs = lastSeatConfigs,
-            localSeatId = lastLocalSeatId,
-            ruleSet = lastRuleSet,
-            aiMoveDelayMillis = lastAiMoveDelayMillis,
-        )
+        onRequestStartLocalMatch()
     }
 
     fun onExitToHome() {
-        aiTurnJob?.cancel()
+        turnLoopJob?.cancel()
         currentMatch = null
         selectedCardIds = emptySet()
         lastActionMessage = null
+        turnTimer.reset()
         pushUiState()
     }
 
     fun dispose() {
-        aiTurnJob?.cancel()
+        turnLoopJob?.cancel()
     }
 
-    private fun maybeResolveAiTurns() {
-        aiTurnJob?.cancel()
-        val maxChain = if (localSeatId == MatchUiStateMapper.NO_LOCAL_SEAT_ID) {
-            MAX_FULL_AI_CHAIN
-        } else {
-            MAX_AI_CHAIN
+    private fun startTurnLoop() {
+        turnLoopJob?.cancel()
+        turnLoopJob = scope.launch {
+            while (isActive) {
+                delay(TURN_LOOP_INTERVAL_MS)
+                if (!tickTurnLoop()) {
+                    break
+                }
+            }
         }
-        aiTurnJob =
-            scope.launch {
-                repeat(maxChain) {
-                    val match = currentMatch ?: return@launch
-                    if (match.phase == MatchPhase.FINISHED || match.activeSeatIndex == localSeatId) {
-                        return@launch
-                    }
-                    if (aiMoveDelayMillis > 0L) {
-                        delay(aiMoveDelayMillis)
-                    }
-                    val latestMatch = currentMatch ?: return@launch
-                    if (latestMatch.phase == MatchPhase.FINISHED || latestMatch.activeSeatIndex == localSeatId) {
-                        return@launch
-                    }
+    }
 
-                    @Suppress("TooGenericExceptionCaught")
-                    val decision = try {
-                        aiPlayer.decideAction(latestMatch, latestMatch.activeSeatIndex)
-                    } catch (e: Exception) {
-                        android.util.Log.e("LocalPlayerController", "AI decision failed", e)
-                        return@launch
-                    }
-                    val result =
-                        when (decision) {
-                            is AiDecision.Play ->
-                                serverController.handleCommand(
-                                    match = latestMatch,
-                                    seatIndex = latestMatch.activeSeatIndex,
-                                    command = PlayCardCommand(decision.cardIds),
-                                )
+    private fun tickTurnLoop(): Boolean {
+        val match = currentMatch ?: return false
+        val shouldContinue = when {
+            match.phase == MatchPhase.FINISHED -> {
+                turnTimer.reset()
+                false
+            }
 
-                            AiDecision.Pass ->
-                                serverController.handleCommand(
-                                    match = latestMatch,
-                                    seatIndex = latestMatch.activeSeatIndex,
-                                    command = PassCommand,
-                                )
-                        }
-                    currentMatch = result.match
-                    lastActionMessage = result.message ?: GameActionMessageFormatter.format(result.error)
-                    selectedCardIds = emptySet()
-                    pushUiState()
+            !turnTimer.isExpired() -> true
 
-                    if (!result.success) {
-                        return@launch
+            else -> {
+                resolveExpiredTurn(match)
+                currentMatch != null
+            }
+        }
+        pushUiState()
+        return shouldContinue
+    }
+
+    private fun resolveExpiredTurn(match: Match) {
+        val seatId = match.activeSeatIndex
+        val seatName = match.seats.first { it.seatId == seatId }.displayName
+        val result = when {
+            turnTimer.isCurrentActorAi() -> resolveAiAction(
+                match = match,
+                seatId = seatId,
+                lastMessage = "$seatName 思考中",
+            )
+
+            serverController.canPass(match = match, seatIndex = seatId) -> {
+                serverController.handleCommand(
+                    match = match,
+                    seatIndex = seatId,
+                    command = PassCommand,
+                ).also {
+                    lastActionMessage = if (it.success) "$seatName 超时过牌" else {
+                        it.message ?: GameActionMessageFormatter.format(it.error)
                     }
                 }
             }
+
+            else -> resolveAiAction(
+                match = match,
+                seatId = seatId,
+                lastMessage = "$seatName 超时，系统已代出",
+            )
+        }
+
+        currentMatch = result.match
+        selectedCardIds = emptySet()
+        if (result.success) {
+            scheduleCurrentTurn()
+        } else if (currentMatch?.phase == MatchPhase.FINISHED) {
+            turnTimer.reset()
+        }
+    }
+
+    private fun resolveAiAction(
+        match: Match,
+        seatId: Int,
+        lastMessage: String?,
+    ) = when (val decision = aiPlayer.decideAction(match, seatId)) {
+        is AiDecision.Play -> serverController.handleCommand(
+            match = match,
+            seatIndex = seatId,
+            command = PlayCardCommand(decision.cardIds),
+        )
+        AiDecision.Pass -> serverController.handleCommand(
+            match = match,
+            seatIndex = seatId,
+            command = PassCommand,
+        )
+    }.also { result ->
+        lastActionMessage = result.message ?: GameActionMessageFormatter.format(result.error) ?: lastMessage
+    }
+
+    private fun scheduleCurrentTurn() {
+        val match = currentMatch
+        if (match == null || match.phase == MatchPhase.FINISHED) {
+            turnTimer.reset()
+            return
+        }
+        val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
+        val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
+        turnTimer.scheduleTurn(isAiDrivenTurn = isAiDrivenTurn)
     }
 
     private fun pushUiState() {
@@ -220,12 +263,11 @@ class LocalPlayerController(
             selectedCardIds = selectedCardIds,
             lastActionMessage = lastActionMessage,
             localSeatId = localSeatId,
-        )
+        ).copy(remainingTurnSeconds = turnTimer.remainingTurnSeconds())
     }
 
     companion object {
+        private const val TURN_LOOP_INTERVAL_MS = 250L
         private const val DEFAULT_AI_MOVE_DELAY_MILLIS = 450L
-        private const val MAX_AI_CHAIN = 32
-        private const val MAX_FULL_AI_CHAIN = 512
     }
 }

@@ -9,7 +9,8 @@ object GameActionMessageFormatter {
             GameActionError.NOT_CURRENT_TURN -> "当前还没轮到你"
             GameActionError.INVALID_PLAY_TYPE -> "牌型不合法"
             GameActionError.OPENING_MOVE_MUST_CONTAIN_DIAMOND_THREE -> "首轮首手必须包含方块 3"
-            GameActionError.PLAY_DOES_NOT_BEAT_CURRENT -> "当前牌不够大"
+            GameActionError.PLAY_TOO_SMALL -> "当前牌不够大"
+            GameActionError.BOMB_USAGE_RESTRICTED -> "当前规则下不满足炸弹使用条件"
             GameActionError.CANNOT_PASS_LEAD_TURN -> "本轮领出者必须先出牌"
             GameActionError.MUST_BEAT_IF_POSSIBLE -> "北方规则下有可压牌时不能要不起"
             null -> null

@@ -21,16 +21,15 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -44,6 +43,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -51,7 +51,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.AlertDialog
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -60,6 +59,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -91,6 +91,7 @@ import com.example.chudadi.model.game.entity.Card as GameCard
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
+import com.example.chudadi.model.game.snapshot.ViewSeat
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.theme.AvatarBase
 import com.example.chudadi.ui.theme.AvatarRingIdle
@@ -131,8 +132,6 @@ import com.example.chudadi.ui.theme.TransparentColor
 import com.example.chudadi.ui.theme.WoodTint
 private val HumanPlayOffsetX = 26.dp
 private val OpponentPlayOffsetX = 26.dp
-// Seat positions are now dynamically computed relative to localSeatId
-// to support seat swapping in the room.
 private val TableShape = RoundedCornerShape(28.dp)
 private val CardShape = RoundedCornerShape(10.dp)
 private const val HandCardMoveDurationMs = 150
@@ -143,6 +142,7 @@ private const val TableCardEnterDurationMs = 170
 private const val TableCardEnterDelayMs = 45
 private const val OpponentCardExitDurationMs = 150
 private const val HumanTurnPromptDurationMs = 220
+private val DisconnectedNameColor = Color(0xFFE57373)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -195,66 +195,10 @@ fun GameScreen(
                             .testTag(ComposeTestTags.ACTION_MESSAGE),
                     )
                 }
-                // Debug 按钮：显示AI手牌
                 if (BuildConfig.DEBUG && uiState.debugOpponentHands.isNotEmpty()) {
                     DebugAiHandsButton(uiState = uiState)
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun DebugAiHandsButton(uiState: MatchUiState) {
-    var showDialog by remember { mutableStateOf(false) }
-
-    if (showDialog && uiState.debugOpponentHands.isNotEmpty()) {
-        val allHandsText = uiState.debugOpponentHands.joinToString("\n\n") { summary ->
-            buildString {
-                append("${summary.displayName} [seat=${summary.seatId}] (${summary.cards.size}):\n")
-                append(summary.cards.joinToString(" "))
-            }
-        }
-        AlertDialog(
-            onDismissRequest = { showDialog = false },
-            title = { Text("DEBUG - Opponent Hands") },
-            text = {
-                Column(
-                    modifier = Modifier.verticalScroll(rememberScrollState()),
-                ) {
-                    Text("You (${uiState.playerHand.size}):", color = Color.Red)
-                    Text(
-                        uiState.playerHand.map { it.displayName }.joinToString(" "),
-                        color = Color.Red,
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(allHandsText)
-                }
-            },
-            confirmButton = {
-                Button(onClick = { showDialog = false }) {
-                    Text("Close")
-                }
-            },
-        )
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(end = 4.dp, bottom = 4.dp),
-        contentAlignment = Alignment.BottomEnd,
-    ) {
-        OutlinedButton(
-            onClick = { showDialog = true },
-            modifier = Modifier.size(36.dp),
-            contentPadding = PaddingValues(0.dp),
-            border = BorderStroke(1.dp, Color.Red.copy(alpha = 0.6f)),
-            colors = ButtonDefaults.outlinedButtonColors(
-                containerColor = Color.Black.copy(alpha = 0.5f),
-            ),
-        ) {
-            Text("D", color = Color.Red, fontSize = 12.sp)
         }
     }
 }
@@ -284,14 +228,9 @@ private fun GameTableLayout(
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
-    val localSeatId = uiState.localSeatId
-    val leftSeatId = (localSeatId + 1) % 4
-    val topSeatId = (localSeatId + 2) % 4
-    val rightSeatId = (localSeatId + 3) % 4
-
-    val topOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == topSeatId }
-    val leftOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == leftSeatId }
-    val rightOpponent = uiState.opponentSummaries.firstOrNull { it.seatId == rightSeatId }
+    val topOpponent = uiState.opponentSummaries.firstOrNull { it.viewSeat == ViewSeat.TOP }
+    val leftOpponent = uiState.opponentSummaries.firstOrNull { it.viewSeat == ViewSeat.LEFT }
+    val rightOpponent = uiState.opponentSummaries.firstOrNull { it.viewSeat == ViewSeat.RIGHT }
 
     Column(
         modifier = modifier,
@@ -299,6 +238,7 @@ private fun GameTableLayout(
     ) {
         TopSeatArea(
             opponent = topOpponent,
+            remainingTurnSeconds = uiState.remainingTurnSeconds,
             layoutSpec = layoutSpec,
             modifier = Modifier
                 .fillMaxWidth()
@@ -351,6 +291,7 @@ private fun GameTableLayout(
 @Composable
 private fun TopSeatArea(
     opponent: OpponentSummary?,
+    remainingTurnSeconds: Int?,
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
@@ -378,6 +319,10 @@ private fun TopSeatArea(
                         orientation = StackOrientation.Horizontal,
                         layoutSpec = layoutSpec,
                     )
+                }
+                remainingTurnSeconds?.let { seconds ->
+                    Spacer(modifier = Modifier.width(12.dp))
+                    ActionMessageBanner(message = "剩余 ${seconds}s")
                 }
             }
         }
@@ -479,46 +424,44 @@ private fun CenterPlayArea(
                 .padding(bottom = layoutSpec.centerPlayBottomClearance),
         ) {
             tablePlays.forEach { tablePlay ->
-                TablePlaySlot(
-                    tablePlay = tablePlay,
-                    localSeatId = uiState.localSeatId,
-                    layoutSpec = layoutSpec,
-                    modifier = Modifier.align(playAlignment(tablePlay.ownerSeatId, uiState.localSeatId)),
-                )
+                key(tablePlay.playId) {
+                    TablePlaySlot(
+                        tablePlay = tablePlay,
+                        layoutSpec = layoutSpec,
+                        modifier = Modifier
+                            .align(playAlignment(tablePlay.ownerViewSeat))
+                            .zIndex(tablePlay.stackOrder.toFloat()),
+                    )
+                }
             }
         }
         Spacer(modifier = Modifier.height(8.dp))
     }
 }
 
-private fun playAlignment(ownerSeatId: Int, localSeatId: Int): Alignment {
-    val relative = (ownerSeatId - localSeatId + 4) % 4
-    return when (relative) {
-        1 -> Alignment.CenterStart
-        2 -> Alignment.TopCenter
-        3 -> Alignment.CenterEnd
-        0 -> Alignment.BottomCenter
-        else -> Alignment.Center
+private fun playAlignment(ownerViewSeat: ViewSeat): Alignment {
+    return when (ownerViewSeat) {
+        ViewSeat.LEFT -> Alignment.CenterStart
+        ViewSeat.TOP -> Alignment.TopCenter
+        ViewSeat.RIGHT -> Alignment.CenterEnd
+        ViewSeat.SELF -> Alignment.BottomCenter
     }
 }
 
-private fun playOffset(ownerSeatId: Int, localSeatId: Int): Dp {
-    val relative = (ownerSeatId - localSeatId + 4) % 4
-    return when (relative) {
-        0 -> HumanPlayOffsetX
-        2 -> -OpponentPlayOffsetX
+private fun playOffset(ownerViewSeat: ViewSeat): Dp {
+    return when (ownerViewSeat) {
+        ViewSeat.SELF -> HumanPlayOffsetX
+        ViewSeat.TOP -> -OpponentPlayOffsetX
         else -> 0.dp
     }
 }
 
 private fun playVerticalOffset(
-    ownerSeatId: Int,
-    localSeatId: Int,
+    ownerViewSeat: ViewSeat,
     layoutSpec: GameLayoutSpec,
 ): Dp {
-    val relative = (ownerSeatId - localSeatId + 4) % 4
-    return when (relative) {
-        0 -> layoutSpec.tableCardHeight / 4
+    return when (ownerViewSeat) {
+        ViewSeat.SELF -> layoutSpec.tableCardHeight / 4
         else -> 0.dp
     }
 }
@@ -526,18 +469,16 @@ private fun playVerticalOffset(
 @Composable
 private fun TablePlaySlot(
     tablePlay: TablePlaySummary,
-    localSeatId: Int,
     layoutSpec: GameLayoutSpec,
     modifier: Modifier = Modifier,
 ) {
-    var animationKey by remember(tablePlay.ownerSeatId) { mutableIntStateOf(0) }
-    var previousSignature by remember(tablePlay.ownerSeatId) { mutableStateOf<String?>(null) }
-    val tablePlaySignature = remember(tablePlay.cardLabels) { tablePlay.cardLabels.joinToString(separator = "|") }
+    var animationKey by remember(tablePlay.playId) { mutableIntStateOf(0) }
+    var hasAnimated by remember(tablePlay.playId) { mutableStateOf(false) }
 
-    LaunchedEffect(tablePlaySignature) {
-        if (tablePlay.cardLabels.isNotEmpty() && previousSignature != tablePlaySignature) {
+    LaunchedEffect(tablePlay.playId) {
+        if (tablePlay.cardLabels.isNotEmpty() && !hasAnimated) {
             animationKey += 1
-            previousSignature = tablePlaySignature
+            hasAnimated = true
         }
     }
 
@@ -555,8 +496,8 @@ private fun TablePlaySlot(
         Box(
             modifier = Modifier
                 .offset(
-                    x = playOffset(tablePlay.ownerSeatId, localSeatId),
-                    y = playVerticalOffset(tablePlay.ownerSeatId, localSeatId, layoutSpec),
+                    x = playOffset(tablePlay.ownerViewSeat),
+                    y = playVerticalOffset(tablePlay.ownerViewSeat, layoutSpec),
                 )
                 .width(contentWidth)
                 .height(tableCardOuterHeight),
@@ -677,7 +618,9 @@ private fun OpponentInfoBadge(
             InfoBadgeStroke
         }
     val nameColor =
-        if (opponent.isCurrentActor) {
+        if (opponent.isDisconnected) {
+            DisconnectedNameColor
+        } else if (opponent.isCurrentActor) {
             InfoTextAccent.copy(alpha = 0.88f + 0.12f * pulse)
         } else {
             InfoTextAccent
@@ -1619,6 +1562,62 @@ private fun CornerPip(
             text = suit,
             color = suitColor,
             style = if (compact) CompactCardSuitTextStyle else CardSuitTextStyle,
+        )
+    }
+}
+
+@Composable
+private fun DebugAiHandsButton(uiState: MatchUiState) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        contentAlignment = Alignment.BottomEnd,
+    ) {
+        Button(
+            onClick = { showDialog = true },
+            modifier = Modifier
+                .size(width = 64.dp, height = 28.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFB0BEC5),
+                contentColor = Color.Black,
+            ),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+        ) {
+            Text(text = "AI Hands", fontSize = 10.sp)
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(text = "AI Opponent Hands") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    uiState.debugOpponentHands.forEach { hand ->
+                        Column {
+                            Text(
+                                text = hand.displayName,
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                text = hand.cards.joinToString(" "),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showDialog = false }) {
+                    Text("Close")
+                }
+            },
         )
     }
 }

@@ -6,9 +6,7 @@ import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.PlayCombination
 
-class CombinationParser(
-    private val rules: GameRules,
-) {
+class CombinationParser {
     fun parse(cards: List<Card>): PlayCombination? {
         if (cards.isEmpty()) {
             return null
@@ -23,9 +21,7 @@ class CombinationParser(
             1 -> buildSingle(sortedCards)
             2 -> buildPair(sortedCards)
             3 -> buildTriple(sortedCards)
-            FOUR_CARD_COUNT -> buildFourCardCombination(sortedCards)
             5 -> buildFiveCardCombination(sortedCards)
-            SIX_CARD_COUNT -> buildSixCardCombination(sortedCards)
             else -> null
         }
     }
@@ -60,22 +56,6 @@ class CombinationParser(
 
         return PlayCombination(
             type = CombinationType.TRIPLE,
-            cards = cards,
-            primaryRank = cards.first().rank.strength,
-            primarySuit = cards.maxOf { it.suit.sortOrder },
-        )
-    }
-
-    private fun buildFourCardCombination(cards: List<Card>): PlayCombination? {
-        if (!rules.fourOfAKindBombEnabled) {
-            return null
-        }
-        if (cards.map { it.rank }.distinct().size != 1) {
-            return null
-        }
-
-        return PlayCombination(
-            type = CombinationType.FOUR_OF_A_KIND_BOMB,
             cards = cards,
             primaryRank = cards.first().rank.strength,
             primarySuit = cards.maxOf { it.suit.sortOrder },
@@ -124,7 +104,6 @@ class CombinationParser(
                 cards = cards,
                 primaryRank = cards.maxOf { it.rank.strength },
                 primarySuit = cards.maxOf { it.suit.sortOrder },
-                rankVector = cards.sortedByDescending { it.rank.strength }.map { it.rank.strength },
             )
         }
 
@@ -138,26 +117,6 @@ class CombinationParser(
         }
 
         return null
-    }
-
-    private fun buildSixCardCombination(cards: List<Card>): PlayCombination? {
-        if (!rules.fourWithTwoEnabled) {
-            return null
-        }
-
-        val rankGroups = cards.groupBy { it.rank }
-        if (rankGroups.none { it.value.size == FOUR_OF_A_KIND_GROUP_SIZE }) {
-            return null
-        }
-
-        val fourRank = rankGroups.entries.first { it.value.size == FOUR_OF_A_KIND_GROUP_SIZE }.key
-        val fourCards = rankGroups.getValue(fourRank)
-        return PlayCombination(
-            type = CombinationType.FOUR_WITH_TWO,
-            cards = cards,
-            primaryRank = fourRank.strength,
-            primarySuit = fourCards.maxOf { it.suit.sortOrder },
-        )
     }
 
     private fun getStraightHighCard(cards: List<Card>): Card? {
@@ -177,8 +136,6 @@ class CombinationParser(
     }
 
     private companion object {
-        const val FOUR_CARD_COUNT = 4
-        const val SIX_CARD_COUNT = 6
         const val FOUR_OF_A_KIND_GROUP_SIZE = 4
     }
 }

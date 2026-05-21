@@ -18,10 +18,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -38,15 +36,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
@@ -66,12 +63,17 @@ private val TextPrimary = Color(0xFFF7F1E4)
 private val TextSecondary = Color(0xFFB8A882)
 private val TextMuted = Color(0xFF7A6A50)
 private val StatusReady = Color(0xFF4CAF50)
+private val StatusConnected = Color(0xFFD4A85A)
 private val StatusNotReady = Color(0xFFFF9800)
 private val StatusDisconnected = Color(0xFF9E9E9E)
 private val ScorePositive = Color(0xFF81C784)
 private val ScoreNegative = Color(0xFFE57373)
 private val DividerColor = Color(0x33C8A96A)
 private val GoldAccent = Color(0xFFD4A85A)
+private val HostActionButtonHeight = 44.dp
+private val MemberActionButtonHeight = 44.dp
+private val BroadcastButtonHeight = 28.dp
+private val BroadcastButtonWidth = 100.dp
 
 @Composable
 fun RoomScreen(
@@ -135,21 +137,11 @@ fun RoomScreen(
         if (uiState.showRoomAiDifficultyDialog) {
             RoomAiDifficultyDialog(
                 step = uiState.aiSelectionStep,
-                onSelectType = { aiType ->
-                    when (aiType) {
-                        AIType.RULE_BASED -> {
-                            // 规则型 AI 直接添加，使用默认 NORMAL 难度
-                            onAction(
-                                RoomAction.AddAiToSlot(
-                                    uiState.aiDialogTargetSlot,
-                                    RoomAiDifficulty.RULE_NORMAL,
-                                ),
-                            )
-                        }
-                        AIType.ONNX_RL -> onAction(RoomAction.SelectAiType(AIType.ONNX_RL))
-                    }
+                selectedAiType = uiState.selectedAiType,
+                onSelectType = { onAction(RoomAction.SelectAiType(it)) },
+                onSelectDifficulty = { diff ->
+                    onAction(RoomAction.AddAiToSlot(uiState.aiDialogTargetSlot, diff))
                 },
-                onSelectDifficulty = { diff -> onAction(RoomAction.AddAiToSlot(uiState.aiDialogTargetSlot, diff)) },
                 onBack = { onAction(RoomAction.BackToAiTypeSelection) },
                 onDismiss = { onAction(RoomAction.DismissAiDialog) },
             )
@@ -164,7 +156,6 @@ fun RoomScreen(
         }
     }
 }
-
 
 @Composable
 private fun RoomTopBar(
@@ -207,20 +198,21 @@ private fun RoomTopBar(
             color = TextSecondary,
         )
         Spacer(modifier = Modifier.width(16.dp))
-        if (uiState.isHost) {
+        if (uiState.totalGamesPlayed > 0) {
             Text(
-                text = "总局数 ${uiState.totalGamesPlayed}",
+                text = "总分局数 ${uiState.totalGamesPlayed}",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextMuted,
             )
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+        if (uiState.isHost) {
             TextButton(onClick = onResetScores) {
                 Text("重置分数", style = MaterialTheme.typography.labelMedium, color = TextMuted)
             }
         }
     }
 }
-
 
 @Composable
 private fun SlotsGrid(
@@ -241,14 +233,18 @@ private fun SlotsGrid(
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 0,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             SlotCard(
                 slot = uiState.slots[1],
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 1,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
         Row(
@@ -260,19 +256,22 @@ private fun SlotsGrid(
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 2,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
             SlotCard(
                 slot = uiState.slots[3],
                 isHost = uiState.isHost,
                 showActionMenu = uiState.showSlotActionMenu && uiState.slotActionMenuTarget == 3,
                 onAction = onAction,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
             )
         }
     }
 }
-
 
 @Composable
 private fun SlotCard(
@@ -290,14 +289,6 @@ private fun SlotCard(
         else -> SlotFilledBorder
     }
     val bgColor = if (isEmpty) SlotEmptyBg else SlotFilledBg
-    val handleClick = {
-        if (isEmpty) {
-            if (isHost) onAction(RoomAction.OpenAiDialog(slot.slotIndex))
-            else onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
-        } else {
-            onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex))
-        }
-    }
 
     Box(
         modifier = modifier
@@ -309,7 +300,7 @@ private fun SlotCard(
                 color = borderColor,
                 shape = RoundedCornerShape(14.dp),
             )
-            .clickable { handleClick() },
+            .clickable { onAction(RoomAction.OpenSlotActionMenu(slot.slotIndex)) },
         contentAlignment = Alignment.Center,
     ) {
         if (isEmpty) {
@@ -318,7 +309,7 @@ private fun SlotCard(
             FilledSlotContent(slot = slot)
         }
 
-        if (showActionMenu && !isEmpty) {
+        if (showActionMenu) {
             Box(modifier = Modifier.align(Alignment.TopEnd)) {
                 SlotActionMenu(slot = slot, isHost = isHost, onAction = onAction)
             }
@@ -326,15 +317,27 @@ private fun SlotCard(
     }
 }
 
-
 @Composable
-private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomAction) -> Unit) {
+private fun SlotActionMenu(
+    slot: SlotState,
+    isHost: Boolean,
+    onAction: (RoomAction) -> Unit,
+) {
     DropdownMenu(
         expanded = true,
         onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
         containerColor = Color(0xFF2A1F14),
     ) {
-        if (!slot.isLocalPlayer) {
+        if (slot.occupantType == null) {
+            if (isHost) {
+                DropdownMenuItem(
+                    text = { Text("添加 AI", color = GoldAccent) },
+                    onClick = {
+                        onAction(RoomAction.DismissSlotActionMenu)
+                        onAction(RoomAction.OpenAiDialog(slot.slotIndex))
+                    },
+                )
+            }
             DropdownMenuItem(
                 text = { Text("请求换位", color = GoldAccent) },
                 onClick = {
@@ -343,7 +346,16 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
                 },
             )
         }
-        if (isHost) {
+        if (slot.occupantType != null && !slot.isLocalPlayer) {
+            DropdownMenuItem(
+                text = { Text("请求换位", color = GoldAccent) },
+                onClick = {
+                    onAction(RoomAction.DismissSlotActionMenu)
+                    onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
+                },
+            )
+        }
+        if (isHost && !slot.isLocalPlayer && slot.occupantType != null) {
             DropdownMenuItem(
                 text = { Text("移除", color = Color(0xFFE57373)) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },
@@ -355,7 +367,6 @@ private fun SlotActionMenu(slot: SlotState, isHost: Boolean, onAction: (RoomActi
         )
     }
 }
-
 
 @Composable
 private fun EmptySlotContent(slotIndex: Int) {
@@ -371,39 +382,39 @@ private fun EmptySlotContent(slotIndex: Int) {
                 .border(1.dp, SlotEmptyBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(Icons.Default.Add, contentDescription = null, tint = TextMuted, modifier = Modifier.size(24.dp))
+            Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = TextMuted,
+                modifier = Modifier.size(24.dp),
+            )
         }
         Text(
             text = "位置 ${slotIndex + 1}",
             style = MaterialTheme.typography.labelMedium,
             color = TextMuted,
         )
+        Text(
+            text = "空位 / 可加入",
+            style = MaterialTheme.typography.labelSmall,
+            color = TextMuted,
+        )
     }
 }
 
-
-@Suppress("CyclomaticComplexMethod")
+@Suppress("CyclomaticComplexMethod", "LongMethod")
 @Composable
 private fun FilledSlotContent(slot: SlotState) {
-    val configuration = LocalConfiguration.current
-    val compact = configuration.screenHeightDp <= 700 || configuration.screenWidthDp <= 360
-    val avatarSize = if (compact) 35.dp else 44.dp
-    val itemSpacing = if (compact) 2.dp else 4.dp
-    val statusDotSize = if (compact) 5.dp else 6.dp
-    val typeSpacing = if (compact) 4.dp else 6.dp
-    val contentPadding = if (compact) 6.dp else 8.dp
-    val nameStyle = if (compact) MaterialTheme.typography.labelMedium else MaterialTheme.typography.bodyMedium
-    val scoreStyle = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium
-
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(contentPadding),
+            .padding(8.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
     ) {
         Box(
             modifier = Modifier
-                .size(avatarSize)
+                .size(44.dp)
                 .clip(CircleShape)
                 .background(Color(0xFF3A2A1A))
                 .border(
@@ -423,24 +434,37 @@ private fun FilledSlotContent(slot: SlotState) {
             }
         }
 
-        Spacer(modifier = Modifier.height(itemSpacing))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = slot.displayName,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
 
-        Text(
-            text = slot.displayName,
-            style = nameStyle,
-            color = TextPrimary,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-
-        Spacer(modifier = Modifier.height(itemSpacing))
+            val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
+            Text(
+                text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
+                style = MaterialTheme.typography.labelMedium,
+                color = scoreColor,
+            )
+        }
 
         Row(
-            horizontalArrangement = Arrangement.spacedBy(typeSpacing),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val typeLabel = when (slot.occupantType) {
-                SlotOccupantType.AI -> slot.aiType?.label ?: "AI"
+                SlotOccupantType.AI -> {
+                    val aiLabel = slot.aiType?.let { it.shortLabel + " AI" } ?: "AI"
+                    aiLabel
+                }
                 SlotOccupantType.HUMAN_HOST -> "房主"
                 SlotOccupantType.HUMAN_MEMBER -> "成员"
                 null -> ""
@@ -460,141 +484,21 @@ private fun FilledSlotContent(slot: SlotState) {
                 MemberConnectionStatus.READY -> StatusReady to "已准备"
                 MemberConnectionStatus.NOT_READY -> StatusNotReady to "未准备"
                 MemberConnectionStatus.DISCONNECTED -> StatusDisconnected to "掉线"
-                MemberConnectionStatus.CONNECTED -> StatusReady to "已连接"
+                MemberConnectionStatus.CONNECTED -> StatusConnected to "已连接"
                 null -> Color.Transparent to ""
             }
             if (statusText.isNotEmpty()) {
                 Box(
                     modifier = Modifier
-                        .size(statusDotSize)
+                        .size(6.dp)
                         .clip(CircleShape)
                         .background(statusDot),
                 )
                 Text(statusText, style = MaterialTheme.typography.labelSmall, color = statusDot)
             }
         }
-
-        Spacer(modifier = Modifier.weight(1f))
-
-        val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
-        Text(
-            text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
-            style = scoreStyle,
-            color = scoreColor,
-            maxLines = 1,
-        )
     }
 }
-
-
-@Suppress("LongMethod")
-@Composable
-private fun ControlPanel(
-    uiState: RoomUiState,
-    onAction: (RoomAction) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    // Use Column with explicit Spacer instead of Arrangement.spacedBy to avoid
-    // weight(1f) interaction issues that cause button height distortion
-    Column(
-        modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(16.dp))
-            .clip(RoundedCornerShape(16.dp))
-            .background(SectionBg)
-            .border(1.dp, SectionBorder, RoundedCornerShape(16.dp))
-            .padding(20.dp),
-    ) {
-        Text("房间信息", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
-        Spacer(modifier = Modifier.height(6.dp))
-        InfoRow(label = "房主设备", value = uiState.hostDeviceName.ifEmpty { "本机" })
-        Spacer(modifier = Modifier.height(2.dp))
-        InfoRow(label = "当前规则", value = uiState.currentRule.label)
-        Spacer(modifier = Modifier.height(2.dp))
-        InfoRow(
-            label = "蓝牙状态",
-            value = if (uiState.bluetoothVisible) "可被发现" else "未广播",
-            valueColor = if (uiState.bluetoothVisible) StatusReady else TextMuted,
-        )
-        Spacer(modifier = Modifier.height(6.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(DividerColor))
-        Spacer(modifier = Modifier.height(6.dp))
-
-        if (uiState.isHost) {
-            Text("房主操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
-            ChuButton(
-                text = "切换: ${uiState.currentRule.label}",
-                onClick = { onAction(RoomAction.ToggleRule) },
-                style = ChuButtonStyle.SECONDARY,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Spacer(modifier = Modifier.weight(1f))
-
-            val filledCount = uiState.slots.count { it.occupantType != null }
-            val notReadyCount = uiState.slots.count {
-                it.occupantType != null && it.connectionStatus != MemberConnectionStatus.READY
-            }
-            val startButtonText = when {
-                filledCount < 4 -> "还差 ${4 - filledCount} 人"
-                notReadyCount > 0 -> "等待 $notReadyCount 人准备"
-                else -> "开始游戏"
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                ChuButton(
-                    text = "AI速度: ${uiState.aiPlaySpeed.label}",
-                    onClick = { onAction(RoomAction.ToggleAiPlaySpeed) },
-                    style = ChuButtonStyle.SECONDARY,
-                    modifier = Modifier.weight(1f),
-                )
-                ChuButton(
-                    text = startButtonText,
-                    onClick = { onAction(RoomAction.StartGame) },
-                    style = ChuButtonStyle.PRIMARY,
-                    enabled = uiState.canStartGame,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag(ComposeTestTags.START_GAME_BUTTON),
-                )
-            }
-        } else {
-            val localSlot = uiState.slots.firstOrNull { it.isLocalPlayer }
-            val isReady = localSlot?.connectionStatus == MemberConnectionStatus.READY
-
-            Text("成员操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = "已连接: ${uiState.hostDeviceName.ifEmpty { "房主" }}",
-                style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
-            )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            ChuButton(
-                text = if (isReady) "取消准备" else "准备",
-                onClick = { onAction(RoomAction.ToggleReady) },
-                style = if (isReady) ChuButtonStyle.SECONDARY else ChuButtonStyle.PRIMARY,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        if (uiState.connectionHint.isNotEmpty()) {
-            Text(
-                text = uiState.connectionHint,
-                style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
-    }
-}
-
 
 @Composable
 private fun InfoRow(
@@ -612,82 +516,215 @@ private fun InfoRow(
     }
 }
 
+@Suppress("LongMethod")
+@Composable
+private fun ControlPanel(
+    uiState: RoomUiState,
+    onAction: (RoomAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .shadow(4.dp, RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(16.dp))
+            .background(SectionBg)
+            .border(1.dp, SectionBorder, RoundedCornerShape(16.dp))
+            .padding(20.dp),
+    ) {
+        Text("房间信息", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        Spacer(modifier = Modifier.height(6.dp))
+        InfoRow(label = "房主设备", value = uiState.hostDeviceName.ifEmpty { "本机" })
+        Spacer(modifier = Modifier.height(2.dp))
+        InfoRow(label = "当前规则", value = uiState.currentRule.label)
+        Spacer(modifier = Modifier.height(2.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("蓝牙状态", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Text(
+                    text = if (uiState.bluetoothVisible) "已开启" else "未开启",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (uiState.bluetoothVisible) StatusReady else TextMuted,
+                )
+            }
+            if (uiState.canEnableBroadcast) {
+                Spacer(modifier = Modifier.width(12.dp))
+                ChuButton(
+                    text = "启动蓝牙",
+                    onClick = { onAction(RoomAction.StartHostListening) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier
+                        .width(BroadcastButtonWidth)
+                        .height(BroadcastButtonHeight),
+                )
+            }
+        }
 
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(DividerColor),
+        )
+        Spacer(modifier = Modifier.height(4.dp))
 
+        if (uiState.isHost) {
+            Text("房主操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+            Spacer(modifier = Modifier.height(4.dp))
+            ChuButton(
+                text = "切换: ${uiState.currentRule.label}",
+                onClick = { onAction(RoomAction.ToggleRule) },
+                style = ChuButtonStyle.SECONDARY,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(HostActionButtonHeight),
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            ChuButton(
+                text = "AI速度: ${uiState.aiPlaySpeed.label}",
+                onClick = { onAction(RoomAction.ToggleAiPlaySpeed) },
+                style = ChuButtonStyle.SECONDARY,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(HostActionButtonHeight),
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            val filledCount = uiState.slots.count { it.occupantType != null }
+            val notReadyCount = uiState.slots.count {
+                it.occupantType != null && it.connectionStatus != MemberConnectionStatus.READY
+            }
+            val startButtonText = when {
+                filledCount < 4 -> "还差 ${4 - filledCount} 人"
+                notReadyCount > 0 -> "等待 $notReadyCount 人准备"
+                else -> "开始游戏"
+            }
+            ChuButton(
+                text = startButtonText,
+                onClick = { onAction(RoomAction.StartGame) },
+                style = ChuButtonStyle.PRIMARY,
+                enabled = uiState.canStartGame,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(HostActionButtonHeight)
+                    .testTag(ComposeTestTags.START_GAME_BUTTON),
+            )
+        } else {
+            val localSlot = uiState.slots.firstOrNull { it.isLocalPlayer }
+            val isReady = localSlot?.connectionStatus == MemberConnectionStatus.READY
+
+            Text("成员操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = "已连接 ${uiState.hostDeviceName.ifEmpty { "房主" }}",
+                style = MaterialTheme.typography.bodySmall,
+                color = TextSecondary,
+            )
+
+            Spacer(modifier = Modifier.weight(1f))
+
+            ChuButton(
+                text = if (isReady) "取消准备" else "准备",
+                onClick = { onAction(RoomAction.ToggleReady) },
+                style = if (isReady) ChuButtonStyle.SECONDARY else ChuButtonStyle.PRIMARY,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(MemberActionButtonHeight),
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        if (uiState.connectionHint.isNotEmpty()) {
+            Text(
+                text = uiState.connectionHint,
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Suppress("LongMethod", "UnusedParameter")
 @Composable
 private fun RoomAiDifficultyDialog(
     step: AiSelectionStep,
+    selectedAiType: AIType?,
     onSelectType: (AIType) -> Unit,
     onSelectDifficulty: (RoomAiDifficulty) -> Unit,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val title = when (step) {
-        AiSelectionStep.SELECT_TYPE -> "选择 AI 类型"
-        AiSelectionStep.SELECT_DIFFICULTY -> "选择难度"
-    }
+    val onnxDifficulties = RoomAiDifficulty.entries.filter { it.aiType == AIType.ONNX_RL }
+    val isOnnxAvailable = BuildConfig.ONNX_AVAILABLE
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary) },
+        title = {
+            Text(
+                when (step) {
+                    AiSelectionStep.SELECT_TYPE -> "选择 AI 类型"
+                    AiSelectionStep.SELECT_DIFFICULTY -> "选择 AI 难度"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
+            )
+        },
         text = {
-            Column(
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState()),
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when (step) {
                     AiSelectionStep.SELECT_TYPE -> {
-                        // 第一步：选择AI类型
                         ChuButton(
                             text = "规则型 AI",
-                            onClick = { onSelectType(AIType.RULE_BASED) },
+                            onClick = {
+                                onSelectType(AIType.RULE_BASED)
+                                onSelectDifficulty(RoomAiDifficulty.RULE_NORMAL)
+                            },
                             style = ChuButtonStyle.SECONDARY,
                             modifier = Modifier.fillMaxWidth(),
                         )
                         ChuButton(
-                            text = "RL训练 AI",
+                            text = if (isOnnxAvailable) "RL训练 AI" else "RL训练 AI（暂不可用）",
                             onClick = { onSelectType(AIType.ONNX_RL) },
                             style = ChuButtonStyle.SECONDARY,
+                            enabled = isOnnxAvailable,
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }
                     AiSelectionStep.SELECT_DIFFICULTY -> {
-                        // 第二步：选择难度
-                        Text(
-                            "已选择: RL训练 AI",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        RoomAiDifficulty.entries
-                            .filter { it.aiType == AIType.ONNX_RL }
-                            .forEach { diff ->
-                                ChuButton(
-                                    text = diff.difficultyLevel.displayName,
-                                    onClick = { onSelectDifficulty(diff) },
-                                    style = ChuButtonStyle.SECONDARY,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
+                        onnxDifficulties.forEach { diff ->
+                            ChuButton(
+                                text = diff.difficultyLevel.symbol + " " + diff.label.substringAfter(" - "),
+                                onClick = { onSelectDifficulty(diff) },
+                                style = ChuButtonStyle.SECONDARY,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            if (step == AiSelectionStep.SELECT_DIFFICULTY) {
+                TextButton(onClick = onBack) {
+                    Text("返回", color = TextSecondary)
+                }
+            }
+        },
         dismissButton = {
-            when (step) {
-                AiSelectionStep.SELECT_TYPE -> {
-                    TextButton(onClick = onDismiss) {
-                        Text("取消", color = TextSecondary)
-                    }
-                }
-                AiSelectionStep.SELECT_DIFFICULTY -> {
-                    TextButton(onClick = onBack) {
-                        Text("返回", color = TextSecondary)
-                    }
-                }
+            TextButton(onClick = onDismiss) {
+                Text("取消", color = TextSecondary)
             }
         },
         containerColor = Color(0xFF2A1F14),
@@ -723,17 +760,3 @@ private fun SwapRequestDialog(
         shape = RoundedCornerShape(16.dp),
     )
 }
-
-
-private val DifficultyLevel.displayName: String
-    get() = when (this) {
-        DifficultyLevel.EASY -> "简单"
-        DifficultyLevel.NORMAL -> "普通"
-        DifficultyLevel.HARD -> "困难"
-    }
-
-private val AIType.label: String
-    get() = when (this) {
-        AIType.RULE_BASED -> "规则AI"
-        AIType.ONNX_RL -> "RL AI"
-    }

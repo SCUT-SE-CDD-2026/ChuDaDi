@@ -5,7 +5,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.test.platform.app.InstrumentationRegistry
 import com.example.chudadi.controller.game.LocalMatchViewModel
+import com.example.chudadi.data.repository.PlayerPreferencesRepository
+import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
@@ -21,7 +24,8 @@ import com.example.chudadi.model.game.entity.SeatStatus
 import com.example.chudadi.model.game.entity.TrickState
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.navigation.ChuDaDiNavGraph
-import com.example.chudadi.ui.room.AiDifficulty
+import com.example.chudadi.network.room.BluetoothRoomRepository
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomViewModel
 import org.junit.Rule
@@ -33,10 +37,29 @@ class ResultFlowTest {
 
     @Test
     fun returnToRoomFromResult_navigatesBackToRoom() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val playerPreferencesRepository = PlayerPreferencesRepository(context)
+        val reconnectSessionRepository = ReconnectSessionRepository(context)
+        val bluetoothRoomRepository = BluetoothRoomRepository(context, reconnectSessionRepository)
+        val roomViewModel = RoomViewModel(
+            playerPrefsRepository = playerPreferencesRepository,
+            bluetoothRoomRepository = bluetoothRoomRepository,
+            reconnectSessionRepository = reconnectSessionRepository,
+        ).apply {
+            createHostRoom(hostDeviceName = "Test Device")
+dispatch(RoomAction.AddAiToSlot(1, RoomAiDifficulty.RULE_NORMAL))
+dispatch(RoomAction.AddAiToSlot(2, RoomAiDifficulty.RULE_NORMAL))
+dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
+        }
+
         composeRule.setContent {
             ChuDaDiNavGraph(
                 viewModel = LocalMatchViewModel(engine = ScriptedGameEngine(finishedMatch())),
-                roomViewModel = filledRoomViewModel(),
+                roomViewModel = roomViewModel,
+                playerPreferencesRepository = playerPreferencesRepository,
+                localDeviceName = "Test Device",
+                onRequestBluetoothEnable = { onComplete -> onComplete() },
+                onRequestBluetoothPermissions = { onComplete -> onComplete() },
             )
         }
 
@@ -50,14 +73,6 @@ class ResultFlowTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithTag(ComposeTestTags.ROOM_SCREEN).assertIsDisplayed()
-    }
-
-    private fun filledRoomViewModel(): RoomViewModel {
-        val vm = RoomViewModel()
-        vm.dispatch(RoomAction.AddAiToSlot(1, AiDifficulty.RULE_BASED))
-        vm.dispatch(RoomAction.AddAiToSlot(2, AiDifficulty.RULE_BASED))
-        vm.dispatch(RoomAction.AddAiToSlot(3, AiDifficulty.RULE_BASED))
-        return vm
     }
 
     private class ScriptedGameEngine(
@@ -90,19 +105,40 @@ class ResultFlowTest {
                     roundNumber = 1,
                 ),
                 playHistory = listOf("You win"),
-                totalBombCount = 0,
                 result = RoundResult(
                     winnerSeatIndex = 0,
                     ranking = listOf(0, 1, 2, 3),
                     scoreSummary = ScoreSummary(
-                        summaryLines = listOf("1. You (0 cards left)"),
-                        bombCount = 0,
+                        summaryLines = listOf(
+                            "1. You (0 cards left)",
+                            "2. AI 1 (1 cards left)",
+                            "3. AI 2 (1 cards left)",
+                            "4. AI 3 (1 cards left)",
+                        ),
                         roundScores = listOf(
                             RoundScore(
                                 seatId = 0,
                                 playerName = "You",
                                 remainingCards = 0,
                                 roundScore = 3,
+                            ),
+                            RoundScore(
+                                seatId = 1,
+                                playerName = "AI 1",
+                                remainingCards = 1,
+                                roundScore = -1,
+                            ),
+                            RoundScore(
+                                seatId = 2,
+                                playerName = "AI 2",
+                                remainingCards = 1,
+                                roundScore = -1,
+                            ),
+                            RoundScore(
+                                seatId = 3,
+                                playerName = "AI 3",
+                                remainingCards = 1,
+                                roundScore = -1,
                             ),
                         ),
                     ),
@@ -116,29 +152,33 @@ class ResultFlowTest {
                     seatId = 0,
                     displayName = "You",
                     controllerType = SeatControllerType.HUMAN,
-                    hand = listOf(Card(rank = CardRank.THREE, suit = CardSuit.DIAMONDS)),
-                    status = SeatStatus.ACTIVE,
+                    hand = emptyList(),
+                    status = SeatStatus.FINISHED,
+                    finishOrder = 1,
                 ),
                 Seat(
                     seatId = 1,
                     displayName = "AI 1",
                     controllerType = SeatControllerType.RULE_BASED_AI,
                     hand = listOf(Card(rank = CardRank.FOUR, suit = CardSuit.CLUBS)),
-                    status = SeatStatus.ACTIVE,
+                    status = SeatStatus.FINISHED,
+                    finishOrder = 2,
                 ),
                 Seat(
                     seatId = 2,
                     displayName = "AI 2",
                     controllerType = SeatControllerType.RULE_BASED_AI,
                     hand = listOf(Card(rank = CardRank.FIVE, suit = CardSuit.HEARTS)),
-                    status = SeatStatus.ACTIVE,
+                    status = SeatStatus.FINISHED,
+                    finishOrder = 3,
                 ),
                 Seat(
                     seatId = 3,
                     displayName = "AI 3",
                     controllerType = SeatControllerType.RULE_BASED_AI,
                     hand = listOf(Card(rank = CardRank.SIX, suit = CardSuit.SPADES)),
-                    status = SeatStatus.ACTIVE,
+                    status = SeatStatus.FINISHED,
+                    finishOrder = 4,
                 ),
             )
         }

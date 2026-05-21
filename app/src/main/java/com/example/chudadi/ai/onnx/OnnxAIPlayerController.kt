@@ -168,8 +168,7 @@ class OnnxAIPlayerController(
     ): List<ActionCandidate> {
         val candidates = mutableListOf<ActionCandidate>()
         val seenActionIds = mutableSetOf<Long>()
-        val rules = GameRules.forRuleSet(ruleSet)
-        val parser = CombinationParser(rules)
+        val parser = CombinationParser()
 
         for (cards in validActions) {
             val actionId = actionIdFromCards(cards)
@@ -259,7 +258,7 @@ class OnnxAIPlayerController(
         ruleSet: GameRuleSet
     ): List<List<Card>> {
         val rules = GameRules.forRuleSet(ruleSet)
-        val parser = CombinationParser(rules)
+        val parser = CombinationParser()
         val comparator = CombinationComparator(rules)
         val generator = CombinationGenerator(parser, comparator)
 

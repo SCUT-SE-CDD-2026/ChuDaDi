@@ -20,8 +20,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +53,9 @@ private val DividerColor = Color(0x33C8A96A)
 
 @Composable
 fun HomeScreen(
+    playerName: String = "默认玩家",
+    noticeMessage: String? = null,
+    onDismissNotice: () -> Unit = {},
     onCreateRoom: () -> Unit = {},
     onJoinRoom: () -> Unit = {},
     onOnlineGame: () -> Unit = {},
@@ -76,6 +81,7 @@ fun HomeScreen(
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 LeftPanel(
+                    playerName = playerName,
                     modifier = Modifier
                         .weight(0.42f)
                         .fillMaxHeight(),
@@ -99,11 +105,38 @@ fun HomeScreen(
                 )
             }
         }
+
+        noticeMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = onDismissNotice,
+                title = {
+                    Text(
+                        text = "提示",
+                        color = TextPrimary,
+                    )
+                },
+                text = {
+                    Text(
+                        text = message,
+                        color = TextSecondary,
+                    )
+                },
+                confirmButton = {
+                    TextButton(onClick = onDismissNotice) {
+                        Text(text = "知道了", color = TextPrimary)
+                    }
+                },
+                containerColor = BgCard,
+            )
+        }
     }
 }
 
 @Composable
-private fun LeftPanel(modifier: Modifier = Modifier) {
+private fun LeftPanel(
+    playerName: String,
+    modifier: Modifier = Modifier,
+) {
     Column(
         modifier = modifier
             .background(
@@ -143,12 +176,12 @@ private fun LeftPanel(modifier: Modifier = Modifier) {
                 letterSpacing = 2.sp,
             )
         }
-        PlayerInfoBlock()
+        PlayerInfoBlock(playerName = playerName)
     }
 }
 
 @Composable
-private fun PlayerInfoBlock() {
+private fun PlayerInfoBlock(playerName: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -177,7 +210,7 @@ private fun PlayerInfoBlock() {
         }
         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
-                text = "默认玩家",
+                text = playerName,
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextPrimary,
             )
@@ -223,7 +256,6 @@ private fun RightPanel(
             text = "加入房间",
             onClick = onJoinRoom,
             style = ChuButtonStyle.SECONDARY,
-            enabled = false,
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(modifier = Modifier.height(10.dp))

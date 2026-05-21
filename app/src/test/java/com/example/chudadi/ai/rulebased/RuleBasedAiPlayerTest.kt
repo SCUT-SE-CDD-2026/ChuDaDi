@@ -30,9 +30,7 @@ class RuleBasedAiPlayerTest {
                     createSeat(
                         seatId = 0,
                         controllerType = SeatControllerType.HUMAN,
-                        cards = listOf(
-                            MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES),
-                        ),
+                        cards = listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
                     ),
                     createSeat(
                         seatId = 1,
@@ -46,14 +44,8 @@ class RuleBasedAiPlayerTest {
                             MatchFixtureFactory.card(CardRank.TWO, CardSuit.CLUBS),
                         ),
                     ),
-                    createSeat(
-                        seatId = 2,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS)),
-                    ),
-                    createSeat(
-                        seatId = 3,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES)),
-                    ),
+                    createSeat(2, listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS))),
+                    createSeat(3, listOf(MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES))),
                 ),
             )
 
@@ -70,8 +62,55 @@ class RuleBasedAiPlayerTest {
         val aiPlayer = RuleBasedAiPlayer(random = FixedDoubleRandom(0.0))
         val evaluator = CombinationEvaluator(GameRules.forRuleSet(GameRuleSet.NORTHERN))
         val currentCombination =
+            evaluator.parse(listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES)))!!
+        val match =
+            createMatch(
+                ruleSet = GameRuleSet.NORTHERN,
+                activeSeatIndex = 1,
+                currentCombination = currentCombination,
+                lastWinningSeatIndex = 0,
+                seats = listOf(
+                    createSeat(
+                        0,
+                        listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
+                        SeatControllerType.HUMAN,
+                    ),
+                    createSeat(
+                        1,
+                        listOf(
+                            MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS),
+                            MatchFixtureFactory.card(CardRank.NINE, CardSuit.HEARTS),
+                        ),
+                    ),
+                    createSeat(2, listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS))),
+                    createSeat(3, listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS))),
+                ),
+            )
+
+        val decision = aiPlayer.decideAction(match, 1)
+
+        assertTrue(decision is AiDecision.Play)
+        val playedIds = (decision as AiDecision.Play).cardIds
+        assertEquals(1, playedIds.size)
+        assertTrue(playedIds.first() in setOf(
+            MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS).id,
+            MatchFixtureFactory.card(CardRank.NINE, CardSuit.HEARTS).id,
+        ))
+    }
+
+    @Test
+    fun decideAction_northernRuleCanUseCrossTypeFiveCardResponse() {
+        val aiPlayer = RuleBasedAiPlayer(random = FixedDoubleRandom(0.0))
+        val evaluator = CombinationEvaluator(GameRules.forRuleSet(GameRuleSet.NORTHERN))
+        val currentCombination =
             evaluator.parse(
-                listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES)),
+                listOf(
+                    MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS),
+                    MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS),
+                    MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
+                    MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES),
+                    MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS),
+                ),
             )!!
         val match =
             createMatch(
@@ -81,37 +120,22 @@ class RuleBasedAiPlayerTest {
                 lastWinningSeatIndex = 0,
                 seats = listOf(
                     createSeat(
-                        seatId = 0,
-                        controllerType = SeatControllerType.HUMAN,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
+                        0,
+                        listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS)),
+                        SeatControllerType.HUMAN,
                     ),
                     createSeat(
-                        seatId = 1,
-                        cards = listOf(
-                            MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS),
-                            MatchFixtureFactory.card(CardRank.NINE, CardSuit.HEARTS),
+                        1,
+                        listOf(
+                            MatchFixtureFactory.card(CardRank.THREE, CardSuit.SPADES),
+                            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
+                            MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES),
+                            MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
+                            MatchFixtureFactory.card(CardRank.JACK, CardSuit.SPADES),
                         ),
                     ),
-                    createSeat(
-                        seatId = 2,
-                        cards = listOf(
-                            MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS),
-                            MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.DIAMONDS),
-                            MatchFixtureFactory.card(CardRank.NINE, CardSuit.DIAMONDS),
-                            MatchFixtureFactory.card(CardRank.TEN, CardSuit.DIAMONDS),
-                            MatchFixtureFactory.card(CardRank.JACK, CardSuit.DIAMONDS),
-                        ),
-                    ),
-                    createSeat(
-                        seatId = 3,
-                        cards = listOf(
-                            MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS),
-                            MatchFixtureFactory.card(CardRank.NINE, CardSuit.CLUBS),
-                            MatchFixtureFactory.card(CardRank.TEN, CardSuit.CLUBS),
-                            MatchFixtureFactory.card(CardRank.JACK, CardSuit.CLUBS),
-                            MatchFixtureFactory.card(CardRank.QUEEN, CardSuit.CLUBS),
-                        ),
-                    ),
+                    createSeat(2, listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.DIAMONDS))),
+                    createSeat(3, listOf(MatchFixtureFactory.card(CardRank.NINE, CardSuit.CLUBS))),
                 ),
             )
 
@@ -119,65 +143,23 @@ class RuleBasedAiPlayerTest {
 
         assertTrue(decision is AiDecision.Play)
         assertEquals(
-            setOf(MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS).id),
+            setOf(
+                MatchFixtureFactory.card(CardRank.THREE, CardSuit.SPADES).id,
+                MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES).id,
+                MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES).id,
+                MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES).id,
+                MatchFixtureFactory.card(CardRank.JACK, CardSuit.SPADES).id,
+            ),
             (decision as AiDecision.Play).cardIds,
         )
     }
 
     @Test
-    fun decideAction_northernRuleCanPassWhenOnlyBombResponseExists() {
-        val aiPlayer = RuleBasedAiPlayer(random = FixedDoubleRandom(0.0))
-        val evaluator = CombinationEvaluator(GameRules.forRuleSet(GameRuleSet.NORTHERN))
-        val currentCombination =
-            evaluator.parse(
-                listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-            )!!
-        val match =
-            createMatch(
-                ruleSet = GameRuleSet.NORTHERN,
-                activeSeatIndex = 1,
-                currentCombination = currentCombination,
-                lastWinningSeatIndex = 0,
-                seats = listOf(
-                    createSeat(
-                        seatId = 0,
-                        controllerType = SeatControllerType.HUMAN,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
-                    ),
-                    createSeat(
-                        seatId = 1,
-                        cards = listOf(
-                            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS),
-                            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.CLUBS),
-                            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS),
-                            MatchFixtureFactory.card(CardRank.FIVE, CardSuit.SPADES),
-                            MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
-                        ),
-                    ),
-                    createSeat(
-                        seatId = 2,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS)),
-                    ),
-                    createSeat(
-                        seatId = 3,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS)),
-                    ),
-                ),
-            )
-
-        val decision = aiPlayer.decideAction(match, 1)
-
-        assertEquals(AiDecision.Pass, decision)
-    }
-
-    @Test
-    fun decideAction_southernRuleMayPassHighCostResponse() {
+    fun decideAction_mustTopSingleWhenNextOpponentReportedOneCard() {
         val aiPlayer = RuleBasedAiPlayer(random = FixedDoubleRandom(0.0))
         val evaluator = CombinationEvaluator(GameRules.forRuleSet(GameRuleSet.SOUTHERN))
         val currentCombination =
-            evaluator.parse(
-                listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)),
-            )!!
+            evaluator.parse(listOf(MatchFixtureFactory.card(CardRank.TEN, CardSuit.DIAMONDS)))!!
         val match =
             createMatch(
                 ruleSet = GameRuleSet.SOUTHERN,
@@ -186,13 +168,52 @@ class RuleBasedAiPlayerTest {
                 lastWinningSeatIndex = 0,
                 seats = listOf(
                     createSeat(
-                        seatId = 0,
-                        controllerType = SeatControllerType.HUMAN,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
+                        0,
+                        listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS)),
+                        SeatControllerType.HUMAN,
                     ),
                     createSeat(
-                        seatId = 1,
-                        cards = listOf(
+                        1,
+                        listOf(
+                            MatchFixtureFactory.card(CardRank.JACK, CardSuit.CLUBS),
+                            MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES),
+                        ),
+                    ),
+                    createSeat(2, listOf(MatchFixtureFactory.card(CardRank.KING, CardSuit.HEARTS))),
+                    createSeat(3, listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.DIAMONDS))),
+                ),
+            )
+
+        val decision = aiPlayer.decideAction(match, 1)
+
+        assertTrue(decision is AiDecision.Play)
+        assertEquals(
+            setOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES).id),
+            (decision as AiDecision.Play).cardIds,
+        )
+    }
+
+    @Test
+    fun decideAction_southernRuleMayPassHighCostResponse() {
+        val aiPlayer = RuleBasedAiPlayer(random = FixedDoubleRandom(0.0))
+        val evaluator = CombinationEvaluator(GameRules.forRuleSet(GameRuleSet.SOUTHERN))
+        val currentCombination =
+            evaluator.parse(listOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES)))!!
+        val match =
+            createMatch(
+                ruleSet = GameRuleSet.SOUTHERN,
+                activeSeatIndex = 1,
+                currentCombination = currentCombination,
+                lastWinningSeatIndex = 0,
+                seats = listOf(
+                    createSeat(
+                        0,
+                        listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
+                        SeatControllerType.HUMAN,
+                    ),
+                    createSeat(
+                        1,
+                        listOf(
                             MatchFixtureFactory.card(CardRank.TWO, CardSuit.SPADES),
                             MatchFixtureFactory.card(CardRank.THREE, CardSuit.CLUBS),
                             MatchFixtureFactory.card(CardRank.THREE, CardSuit.HEARTS),
@@ -200,14 +221,8 @@ class RuleBasedAiPlayerTest {
                             MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS),
                         ),
                     ),
-                    createSeat(
-                        seatId = 2,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS)),
-                    ),
-                    createSeat(
-                        seatId = 3,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS)),
-                    ),
+                    createSeat(2, listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS))),
+                    createSeat(3, listOf(MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS))),
                 ),
             )
 
@@ -221,9 +236,7 @@ class RuleBasedAiPlayerTest {
         val aiPlayer = RuleBasedAiPlayer(random = FixedDoubleRandom(0.0))
         val evaluator = CombinationEvaluator(GameRules.forRuleSet(GameRuleSet.SOUTHERN))
         val currentCombination =
-            evaluator.parse(
-                listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES)),
-            )!!
+            evaluator.parse(listOf(MatchFixtureFactory.card(CardRank.SEVEN, CardSuit.SPADES)))!!
         val match =
             createMatch(
                 ruleSet = GameRuleSet.SOUTHERN,
@@ -232,26 +245,20 @@ class RuleBasedAiPlayerTest {
                 lastWinningSeatIndex = 0,
                 seats = listOf(
                     createSeat(
-                        seatId = 0,
-                        controllerType = SeatControllerType.HUMAN,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
+                        0,
+                        listOf(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS)),
+                        SeatControllerType.HUMAN,
                     ),
                     createSeat(
-                        seatId = 1,
-                        cards = listOf(
+                        1,
+                        listOf(
                             MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS),
                             MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.DIAMONDS),
                             MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES),
                         ),
                     ),
-                    createSeat(
-                        seatId = 2,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS)),
-                    ),
-                    createSeat(
-                        seatId = 3,
-                        cards = listOf(MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS)),
-                    ),
+                    createSeat(2, listOf(MatchFixtureFactory.card(CardRank.FIVE, CardSuit.DIAMONDS))),
+                    createSeat(3, listOf(MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS))),
                 ),
             )
 
@@ -293,12 +300,7 @@ class RuleBasedAiPlayerTest {
     ): Seat {
         return Seat(
             seatId = seatId,
-            displayName =
-                if (controllerType == SeatControllerType.HUMAN) {
-                    "You"
-                } else {
-                    "AI $seatId"
-                },
+            displayName = if (controllerType == SeatControllerType.HUMAN) "You" else "AI $seatId",
             controllerType = controllerType,
             hand = cards.sortedWith(Card.gameComparator),
             status = SeatStatus.ACTIVE,
@@ -308,12 +310,8 @@ class RuleBasedAiPlayerTest {
     private class FixedDoubleRandom(
         private val fixedValue: Double,
     ) : Random() {
-        override fun nextBits(bitCount: Int): Int {
-            return 0
-        }
+        override fun nextBits(bitCount: Int): Int = 0
 
-        override fun nextDouble(): Double {
-            return fixedValue
-        }
+        override fun nextDouble(): Double = fixedValue
     }
 }

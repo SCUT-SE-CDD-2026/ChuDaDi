@@ -85,7 +85,7 @@ complexity:
       - '**/ai/onnx/OnnxAIPlayerController.kt'
       - '**/controller/game/OnnxMatchViewModel.kt'
       - '**/navigation/ChuDaDiNavGraph.kt'
-      - '**/test/**/GameTurnRulesTest.kt'
+      - '**/test/**'
   ComplexCondition:
     active: true
     threshold: 4
@@ -112,6 +112,7 @@ exceptions:
       - '**/ai/onnx/OnnxModel.kt'
       - '**/ai/OnnxAIIntegrationExample.kt'
       - '**/controller/game/OnnxMatchViewModel.kt'
+      - '**/test/**'
   PrintStackTrace:
     active: true
   RethrowCaughtException:
