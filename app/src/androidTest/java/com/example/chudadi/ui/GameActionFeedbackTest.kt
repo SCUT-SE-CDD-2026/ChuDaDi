@@ -12,8 +12,9 @@ import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
-import com.example.chudadi.ui.game.GameScreenActions
+import com.example.chudadi.model.game.snapshot.ViewSeat
 import com.example.chudadi.ui.game.GameScreen
+import com.example.chudadi.ui.game.GameScreenActions
 import org.junit.Rule
 import org.junit.Test
 
@@ -25,41 +26,40 @@ class GameActionFeedbackTest {
     fun gameScreen_showsActionFeedbackAndDisabledButtons() {
         composeRule.setContent {
             GameScreen(
-                uiState =
-                    MatchUiState(
-                        phase = MatchPhase.PLAYER_TURN,
-                        playerHand = listOf(Card(rank = CardRank.THREE, suit = CardSuit.DIAMONDS)),
-                        opponentSummaries =
-                            listOf(
-                                OpponentSummary(
-                                    seatId = 1,
-                                    displayName = "AI 1",
-                                    avatarResId = R.drawable.avatar,
-                                    remainingCards = 5,
-                                    isCurrentActor = false,
-                                    hasPassed = true,
-                                ),
-                            ),
-                        currentActorName = "You",
-                        currentTablePlay =
-                            TablePlaySummary(
-                                ownerSeatId = 1,
-                                ownerName = "AI 1",
-                                combinationLabel = "Single",
-                                cardLabels = listOf("5♠"),
-                            ),
-                        lastActionMessage = "当前牌不够大",
-                        canSubmitPlay = false,
-                        canPass = false,
-                        isHumanTurn = true,
+                uiState = MatchUiState(
+                    phase = MatchPhase.PLAYER_TURN,
+                    playerHand = listOf(Card(rank = CardRank.THREE, suit = CardSuit.DIAMONDS)),
+                    opponentSummaries = listOf(
+                        OpponentSummary(
+                            viewSeat = ViewSeat.LEFT,
+                            authoritySeatId = 1,
+                            displayName = "AI 1",
+                            avatarResId = R.drawable.avatar,
+                            remainingCards = 5,
+                            isCurrentActor = false,
+                            hasPassed = true,
+                        ),
                     ),
-                actions =
-                    GameScreenActions(
-                        onToggleCardSelection = {},
-                        onClearSelection = {},
-                        onSubmitSelectedCards = {},
-                        onPassTurn = {},
+                    currentActorName = "You",
+                    currentTablePlay = TablePlaySummary(
+                        playId = "test-play",
+                        ownerViewSeat = ViewSeat.LEFT,
+                        ownerName = "AI 1",
+                        combinationLabel = "Single",
+                        cardLabels = listOf("5♠"),
+                        stackOrder = 0,
                     ),
+                    lastActionMessage = "当前牌不够大",
+                    canSubmitPlay = false,
+                    canPass = false,
+                    isHumanTurn = true,
+                ),
+                actions = GameScreenActions(
+                    onToggleCardSelection = {},
+                    onClearSelection = {},
+                    onSubmitSelectedCards = {},
+                    onPassTurn = {},
+                ),
             )
         }
 

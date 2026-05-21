@@ -192,7 +192,13 @@ open class GameEngine(
         if (requiresOpeningThree(activeMatch, seatIndex) && candidate.cards.none { it.id == OPENING_CARD.id }) {
             return false
         }
-        return evaluator.canBeat(candidate, activeMatch.trickState.currentCombination)
+        if (!evaluator.canBeat(candidate, activeMatch.trickState.currentCombination)) {
+            return false
+        }
+        if (!canUseBombForCurrentTrick(activeMatch, seat, candidate, evaluator)) {
+            return false
+        }
+        return true
     }
 
     open fun canPass(
