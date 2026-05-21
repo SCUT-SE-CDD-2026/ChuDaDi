@@ -33,16 +33,16 @@
 ### Comparison of Same-Type Combinations
 - Single, Pair, and Triple are compared based on card value (points). If the values are the same, the suit is used for comparison.
 - Full House is compared based on the value of the three identical cards.
-- Four of a Kind is compared based on the value of the four identical cards.
+- Four with One is compared based on the value of the four identical cards.
 - Flush, Straight, and Straight Flush are compared based on the highest card (e.g., 56789 < 678910). If the highest cards are the same, the suit is used for comparison.
 
 ## 4. Southern vs. Northern Rules
 
 **Southern Rules**
 
-- **Cross-type play among 5-card combinations:** Not allowed (except for Straight Flush and Bomb).
+- **Cross-type play among 5-card combinations:** Not allowed (except for Straight Flush and Four with One).
   - Straight Flush can beat any combination.
-  - Bomb (Four of a Kind / Four with One) can beat any combination except Straight Flush.
+  - Four with One can beat any combination except Straight Flush.
 - **Must play cards if you have them:** No (you can pass freely).
 
 ---
@@ -50,8 +50,7 @@
 **Northern Rules**
 
 - **Cross-type play among 5-card combinations:** Allowed.
-  - The ranking is: Straight Flush > Bomb > Full House > Flush > Straight.
-- **Must play cards if you have them:** Yes (you must play a matching combination if possible; Bombs are exempt from this rule).
+  - The ranking is: Straight Flush > Four with One > Full House > Flush > Straight.
 
 ---
 
@@ -69,20 +68,17 @@
 
 ### 5.3. Follow-Up Play Rules
 - **Core requirement:** The played combination must be larger than the previous combination.
-- **Northern Rules:** Cross-type play among 5-card combinations is allowed (Straight, Flush, Full House, Bomb, Straight Flush are treated as the same category). Single / Pair / Triple must follow the same type strictly.
-- **Southern Rules:** Must follow the same combination type; cross-type play is not allowed (except for Straight Flush and Bomb). Straight Flush can beat any combination; Bomb can beat any combination except Straight Flush.
+- **Northern Rules:** Cross-type play among 5-card combinations is allowed (Straight, Flush, Full House, Four with One, Straight Flush are treated as the same category). Single / Pair / Triple must follow the same type strictly.
+- **Southern Rules:** Must follow the same combination type; cross-type play is not allowed (except for Straight Flush and Four with One). Straight Flush can beat any combination; Four with One can beat any combination except Straight Flush.
 
 ---
 
-### 5.4. Special Bomb Rules
+### 5.4. Special Rules for 5-Card Combination Cross-Type Play
 
-| Item | Southern | Northern           |
-|------|-----|--------------|
-| Can Bomb interrupt other types | Yes | Only under certain conditions (when there is no other combination to beat). |
-| Can Bomb interrupt at any time | Yes | Only under certain conditions (when there is no other combination to beat). |
-| Must play matching combination | No | Yes (must play if possible; Bombs are exempt)   |
-| Can play Four of a Kind | Yes | Only under certain conditions (when there is no other combination to beat).        |
-| Can play Four with One | Yes (treated as a Bomb) | Yes (treated as a normal combination, not a Bomb)     |
+- **Northern Rules:** 5-card combinations (Straight, Flush, Full House, Four with One, Straight Flush) are treated as the same category and can beat each other. The ranking is: Straight Flush > Four with One > Full House > Flush > Straight. Single / Pair / Triple must follow the same type strictly.
+- **Southern Rules:** Must follow the same combination type; cross-type play is not allowed, except:
+  - Straight Flush can beat any combination.
+  - Four with One can beat any combination except Straight Flush.
 
 ---
 
@@ -109,14 +105,6 @@
   - A can only be the highest card, it cannot be used as 1.
   - No loops are allowed (e.g., QKA23 is invalid).
 - Only the card with the highest point value determines the rank; if the highest point values are the same, the rank is determined by the "suit order".
-
----
-
-### 5.8. Special Rules for "Must Play Cards"
-
-| Item | Southern Rules | Northern Rules |
-|------|------|------|
-| Must play matching combinations if possible | No | Yes (Bombs are exempt from this rule, <br/>meaning that if you have no playable cards of the same type <br/>to beat the previous play but do have a bomb, <br/>you may choose not to play the bomb;<br/> meanwhile, if the preceding player plays a bomb, <br/>you are not required to play a larger bomb.) |
 
 ---
 
@@ -163,19 +151,9 @@ Normal Combinations (must compare within the same type):
 - ≥10 and ≤12 cards: Double deductions.
 - =13 cards (no cards played): Deduct **52 points**.
 
----
-
-## 8. Summary of Core Differences
-
-| Item | Southern Rules | Northern Rules |
-|------|----|----|
-| Bomb Strength | High | Restricted (only when no other combination can beat it) |
-| Play Freedom | High | Restricted (only when no other combination can beat it) |
-| Game Pace | Fast | Steady |
-| Strategy | Medium | High |
 
 ---
 
-**Note: **
+**Note:**
 
 Different regions may have "local rules," so it's recommended to confirm the game settings before starting.
