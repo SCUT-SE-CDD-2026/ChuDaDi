@@ -434,7 +434,7 @@ class BluetoothRoomRepository private constructor(
                     selectedDeviceAddress = null,
                     connectionHint = "",
                     joinErrorMessage = null,
-                    joinErrorTitle = "鏃犳硶鍔犲叆鎴块棿",
+                    joinErrorTitle = "无法加入房间",
                 )
             } else {
                 it
