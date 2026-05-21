@@ -17,8 +17,6 @@ import org.junit.Test
 @Suppress("MagicNumber")
 class ScoreCalculatorTest {
 
-    // -- BT tests: tablePlayOrders / baopei / winningCombination --
-
     private fun seat(id: Int, cards: List<Card>) = Seat(
         seatId = id,
         displayName = "Player $id",

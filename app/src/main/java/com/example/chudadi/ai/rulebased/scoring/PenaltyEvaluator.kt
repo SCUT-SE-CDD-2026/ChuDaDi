@@ -65,8 +65,6 @@ internal class PenaltyEvaluator(
             CombinationType.FLUSH,
             CombinationType.FULL_HOUSE,
             CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            CombinationType.FOUR_WITH_TWO,
             CombinationType.STRAIGHT_FLUSH,
             -> STRUCTURE_PLAY_BASE_BREAK_PENALTY
         }
@@ -81,8 +79,6 @@ internal class PenaltyEvaluator(
                 CombinationType.FLUSH,
                 CombinationType.FULL_HOUSE,
                 CombinationType.FOUR_WITH_ONE,
-                CombinationType.FOUR_OF_A_KIND_BOMB,
-                CombinationType.FOUR_WITH_TWO,
                 CombinationType.STRAIGHT_FLUSH,
                 -> FIVE_CARD_CONTROL_LOSS_FACTOR
             }
@@ -134,8 +130,6 @@ internal class PenaltyEvaluator(
                     CombinationType.FLUSH,
                     CombinationType.FULL_HOUSE,
                     CombinationType.FOUR_WITH_ONE,
-                    CombinationType.FOUR_OF_A_KIND_BOMB,
-                    CombinationType.FOUR_WITH_TWO,
                     CombinationType.STRAIGHT_FLUSH,
                     -> FIVE_CARD_OVERKILL_RANK_FACTOR
                 }

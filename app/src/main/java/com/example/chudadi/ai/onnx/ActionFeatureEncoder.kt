@@ -82,11 +82,7 @@ class ActionFeatureEncoder {
             CombinationType.STRAIGHT -> ACTION_TYPE_STRAIGHT
             CombinationType.FLUSH -> ACTION_TYPE_FLUSH
             CombinationType.FULL_HOUSE -> ACTION_TYPE_FULL_HOUSE
-            CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_WITH_TWO,
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            -> ACTION_TYPE_FOUR_OF_A_KIND
-
+            CombinationType.FOUR_WITH_ONE -> ACTION_TYPE_FOUR_OF_A_KIND
             CombinationType.STRAIGHT_FLUSH -> ACTION_TYPE_STRAIGHT_FLUSH
         }
     }
@@ -118,16 +114,11 @@ class ActionFeatureEncoder {
                 main to kicker
             }
 
-            CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            CombinationType.FOUR_WITH_TWO,
-            -> {
+            CombinationType.FOUR_WITH_ONE -> {
                 val rankGroups = sortedCards.groupBy { it.rank }.mapValues { it.value.size }
                 val main = rankGroups.entries.firstOrNull { it.value == 4 }?.key?.ordinal
-                val kickerCandidates = rankGroups.entries
-                    .filterNot { it.value == 4 }
-                    .map { it.key.ordinal }
-                main to kickerCandidates.maxOrNull()
+                val kicker = rankGroups.entries.firstOrNull { it.value == 1 }?.key?.ordinal
+                main to kicker
             }
 
             null -> null to null

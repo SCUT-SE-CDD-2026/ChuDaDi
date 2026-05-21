@@ -34,30 +34,6 @@ class ActionFeatureEncoderMainKickerTest {
         assertEquals(1f, feature.sliceArray(kickerRankRange).sum(), ZERO_TOLERANCE)
     }
 
-    @Test
-    fun fourWithTwo_usesFourRankAsMain_andHighestKickerRank() {
-        val actionCards = listOf(
-            card(CardRank.NINE, CardSuit.DIAMONDS),
-            card(CardRank.NINE, CardSuit.CLUBS),
-            card(CardRank.NINE, CardSuit.HEARTS),
-            card(CardRank.NINE, CardSuit.SPADES),
-            card(CardRank.THREE, CardSuit.DIAMONDS),
-            card(CardRank.ACE, CardSuit.CLUBS),
-        )
-
-        val feature = encoder.encodeActionFeature(
-            handCards = actionCards,
-            actionCards = actionCards,
-            actionType = CombinationType.FOUR_WITH_TWO,
-        )
-
-        assertEquals(1f, feature[MAIN_RANK_OFFSET + CardRank.NINE.ordinal], ZERO_TOLERANCE)
-        assertEquals(1f, feature[KICKER_RANK_OFFSET + CardRank.ACE.ordinal], ZERO_TOLERANCE)
-        assertEquals(1f, feature.sliceArray(MAIN_RANK_OFFSET until KICKER_RANK_OFFSET).sum(), ZERO_TOLERANCE)
-        val kickerRankRange = KICKER_RANK_OFFSET until ActionFeatureEncoder.ACTION_FEATURE_DIM
-        assertEquals(1f, feature.sliceArray(kickerRankRange).sum(), ZERO_TOLERANCE)
-    }
-
     private fun card(rank: CardRank, suit: CardSuit): Card = Card(rank = rank, suit = suit)
 
     private companion object {

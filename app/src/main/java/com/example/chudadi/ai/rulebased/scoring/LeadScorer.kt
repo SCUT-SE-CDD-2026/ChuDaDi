@@ -57,9 +57,6 @@ internal class LeadScorer(
             CombinationType.SINGLE -> LEAD_BASE_SCORE_SINGLE
             CombinationType.STRAIGHT_FLUSH -> LEAD_BASE_SCORE_STRAIGHT_FLUSH
             CombinationType.FOUR_WITH_ONE -> LEAD_BASE_SCORE_FOUR_WITH_ONE
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            CombinationType.FOUR_WITH_TWO,
-            -> LEAD_BASE_SCORE_FOUR_WITH_ONE
         }
 
     private fun computeLeadRankPenalty(candidate: PlayCombination): Double {
@@ -118,8 +115,6 @@ internal class LeadScorer(
             CombinationType.FLUSH,
             CombinationType.FULL_HOUSE,
             CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            CombinationType.FOUR_WITH_TWO,
             CombinationType.STRAIGHT_FLUSH,
             -> OPENING_FIVE_CARD_STRUCTURE_BONUS
         }

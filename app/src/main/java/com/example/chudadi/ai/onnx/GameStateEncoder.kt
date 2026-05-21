@@ -149,10 +149,7 @@ class GameStateEncoder {
             CombinationType.STRAIGHT -> 4
             CombinationType.FLUSH -> 5
             CombinationType.FULL_HOUSE -> 6
-            CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_WITH_TWO,
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            -> 7
+            CombinationType.FOUR_WITH_ONE -> 7
             CombinationType.STRAIGHT_FLUSH -> 8
         }
         tensor[offset + index] = 1f
