@@ -1,11 +1,7 @@
 package com.example.chudadi.ai.rulebased.scoring
 
-import com.example.chudadi.ai.rulebased.EARLY_BOMB_PENALTY
-import com.example.chudadi.ai.rulebased.EXTRA_SAFE_CARDS_AFTER_BOMB
 import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_FLUSH
-import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_FOUR_OF_A_KIND_BOMB
 import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_FOUR_WITH_ONE
-import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_FOUR_WITH_TWO
 import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_FULL_HOUSE
 import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_PAIR
 import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_SINGLE
@@ -15,7 +11,6 @@ import com.example.chudadi.ai.rulebased.LEAD_BASE_SCORE_TRIPLE
 import com.example.chudadi.ai.rulebased.LOW_SINGLETON_LEAD_BONUS
 import com.example.chudadi.ai.rulebased.NATURAL_PAIR_LEAD_BONUS
 import com.example.chudadi.ai.rulebased.NON_SINGLE_LEAD_RANK_WEIGHT
-import com.example.chudadi.ai.rulebased.OPENING_BOMB_PENALTY
 import com.example.chudadi.ai.rulebased.OPENING_CARD
 import com.example.chudadi.ai.rulebased.OPENING_FIVE_CARD_STRUCTURE_BONUS
 import com.example.chudadi.ai.rulebased.OPENING_PAIR_BONUS
@@ -49,8 +44,7 @@ internal class LeadScorer(
             computeAllInBonus(candidate) +
             penaltyEvaluator.computeEndgameBonus(remainingCardCount, candidate) +
             computeLeadStructureBonus(candidate) +
-            computeOpeningAdjustment(candidate, requiresOpeningThree) -
-            computeEarlyBombPenalty(candidate)
+            computeOpeningAdjustment(candidate, requiresOpeningThree)
     }
 
     private fun computeLeadBaseScore(candidate: PlayCombination): Double =
@@ -62,9 +56,7 @@ internal class LeadScorer(
             CombinationType.PAIR -> LEAD_BASE_SCORE_PAIR
             CombinationType.SINGLE -> LEAD_BASE_SCORE_SINGLE
             CombinationType.STRAIGHT_FLUSH -> LEAD_BASE_SCORE_STRAIGHT_FLUSH
-            CombinationType.FOUR_OF_A_KIND_BOMB -> LEAD_BASE_SCORE_FOUR_OF_A_KIND_BOMB
             CombinationType.FOUR_WITH_ONE -> LEAD_BASE_SCORE_FOUR_WITH_ONE
-            CombinationType.FOUR_WITH_TWO -> LEAD_BASE_SCORE_FOUR_WITH_TWO
         }
 
     private fun computeLeadRankPenalty(candidate: PlayCombination): Double {
@@ -122,22 +114,9 @@ internal class LeadScorer(
             CombinationType.STRAIGHT,
             CombinationType.FLUSH,
             CombinationType.FULL_HOUSE,
+            CombinationType.FOUR_WITH_ONE,
             CombinationType.STRAIGHT_FLUSH,
             -> OPENING_FIVE_CARD_STRUCTURE_BONUS
-            CombinationType.FOUR_OF_A_KIND_BOMB,
-            CombinationType.FOUR_WITH_ONE,
-            CombinationType.FOUR_WITH_TWO,
-            -> OPENING_BOMB_PENALTY
         }
     }
-
-    private fun computeEarlyBombPenalty(candidate: PlayCombination): Double =
-        if (
-            context.rules.isBomb(candidate.type) &&
-            context.hand.size > candidate.cardCount + EXTRA_SAFE_CARDS_AFTER_BOMB
-        ) {
-            EARLY_BOMB_PENALTY
-        } else {
-            ZERO_SCORE
-        }
 }

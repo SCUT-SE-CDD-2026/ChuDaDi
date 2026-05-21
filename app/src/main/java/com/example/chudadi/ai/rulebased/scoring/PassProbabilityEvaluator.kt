@@ -1,16 +1,12 @@
 package com.example.chudadi.ai.rulebased.scoring
 
-import com.example.chudadi.ai.rulebased.BOMB_PASS_INCREASE
-import com.example.chudadi.ai.rulebased.BOMB_VS_BOMB_PASS_INCREASE
 import com.example.chudadi.ai.rulebased.DANGER_OPPONENT_CARD_COUNT
 import com.example.chudadi.ai.rulebased.DANGER_OPPONENT_PASS_REDUCTION
-import com.example.chudadi.ai.rulebased.HIGH_BOMB_PASS_INCREASE
 import com.example.chudadi.ai.rulebased.LATE_GAME_HAND_THRESHOLD
 import com.example.chudadi.ai.rulebased.LATE_GAME_PASS_REDUCTION
 import com.example.chudadi.ai.rulebased.MAX_PASS_PROBABILITY
 import com.example.chudadi.ai.rulebased.MIN_PASS_PROBABILITY
 import com.example.chudadi.ai.rulebased.NON_SINGLE_TWO_PASS_INCREASE
-import com.example.chudadi.ai.rulebased.NORTHERN_BOMB_PASS_INCREASE
 import com.example.chudadi.ai.rulebased.PASS_PROBABILITY_HIGH_SCORE
 import com.example.chudadi.ai.rulebased.PASS_PROBABILITY_LOW_SCORE
 import com.example.chudadi.ai.rulebased.PASS_PROBABILITY_MEDIUM_SCORE
@@ -44,7 +40,6 @@ internal class PassProbabilityEvaluator(
             basePassProbabilityFromScore(bestScore) +
                 computePassEndgameAdjustment(remainingAfterBest) +
                 computePassOpponentPressureAdjustment() +
-                computePassBombAdjustment(bestCandidate) +
                 computePassControlCardAdjustment(bestCandidate)
 
         return probability.coerceIn(MIN_PASS_PROBABILITY, MAX_PASS_PROBABILITY)
@@ -71,25 +66,6 @@ internal class PassProbabilityEvaluator(
             nextOpponentCount <= PRESSURE_OPPONENT_CARD_COUNT -> -PRESSURE_OPPONENT_PASS_REDUCTION
             else -> ZERO_SCORE
         }
-    }
-
-    private fun computePassBombAdjustment(bestCandidate: PlayCombination): Double {
-        if (!context.rules.isBomb(bestCandidate.type)) {
-            return ZERO_SCORE
-        }
-
-        var adjustment = BOMB_PASS_INCREASE
-        if (context.rules.mustBeatIfPossible) {
-            adjustment += NORTHERN_BOMB_PASS_INCREASE
-        }
-        if (context.currentCombination != null && context.rules.isBomb(context.currentCombination.type)) {
-            adjustment += BOMB_VS_BOMB_PASS_INCREASE
-        }
-        if (bestCandidate.primaryRank >= CardRank.KING.strength) {
-            adjustment += HIGH_BOMB_PASS_INCREASE
-        }
-
-        return adjustment
     }
 
     private fun computePassControlCardAdjustment(bestCandidate: PlayCombination): Double {

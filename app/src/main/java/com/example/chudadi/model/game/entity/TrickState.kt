@@ -7,6 +7,20 @@ data class TrickState(
     val passCount: Int,
     val roundNumber: Int,
     val tablePlays: Map<Int, PlayCombination> = emptyMap(),
+    val baopeiSeatId: Int? = null,
     val tablePlayOrders: Map<Int, Int> = emptyMap(),
     val nextTablePlayOrder: Int = 0,
-)
+) {
+    init {
+        require(passCount >= 0) { "passCount must be non-negative" }
+        require(roundNumber >= 1) { "roundNumber must be at least 1" }
+        require(tablePlays.keys.all { it in 0..3 }) {
+            "tablePlays keys must be valid seatIds in range 0..3, got: ${tablePlays.keys}"
+        }
+        if (currentCombination == null) {
+            require(baopeiSeatId == null) {
+                "baopeiSeatId must be null when currentCombination is null (round reset)"
+            }
+        }
+    }
+}

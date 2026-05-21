@@ -1,8 +1,5 @@
 package com.example.chudadi.ai.rulebased.scoring
 
-import com.example.chudadi.ai.rulebased.BOMB_OVER_NON_BOMB_PENALTY
-import com.example.chudadi.ai.rulebased.BOMB_RESPONSE_PENALTY
-import com.example.chudadi.ai.rulebased.BOMB_RESPONSE_SAFE_HAND_SIZE
 import com.example.chudadi.ai.rulebased.LOW_SINGLE_RESPONSE_BONUS
 import com.example.chudadi.ai.rulebased.PLAY_ALL_HAND_BONUS
 import com.example.chudadi.ai.rulebased.RESPONSE_BASE_SCORE
@@ -33,19 +30,14 @@ internal class ResponseScorer(
             computeResponseEfficiencyBonus(candidate, currentCombination) -
             penaltyEvaluator.computeBreakPenalty(candidate) -
             computeResponseControlLossPenalty(candidate) -
-            penaltyEvaluator.computeOverkillPenalty(candidate, currentCombination) -
-            computeResponseBombPenalty(candidate, currentCombination)
+            penaltyEvaluator.computeOverkillPenalty(candidate, currentCombination)
     }
 
     private fun computeResponseMatchBonus(
         candidate: PlayCombination,
         currentCombination: PlayCombination,
     ): Double =
-        if (
-            !context.rules.isBomb(candidate.type) &&
-            candidate.type == currentCombination.type &&
-            candidate.cardCount == currentCombination.cardCount
-        ) {
+        if (candidate.type == currentCombination.type && candidate.cardCount == currentCombination.cardCount) {
             SAME_TYPE_RESPONSE_BONUS
         } else {
             ZERO_SCORE
@@ -58,7 +50,6 @@ internal class ResponseScorer(
         var bonus = ZERO_SCORE
 
         if (
-            !context.rules.isBomb(candidate.type) &&
             candidate.type == currentCombination.type &&
             candidate.primaryRank == currentCombination.primaryRank + SMALL_BEAT_RANK_GAP
         ) {
@@ -81,20 +72,4 @@ internal class ResponseScorer(
 
     private fun computeResponseControlLossPenalty(candidate: PlayCombination): Double =
         penaltyEvaluator.computeControlLossPenalty(candidate) * RESPONSE_CONTROL_LOSS_WEIGHT
-
-    private fun computeResponseBombPenalty(
-        candidate: PlayCombination,
-        currentCombination: PlayCombination,
-    ): Double {
-        var penalty = ZERO_SCORE
-
-        if (context.rules.isBomb(candidate.type) && !context.rules.isBomb(currentCombination.type)) {
-            penalty += BOMB_OVER_NON_BOMB_PENALTY
-        }
-        if (context.rules.isBomb(candidate.type) && context.hand.size > BOMB_RESPONSE_SAFE_HAND_SIZE) {
-            penalty += BOMB_RESPONSE_PENALTY
-        }
-
-        return penalty
-    }
 }
