@@ -46,6 +46,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -88,6 +89,7 @@ import androidx.compose.ui.graphics.toArgb
 import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.Card as GameCard
+import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
@@ -198,7 +200,41 @@ fun GameScreen(
                 if (BuildConfig.DEBUG && uiState.debugOpponentHands.isNotEmpty()) {
                     DebugAiHandsButton(uiState = uiState)
                 }
+                if (uiState.phase == MatchPhase.NOT_STARTED) {
+                    LoadingOverlay(
+                        message = stringResource(R.string.loading_ai),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun LoadingOverlay(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .background(TableOuter.copy(alpha = 0.85f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            CircularProgressIndicator(
+                color = CardGlow,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(48.dp),
+            )
+            Text(
+                text = message,
+                color = InfoTextPrimary,
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
     }
 }

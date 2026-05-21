@@ -45,7 +45,6 @@ private enum class GameViewModelType { LOCAL, ONNX }
 private data class AutoRoundState(
     val isActive: Boolean = false,
     val roundsRemaining: Int = 0,
-    val isStartPending: Boolean = false,
 )
 
 private data class PendingOnnxStart(
@@ -76,6 +75,7 @@ fun ChuDaDiNavGraph(
     var autoRoundState by remember { mutableStateOf(AutoRoundState()) }
     var pendingAiPlaySpeed by remember { mutableStateOf<AiPlaySpeed?>(null) }
     var pendingOnnxStart by remember { mutableStateOf<PendingOnnxStart?>(null) }
+    var isGameStarting by remember { mutableStateOf(false) }
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
     val roomUiState = roomViewModel.uiState.collectAsStateWithLifecycle().value
     val networkMatchUiState = roomViewModel.matchUiState.collectAsStateWithLifecycle().value
@@ -235,6 +235,7 @@ fun ChuDaDiNavGraph(
                             roundsRemaining = AiPlaySpeed.DEBUG_100_ROUNDS.autoRounds,
                         )
                         pendingAiPlaySpeed = roomUiState.aiPlaySpeed
+                        isGameStarting = true
                         pendingOnnxStart = PendingOnnxStart(
                             seatConfigs = seatConfigs,
                             localSeatId = event.localSeatId,
@@ -285,13 +286,19 @@ fun ChuDaDiNavGraph(
                 }
                 MatchPhase.NOT_STARTED -> {
                     if (requestedRoute == AppFlowRoute.RESULT || requestedRoute == AppFlowRoute.GAME) {
-                        // Only reset if not in auto-round mode
-                        if (!autoRoundState.isActive) {
+                        // Only reset if not in auto-round mode and not starting a new game
+                        if (!autoRoundState.isActive && !isGameStarting) {
                             requestedRoute = AppFlowRoute.ROOM
                         }
                     }
                 }
-                else -> { /* PLAYER_TURN, DEALING, ROUND_RESET — stay on GAME */ }
+                else -> {
+                    // When game successfully starts (phase changes from NOT_STARTED to DEALING/PLAYER_TURN),
+                    // clear the starting flag so that future NOT_STARTED transitions will navigate properly
+                    if (isGameStarting) {
+                        isGameStarting = false
+                    }
+                }
             }
         }
     }
@@ -407,6 +414,7 @@ fun ChuDaDiNavGraph(
                         aiMoveDelayMillis = startParams.aiMoveDelayMillis,
                     )
                     pendingOnnxStart = null
+                    isGameStarting = false
                 }
             }
             GameScreenRoute(
