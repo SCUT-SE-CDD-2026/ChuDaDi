@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions")
+﻿@file:Suppress("TooManyFunctions", "FunctionNaming")
 
 package com.example.chudadi.ui.room
 
@@ -579,23 +579,24 @@ private fun ControlPanel(
         if (uiState.isHost) {
             Text("房主操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
             Spacer(modifier = Modifier.height(4.dp))
-            ChuButton(
-                text = "切换: ${uiState.currentRule.label}",
-                onClick = { onAction(RoomAction.ToggleRule) },
-                style = ChuButtonStyle.SECONDARY,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(HostActionButtonHeight),
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            ChuButton(
-                text = "AI速度: ${uiState.aiPlaySpeed.label}",
-                onClick = { onAction(RoomAction.ToggleAiPlaySpeed) },
-                style = ChuButtonStyle.SECONDARY,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(HostActionButtonHeight),
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChuButton(
+                    text = "规则: ${uiState.currentRule.label}",
+                    onClick = { onAction(RoomAction.ToggleRule) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(HostActionButtonHeight),
+                )
+                ChuButton(
+                    text = "AI速度: ${uiState.aiPlaySpeed.label}",
+                    onClick = { onAction(RoomAction.ToggleAiPlaySpeed) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(HostActionButtonHeight),
+                )
+            }
 
             Spacer(modifier = Modifier.weight(1f))
 

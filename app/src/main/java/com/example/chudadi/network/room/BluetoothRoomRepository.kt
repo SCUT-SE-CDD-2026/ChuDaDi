@@ -25,7 +25,6 @@ import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
 import com.example.chudadi.network.game.GameWireMessage
 import com.example.chudadi.network.room.presentation.BluetoothErrorMessageMapper
 import com.example.chudadi.network.room.presentation.RoomUiStateMapper
-import com.example.chudadi.ui.room.AiPlaySpeed
 import com.example.chudadi.ui.room.AiSelectionStep
 import com.example.chudadi.ui.room.AIType
 import com.example.chudadi.ui.room.RoomAiDifficulty
@@ -582,7 +581,7 @@ class BluetoothRoomRepository private constructor(
     fun handleAddAiToSlot(slotIndex: Int, difficulty: RoomAiDifficulty) {
         if (roomRole !is RoomRole.Host) return
         seatCoordinator.handleAddAiToSlot(slotIndex, difficulty)
-        publishUiState(showAiDifficultyDialog = false, aiDialogTargetSlot = -1)
+        publishUiState(showRoomAiDifficultyDialog = false, aiDialogTargetSlot = -1)
     }
 
     fun handleRemoveSlotOccupant(slotIndex: Int) {
@@ -688,7 +687,7 @@ class BluetoothRoomRepository private constructor(
     fun dismissMenus() {
         _roomUiState.update {
             it.copy(
-                showAiDifficultyDialog = false,
+                showRoomAiDifficultyDialog = false,
                 aiDialogTargetSlot = -1,
                 showSlotActionMenu = false,
                 slotActionMenuTarget = -1,
@@ -698,7 +697,7 @@ class BluetoothRoomRepository private constructor(
 
     fun openAiDialog(slotIndex: Int) {
         if (roomRole !is RoomRole.Host) return
-        _roomUiState.update { it.copy(showAiDifficultyDialog = true, aiDialogTargetSlot = slotIndex) }
+        _roomUiState.update { it.copy(showRoomAiDifficultyDialog = true, aiDialogTargetSlot = slotIndex) }
     }
 
     fun openSlotActionMenu(slotIndex: Int) {
@@ -1146,7 +1145,7 @@ class BluetoothRoomRepository private constructor(
     private fun publishUiState(
         connectionHint: String? = null,
         pendingSwapRequest: SwapRequest? = _roomUiState.value.pendingSwapRequest,
-        showAiDifficultyDialog: Boolean = _roomUiState.value.showAiDifficultyDialog,
+        showRoomAiDifficultyDialog: Boolean = _roomUiState.value.showRoomAiDifficultyDialog,
         aiDialogTargetSlot: Int = _roomUiState.value.aiDialogTargetSlot,
         showSlotActionMenu: Boolean = _roomUiState.value.showSlotActionMenu,
         slotActionMenuTarget: Int = _roomUiState.value.slotActionMenuTarget,
@@ -1162,7 +1161,7 @@ class BluetoothRoomRepository private constructor(
             discoveredDevices = discoveryService.devices.value,
             connectionHint = connectionHint,
             pendingSwapRequest = pendingSwapRequest,
-            showAiDifficultyDialog = showAiDifficultyDialog,
+            showRoomAiDifficultyDialog = showRoomAiDifficultyDialog,
             aiDialogTargetSlot = aiDialogTargetSlot,
             showSlotActionMenu = showSlotActionMenu,
             slotActionMenuTarget = slotActionMenuTarget,

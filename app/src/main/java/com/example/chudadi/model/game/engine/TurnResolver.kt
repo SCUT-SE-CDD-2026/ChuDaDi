@@ -49,7 +49,6 @@ object TurnResolver {
                     leadSeatIndex = seatIndex,
                     lastWinningSeatIndex = seatIndex,
                     currentCombination = combination,
-                    passCount = 0,
                     tablePlays = match.trickState.tablePlays + (seatIndex to combination),
                     playedCardHistory = nextPlayedCardHistory,
                     passedSeatIndices = emptySet(),
@@ -78,7 +77,6 @@ object TurnResolver {
                 leadSeatIndex = seatIndex,
                 lastWinningSeatIndex = seatIndex,
                 currentCombination = combination,
-                passCount = 0,
                 tablePlays = match.trickState.tablePlays + (seatIndex to combination),
                 playedCardHistory = nextPlayedCardHistory,
                 passedSeatIndices = emptySet(),
@@ -104,9 +102,8 @@ object TurnResolver {
             }
         }
 
-        val unfinishedSeats = updatedSeats.filter { it.status != SeatStatus.FINISHED }
-        val nextPassCount = match.trickState.passCount + 1
-        val shouldResetRound = nextPassCount >= unfinishedSeats.size - 1
+        val activeInTrick = updatedSeats.count { it.status == SeatStatus.ACTIVE }
+        val shouldResetRound = activeInTrick <= 1
         // 防御性清理：PASS 玩家理论上不会出现在 tablePlays 中（只有 applyPlay 才会写入），
         // 但此处显式移除可避免异常场景下 tablePlays 中残留旧数据。
         val tablePlaysAfterPass = match.trickState.tablePlays - seatIndex
@@ -126,7 +123,6 @@ object TurnResolver {
                 trickState = match.trickState.copy(
                     leadSeatIndex = match.trickState.lastWinningSeatIndex,
                     currentCombination = null,
-                    passCount = 0,
                     roundNumber = match.trickState.roundNumber + 1,
                     tablePlays = emptyMap(),
                     passedSeatIndices = emptySet(),
@@ -145,7 +141,6 @@ object TurnResolver {
                 activeSeatIndex = nextActiveSeatIndex(updatedSeats, seatIndex)
                     ?: throw TurnResolutionException("No active seat found from $seatIndex"),
                 trickState = match.trickState.copy(
-                    passCount = nextPassCount,
                     tablePlays = tablePlaysAfterPass,
                     passedSeatIndices = match.trickState.passedSeatIndices + seatIndex,
                     tablePlayOrders = match.trickState.tablePlayOrders - seatIndex,

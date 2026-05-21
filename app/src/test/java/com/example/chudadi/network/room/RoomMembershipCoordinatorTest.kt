@@ -103,7 +103,7 @@ class RoomMembershipCoordinatorTest {
         val store = hostAuthorityStore()
         val port = FakeMembershipPort(store)
         val transport = FakeRoomTransport(
-            onAttach = {
+            onReplace = {
                 assertNoParticipant(store, "Player One")
                 assertTrue(port.hints.none { hint -> hint.contains("Player One 已加入房间") })
             },
@@ -227,7 +227,7 @@ class RoomMembershipCoordinatorTest {
         val store = hostAuthorityStore()
         val port = FakeMembershipPort(store)
         val transport = FakeRoomTransport(
-            attachAction = { throw IOException("attach failed") },
+            replaceAction = { throw IOException("attach failed") },
         )
         val output = CloseAwareOutputStream()
         val coordinator = coordinator(store, transport, port)
@@ -462,8 +462,8 @@ class RoomMembershipCoordinatorTest {
             participantId: String,
             connection: RoomSocketConnection,
         ) {
-            attachAction()
-            onAttach()
+            replaceAction()
+            onReplace()
             attachedParticipants += participantId
         }
 

@@ -50,7 +50,6 @@ class RoomViewModel(
         val aiSelectionStep: AiSelectionStep = AiSelectionStep.SELECT_TYPE,
         val selectedAiType: AIType? = null,
         val totalGamesPlayed: Int = 0,
-        val showRoomAiDifficultyDialog: Boolean = false,
     )
 
     val playerName: StateFlow<String> = playerPrefsRepository.playerName
@@ -108,7 +107,6 @@ class RoomViewModel(
             aiSelectionStep = aiState.aiSelectionStep,
             selectedAiType = aiState.selectedAiType,
             totalGamesPlayed = aiState.totalGamesPlayed,
-            showRoomAiDifficultyDialog = aiState.showRoomAiDifficultyDialog,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -137,7 +135,12 @@ class RoomViewModel(
             RoomAction.CancelPendingConnection -> cancelPendingConnection()
             RoomAction.CancelPendingConnectionIfNotJoined -> cancelPendingConnectionIfNotJoined()
             RoomAction.ToggleRule -> bluetoothRoomRepository.handleToggleRule()
-            is RoomAction.AddAiToSlot -> bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
+            is RoomAction.AddAiToSlot -> {
+                localAiState.update {
+                    it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null)
+                }
+                bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
+            }
             is RoomAction.RemoveSlotOccupant -> bluetoothRoomRepository.handleRemoveSlotOccupant(action.slotIndex)
             is RoomAction.RequestSwapWithSlot -> bluetoothRoomRepository.handleSwapRequest(action.targetSlotIndex)
             is RoomAction.ConfirmSwap -> bluetoothRoomRepository.handleSwapDecision(action.request, accepted = true)
@@ -156,8 +159,18 @@ class RoomViewModel(
                 bluetoothRoomRepository.resetRoomScores()
             }
             is RoomAction.AccumulateScores -> accumulateScores(action.scores)
-            is RoomAction.OpenAiDialog -> bluetoothRoomRepository.openAiDialog(action.slotIndex)
-            RoomAction.DismissAiDialog -> bluetoothRoomRepository.dismissMenus()
+            is RoomAction.OpenAiDialog -> {
+                localAiState.update {
+                    it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null)
+                }
+                bluetoothRoomRepository.openAiDialog(action.slotIndex)
+            }
+            RoomAction.DismissAiDialog -> {
+                localAiState.update {
+                    it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null)
+                }
+                bluetoothRoomRepository.dismissMenus()
+            }
             is RoomAction.OpenSlotActionMenu -> bluetoothRoomRepository.openSlotActionMenu(action.slotIndex)
             RoomAction.DismissSlotActionMenu -> bluetoothRoomRepository.dismissMenus()
             is RoomAction.ToggleAiPlaySpeed -> toggleAiPlaySpeed()

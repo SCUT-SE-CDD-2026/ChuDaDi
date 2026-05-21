@@ -51,7 +51,6 @@ object MatchFactory {
                 leadSeatIndex = openingSeat.seatId,
                 lastWinningSeatIndex = openingSeat.seatId,
                 currentCombination = null,
-                passCount = 0,
                 roundNumber = 1,
             ),
             playHistory = listOf("${openingSeat.displayName} leads the first round"),

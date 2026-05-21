@@ -254,7 +254,10 @@ class LocalPlayerController(
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
             activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
-        turnTimer.scheduleTurn(isAiDrivenTurn = isAiDrivenTurn)
+        turnTimer.scheduleTurn(
+            isAiDrivenTurn = isAiDrivenTurn,
+            aiDelayMillis = if (isAiDrivenTurn) aiMoveDelayMillis else 0L,
+        )
     }
 
     private fun pushUiState() {

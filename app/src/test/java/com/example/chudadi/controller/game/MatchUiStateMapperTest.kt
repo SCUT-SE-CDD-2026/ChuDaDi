@@ -173,7 +173,6 @@ class MatchUiStateMapperTest {
             leadSeatIndex = 0,
             lastWinningSeatIndex = lastWinningSeatIndex,
             currentCombination = tablePlays[lastWinningSeatIndex],
-            passCount = 0,
             roundNumber = 1,
             tablePlays = tablePlays,
             tablePlayOrders = tablePlayOrders,

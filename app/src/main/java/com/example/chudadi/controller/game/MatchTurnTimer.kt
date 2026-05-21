@@ -13,9 +13,13 @@ class MatchTurnTimer(
         state = TurnTimerState.Idle
     }
 
-    fun scheduleTurn(isAiDrivenTurn: Boolean, nowMillis: Long = System.currentTimeMillis()) {
+    fun scheduleTurn(
+        isAiDrivenTurn: Boolean,
+        nowMillis: Long = System.currentTimeMillis(),
+        aiDelayMillis: Long = random.nextLong(AI_DELAY_MIN_MS, AI_DELAY_MAX_MS + 1),
+    ) {
         val deadlineAtMillis = nowMillis + if (isAiDrivenTurn) {
-            random.nextLong(AI_DELAY_MIN_MS, AI_DELAY_MAX_MS + 1)
+            aiDelayMillis
         } else {
             HUMAN_TURN_DURATION_MS
         }

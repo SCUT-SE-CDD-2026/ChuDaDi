@@ -6,6 +6,7 @@ import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.RoundScore
 import com.example.chudadi.model.game.entity.SeatControllerType
+import com.example.chudadi.ui.room.AIType
 import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
@@ -20,6 +21,7 @@ data class ParticipantRecord(
     val avatarResId: Int?,
     val connectionStatus: MemberConnectionStatus?,
     val aiDifficulty: RoomAiDifficulty? = null,
+    val aiType: AIType? = null,
     val cumulativeScore: Int = 0,
 )
 
@@ -142,6 +144,7 @@ class RoomAuthorityStore {
                     avatarResId = participant.avatarResId,
                     connectionStatus = participant.connectionStatus,
                     aiDifficulty = participant.aiDifficulty,
+                    aiType = participant.aiType,
                     cumulativeScore = participant.cumulativeScore,
                     isLocalPlayer = participant.participantId == localParticipantId,
                 )
@@ -166,6 +169,7 @@ class RoomAuthorityStore {
                     avatarResId = slot.avatarResId,
                     connectionStatus = slot.connectionStatus?.name,
                     aiDifficulty = slot.aiDifficulty?.name,
+                    aiType = slot.aiType?.name,
                     cumulativeScore = slot.cumulativeScore,
                 )
             },
@@ -245,6 +249,7 @@ class RoomAuthorityStore {
                 avatarResId = slot.avatarResId,
                 connectionStatus = slot.connectionStatus?.let(MemberConnectionStatus::valueOf),
                 aiDifficulty = slot.aiDifficulty?.let(RoomAiDifficulty::valueOf),
+                aiType = slot.aiType?.let(AIType::valueOf),
                 cumulativeScore = slot.cumulativeScore,
             )
             slotAssignments[slot.slotIndex] = participantId

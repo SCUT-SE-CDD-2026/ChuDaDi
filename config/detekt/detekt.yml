@@ -85,6 +85,7 @@ complexity:
       - '**/ai/onnx/OnnxAIPlayerController.kt'
       - '**/controller/game/OnnxMatchViewModel.kt'
       - '**/navigation/ChuDaDiNavGraph.kt'
+      - '**/ui/room/RoomScreen.kt'
       - '**/test/**'
   ComplexCondition:
     active: true
@@ -130,6 +131,9 @@ naming:
     ignoreAnnotated:
       - Composable
       - Preview
+    excludes:
+      - '**/ui/room/RoomScreen.kt'
+      - '**/test/**'
   TopLevelPropertyNaming:
     active: false
     constantPattern: '[A-Z][_A-Z0-9]*'

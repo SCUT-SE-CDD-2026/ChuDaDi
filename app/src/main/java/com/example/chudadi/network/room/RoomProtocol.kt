@@ -23,6 +23,7 @@ data class RemoteSlotSnapshot(
     val avatarResId: Int? = null,
     val connectionStatus: String? = null,
     val aiDifficulty: String? = null,
+    val aiType: String? = null,
     val cumulativeScore: Int = 0,
 )
 

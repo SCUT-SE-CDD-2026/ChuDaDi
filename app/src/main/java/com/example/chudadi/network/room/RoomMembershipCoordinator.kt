@@ -507,6 +507,7 @@ class RoomMembershipCoordinator(
             avatarResId = pending.avatarResId,
             connectionStatus = pending.connectionStatus.name,
             aiDifficulty = currentParticipant?.aiDifficulty?.name,
+            aiType = currentParticipant?.aiType?.name,
             cumulativeScore = currentParticipant?.cumulativeScore ?: 0,
         )
         val snapshot = port.snapshotOfCurrentRoom()

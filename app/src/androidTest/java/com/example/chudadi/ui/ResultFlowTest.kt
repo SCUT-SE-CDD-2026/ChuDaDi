@@ -101,7 +101,6 @@ dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
                     leadSeatIndex = 0,
                     lastWinningSeatIndex = 0,
                     currentCombination = null,
-                    passCount = 0,
                     roundNumber = 1,
                 ),
                 playHistory = listOf("You win"),

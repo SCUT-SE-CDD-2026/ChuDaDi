@@ -82,11 +82,11 @@ enum class AiPlaySpeed(
     val delayMillis: Long,
     val autoRounds: Int = 0,
 ) {
-    DEBUG_100_ROUNDS(label = "100轮", delayMillis = 0L, autoRounds = 100),
+    SLOW(label = "慢", delayMillis = 3_000L),
+    NORMAL(label = "中", delayMillis = 1_000L),
+    FAST(label = "快", delayMillis = 500L),
     VFAST(label = "极快", delayMillis = 1L),
-    FAST(label = "快", delayMillis = 200L),
-    NORMAL(label = "中", delayMillis = 450L),
-    SLOW(label = "慢", delayMillis = 800L),
+    DEBUG_100_ROUNDS(label = "100轮", delayMillis = 0L, autoRounds = 100),
 }
 
 data class RoomUiState(
@@ -110,12 +110,11 @@ data class RoomUiState(
     val canEnableBroadcast: Boolean = false,
     val canManageAiSeats: Boolean = false,
     val pendingSwapRequest: SwapRequest? = null,
-    val showRoomAiDifficultyDialog: Boolean = false,
     val removedFromRoom: Boolean = false,
     val roomClosedByHost: Boolean = false,
     val joinErrorMessage: String? = null,
     val joinErrorTitle: String = "无法加入房间",
-    val showAiDifficultyDialog: Boolean = false,
+    val showRoomAiDifficultyDialog: Boolean = false,
     val aiDialogTargetSlot: Int = -1,
     val aiSelectionStep: AiSelectionStep = AiSelectionStep.SELECT_TYPE,
     val selectedAiType: AIType? = null,

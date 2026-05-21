@@ -4,7 +4,6 @@ data class TrickState(
     val leadSeatIndex: Int,
     val lastWinningSeatIndex: Int,
     val currentCombination: PlayCombination?,
-    val passCount: Int,
     val roundNumber: Int,
     val tablePlays: Map<Int, PlayCombination> = emptyMap(),
     val playedCardHistory: Map<Int, List<Card>> = emptyMap(),
@@ -15,7 +14,6 @@ data class TrickState(
     val nextTablePlayOrder: Int = 0,
 ) {
     init {
-        require(passCount >= 0) { "passCount must be non-negative" }
         require(roundNumber >= 1) { "roundNumber must be at least 1" }
         require(tablePlays.keys.all { it in 0..3 }) {
             "tablePlays keys must be valid seatIds in range 0..3, got: ${tablePlays.keys}"

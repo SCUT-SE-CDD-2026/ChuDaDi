@@ -43,6 +43,7 @@ class RoomSeatCoordinator(
                         avatarResId = R.drawable.avatar,
                         connectionStatus = MemberConnectionStatus.READY,
                         aiDifficulty = difficulty,
+                        aiType = difficulty.aiType,
                     )
                 ),
                 slotAssignments = it.slotAssignments + (slotIndex to aiId),

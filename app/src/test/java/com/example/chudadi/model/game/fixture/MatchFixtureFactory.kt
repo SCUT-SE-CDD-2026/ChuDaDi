@@ -32,7 +32,6 @@ object MatchFixtureFactory {
                 leadSeatIndex = activeSeatIndex,
                 lastWinningSeatIndex = activeSeatIndex,
                 currentCombination = null,
-                passCount = 0,
                 roundNumber = 1,
             ),
             playHistory = emptyList(),
