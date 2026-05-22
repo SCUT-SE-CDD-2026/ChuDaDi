@@ -24,7 +24,7 @@ import com.example.chudadi.network.protocol.PlayCardCommand
 class BluetoothAuthoritativeMatchController private constructor(
     private val engine: GameEngine,
     private val mapper: MatchUiStateMapper,
-    private val aiActionResolver: AiActionResolver,
+    private var aiActionResolver: AiActionResolver,
     @Suppress("UNUSED_PARAMETER") private val constructorMarker: Unit,
 ) {
     constructor(
@@ -54,6 +54,15 @@ class BluetoothAuthoritativeMatchController private constructor(
     private val turnTimer = MatchTurnTimer()
     private var disconnectedSeatIds: Set<Int> = emptySet()
     private var aiMoveDelayMillis: Long = MatchTurnTimer.AI_DELAY_MIN_MS
+    private var currentRuleSet: GameRuleSet = GameRuleSet.SOUTHERN
+
+    /**
+     * 替换 AI 决策解析器（支持按座位混合 RuleBased/ONNX）。
+     * 在 `synchronized(lock)` 内执行，线程安全。
+     */
+    internal fun updateAiActionResolver(resolver: AiActionResolver) = synchronized(lock) {
+        aiActionResolver = resolver
+    }
 
     fun startMatch(
         seatConfigs: List<Triple<Int, String, SeatControllerType>>,
@@ -61,6 +70,7 @@ class BluetoothAuthoritativeMatchController private constructor(
         aiMoveDelayMillis: Long = MatchTurnTimer.AI_DELAY_MIN_MS,
     ): Match = synchronized(lock) {
         this.aiMoveDelayMillis = aiMoveDelayMillis.coerceAtLeast(0L)
+        this.currentRuleSet = ruleSet
         val match = engine.startLocalMatch(ruleSet = ruleSet, seatConfigs = seatConfigs)
         currentMatch = match
         disconnectedSeatIds = emptySet()
@@ -119,7 +129,7 @@ class BluetoothAuthoritativeMatchController private constructor(
         )
     }
 
-    fun resolveCurrentAiTurn(
+    suspend fun resolveCurrentAiTurn(
         lastMessage: String?,
         expectedTurn: AuthoritativeTurnSnapshot? = null,
     ): MatchActionEnvelope {
@@ -130,7 +140,7 @@ class BluetoothAuthoritativeMatchController private constructor(
         )
     }
 
-    fun resolveCurrentSeatByAi(
+    suspend fun resolveCurrentSeatByAi(
         lastMessage: String?,
         expectedTurn: AuthoritativeTurnSnapshot? = null,
     ): MatchActionEnvelope {
@@ -267,10 +277,10 @@ class BluetoothAuthoritativeMatchController private constructor(
     }
 
     private fun isAiDrivenSeatLocked(seatId: Int, controllerType: SeatControllerType): Boolean {
-        return controllerType == SeatControllerType.RULE_BASED_AI || seatId in disconnectedSeatIds
+        return controllerType != SeatControllerType.HUMAN || seatId in disconnectedSeatIds
     }
 
-    private fun resolveCurrentSeatByAi(
+    private suspend fun resolveCurrentSeatByAi(
         lastMessage: String?,
         allowHumanSeatProxy: Boolean,
         expectedTurn: AuthoritativeTurnSnapshot?,
@@ -285,7 +295,14 @@ class BluetoothAuthoritativeMatchController private constructor(
         if (preparation is AiPreparation.Ready) return preparation.envelope
 
         val pendingAction = (preparation as AiPreparation.Pending).action
-        val action = resolveAiAction(pendingAction.match, pendingAction.seatId)
+        // 在 lock 内捕获 resolver 和 ruleSet 的快照，避免 lock 外竞态
+        val (resolver, ruleSet) = synchronized(lock) { aiActionResolver to currentRuleSet }
+        val action = resolver.resolve(
+            match = pendingAction.match,
+            seatId = pendingAction.seatId,
+            engine = engine,
+            ruleSet = ruleSet,
+        )
         return synchronized(lock) {
             if (!isCurrentTurnLocked(pendingAction.turnSnapshot)) {
                 return@synchronized MatchActionEnvelope.empty()
@@ -341,7 +358,7 @@ class BluetoothAuthoritativeMatchController private constructor(
         allowHumanSeatProxy: Boolean,
     ): AiPreparation {
         val seat = match.seats.first { it.seatId == match.activeSeatIndex }
-        val canUseAiProxy = seat.controllerType == SeatControllerType.RULE_BASED_AI || allowHumanSeatProxy
+        val canUseAiProxy = seat.controllerType != SeatControllerType.HUMAN || allowHumanSeatProxy
         return if (canUseAiProxy) {
             AiPreparation.Pending(
                 PendingAiAction(
@@ -354,10 +371,6 @@ class BluetoothAuthoritativeMatchController private constructor(
         } else {
             AiPreparation.Ready(MatchActionEnvelope(match, lastMessage, success = false, roundScores = emptyList()))
         }
-    }
-
-    private fun resolveAiAction(match: Match, seatId: Int): ActionResult {
-        return aiActionResolver.resolve(match = match, seatId = seatId, engine = engine)
     }
 
     private fun currentTurnSnapshotLocked(): AuthoritativeTurnSnapshot? {
@@ -392,20 +405,22 @@ class BluetoothAuthoritativeMatchController private constructor(
 }
 
 internal fun interface AiActionResolver {
-    fun resolve(
+    suspend fun resolve(
         match: Match,
         seatId: Int,
         engine: GameEngine,
+        ruleSet: GameRuleSet,
     ): ActionResult
 }
 
 private class RuleBasedAiActionResolver(
     private val aiPlayer: RuleBasedAiPlayer,
 ) : AiActionResolver {
-    override fun resolve(
+    override suspend fun resolve(
         match: Match,
         seatId: Int,
         engine: GameEngine,
+        @Suppress("UNUSED_PARAMETER") ruleSet: GameRuleSet,
     ): ActionResult {
         return when (val decision = aiPlayer.decideAction(match, seatId)) {
             is AIDecision.PlayCards -> PlayCardCommand(decision.cards.map { it.id }.toSet()).execute(match, seatId, engine)

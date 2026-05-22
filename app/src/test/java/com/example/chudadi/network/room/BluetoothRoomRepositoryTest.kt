@@ -612,6 +612,7 @@ class BluetoothRoomRepositoryTest {
             scope = scope,
             permissionChecker = permissionChecker,
             persistReconnectSessionAction = persistReconnectSessionAction,
+            appContext = org.mockito.Mockito.mock(android.content.Context::class.java),
         )
     }
 

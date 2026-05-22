@@ -319,7 +319,10 @@ class RoomMembershipCoordinatorTest {
             scope = CoroutineScope(SupervisorJob()),
             authorityStore = authorityStore,
             roomTransport = roomTransport,
-            matchCoordinator = NetworkMatchCoordinator(CoroutineScope(SupervisorJob())),
+            matchCoordinator = NetworkMatchCoordinator(
+                scope = CoroutineScope(SupervisorJob()),
+                context = org.mockito.Mockito.mock(android.content.Context::class.java),
+            ),
             reconnectSessionRepository = mock(ReconnectSessionRepository::class.java),
             port = port,
         )

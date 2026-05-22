@@ -22,6 +22,7 @@ import com.example.chudadi.navigation.AppFlowNavigationEvent
 import com.example.chudadi.navigation.AppFlowRoute
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
 import com.example.chudadi.network.room.BluetoothRoomRepository
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -384,7 +385,15 @@ class RoomViewModel(
             RoomMode.LOCAL -> emitLocalGameLaunch()
             RoomMode.BLUETOOTH_HOST -> {
                 val aiMoveDelayMillis = localAiState.value.aiPlaySpeed.delayMillis
-                bluetoothRoomRepository.startNetworkMatch(aiMoveDelayMillis = aiMoveDelayMillis)
+                viewModelScope.launch {
+                    try {
+                        bluetoothRoomRepository.startNetworkMatch(aiMoveDelayMillis = aiMoveDelayMillis)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                        Log.e(TAG, "Failed to start network match", e)
+                    }
+                }
             }
             RoomMode.BLUETOOTH_CLIENT -> Unit
         }
@@ -498,6 +507,8 @@ class RoomViewModel(
     }
 
     companion object {
+        private const val TAG = "RoomViewModel"
+
         fun generateAiDisplayName(difficulty: RoomAiDifficulty, aiNumber: Int): String {
             return when (difficulty.aiType) {
                 AIType.RULE_BASED -> "AIN$aiNumber"

@@ -71,8 +71,10 @@ class BluetoothRoomRepository private constructor(
         scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
         permissionChecker: BluetoothPermissionChecker? = null,
         persistReconnectSessionAction: (suspend (ReconnectSession) -> Unit)? = null,
+        appContext: Context,
     ) : this(
         BluetoothRoomRepositoryDependencies(
+            appContext = appContext,
             reconnectSessionRepository = null,
             scope = scope,
             permissionChecker = permissionChecker,
@@ -93,7 +95,7 @@ class BluetoothRoomRepository private constructor(
     private val roomUiStateMapper = RoomUiStateMapper()
     private val errorMessageMapper = BluetoothErrorMessageMapper()
     private val roomTransport = dependencies.roomTransport
-    private val matchCoordinator = NetworkMatchCoordinator(scope)
+    private val matchCoordinator = NetworkMatchCoordinator(scope, context = dependencies.appContext)
     private val membershipPort = object : RoomMembershipPort {
         override fun snapshotOfCurrentRoom(): RemoteRoomSnapshot = this@BluetoothRoomRepository.snapshotOfCurrentRoom()
 
@@ -507,7 +509,7 @@ class BluetoothRoomRepository private constructor(
         }
     }
 
-    fun startNetworkMatch(aiMoveDelayMillis: Long = 0L) {
+    suspend fun startNetworkMatch(aiMoveDelayMillis: Long = 0L) {
         if (roomRole !is RoomRole.Host || _roomUiState.value.roomMode != RoomMode.BLUETOOTH_HOST) return
         val startResult = matchCoordinator.startNetworkMatch(
             authorityStore = authorityStore,
@@ -861,6 +863,7 @@ class BluetoothRoomRepository private constructor(
     }
 
     fun clear() {
+        matchCoordinator.reset()
         shutdownCurrentRole()
         roomTransport.closeNow()
         discoveryService.clearDiscoveredDevices()
@@ -1303,6 +1306,7 @@ private class AndroidBluetoothDiscoveryServicePort(
 }
 
 private data class BluetoothRoomRepositoryDependencies(
+    val appContext: Context,
     val reconnectSessionRepository: ReconnectSessionRepository?,
     val scope: CoroutineScope,
     val permissionChecker: BluetoothPermissionChecker?,
@@ -1321,6 +1325,7 @@ private fun createRuntimeDependencies(
     val bluetoothAdapter = permissionChecker.requireBluetoothAdapter()
     val frameCodec = RoomFrameCodec()
     return BluetoothRoomRepositoryDependencies(
+        appContext = appContext,
         reconnectSessionRepository = reconnectSessionRepository,
         scope = scope,
         permissionChecker = permissionChecker,

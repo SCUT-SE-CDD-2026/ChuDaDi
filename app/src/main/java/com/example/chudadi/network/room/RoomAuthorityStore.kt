@@ -184,10 +184,12 @@ class RoomAuthorityStore {
         return (0 until SLOT_COUNT).map { slotIndex ->
             val participantId = state.slotAssignments[slotIndex]
             val participant = participantId?.let(state.participants::get)
-            val controllerType = if (participant?.occupantType == SlotOccupantType.AI) {
-                SeatControllerType.RULE_BASED_AI
-            } else {
-                SeatControllerType.HUMAN
+            val controllerType = when {
+                participant?.occupantType == SlotOccupantType.AI && participant.aiType == AIType.ONNX_RL ->
+                    SeatControllerType.ONNX_RL_AI
+                participant?.occupantType == SlotOccupantType.AI ->
+                    SeatControllerType.RULE_BASED_AI
+                else -> SeatControllerType.HUMAN
             }
             val displayName = participant?.displayName ?: "玩家${slotIndex + 1}"
             Triple(slotIndex, displayName, controllerType)

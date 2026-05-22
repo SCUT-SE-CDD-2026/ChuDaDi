@@ -2,14 +2,23 @@
 
 package com.example.chudadi.network.room
 
-import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
+import android.content.Context
+import android.util.Log
+import com.example.chudadi.ai.AIFactory
+import com.example.chudadi.ai.base.AIPlayerController
+import com.example.chudadi.ai.onnx.OnnxAIPlayerController
 import com.example.chudadi.controller.client.BluetoothRemoteMatchController
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.MatchUiStateMapper
+import com.example.chudadi.controller.server.AiActionResolver
+import com.example.chudadi.controller.server.AiPlayerControllerAdapter
 import com.example.chudadi.controller.server.BluetoothAuthoritativeMatchController
+import com.example.chudadi.controller.server.CompositeAiActionResolver
+import com.example.chudadi.controller.server.RuleBasedFallbackResolver
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.RoundScore
+import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.network.game.GameWireMessage
 import kotlinx.coroutines.CoroutineScope
@@ -17,15 +26,17 @@ import kotlinx.coroutines.flow.StateFlow
 
 class NetworkMatchCoordinator(
     scope: CoroutineScope,
+    private val context: Context,
 ) {
     private val engine = GameEngine()
     private val matchMapper = MatchUiStateMapper(engine)
-    private val aiPlayer = RuleBasedAiPlayer()
-    private val hostMatchController = BluetoothAuthoritativeMatchController(engine, matchMapper, aiPlayer)
+    private val defaultResolver = RuleBasedFallbackResolver
+    private val hostMatchController = BluetoothAuthoritativeMatchController(engine, matchMapper, defaultResolver)
     private val localMatchController = BluetoothRemoteMatchController()
     private val actionRouter = NetworkMatchActionRouter(hostMatchController, localMatchController)
     private val loopDriver = NetworkMatchLoopDriver(scope, hostMatchController)
     private var activeMatchSeatAssignments: Map<String, Int> = emptyMap()
+    private var aiControllersBySeatId: Map<Int, AIPlayerController> = emptyMap()
 
     val matchUiState: StateFlow<MatchUiState> = localMatchController.uiState
 
@@ -35,6 +46,7 @@ class NetworkMatchCoordinator(
 
     fun clearCurrentMatch() {
         hostMatchController.clearCurrentMatch()
+        releaseAiControllers()
         clearActiveMatchState()
         loopDriver.cancel()
     }
@@ -57,7 +69,7 @@ class NetworkMatchCoordinator(
         return activeMatchSeatAssignments[participantId] ?: authorityStore.slotIndexOfParticipant(participantId)
     }
 
-    fun startNetworkMatch(
+    suspend fun startNetworkMatch(
         authorityStore: RoomAuthorityStore,
         localParticipantId: String,
         sendToParticipant: (String, RoomWireMessage) -> Result<Unit>,
@@ -65,6 +77,13 @@ class NetworkMatchCoordinator(
         aiMoveDelayMillis: Long = 0L,
     ): Result<Unit> {
         activeMatchSeatAssignments = buildActiveMatchSeatAssignments(authorityStore)
+
+        // 根据 seatConfigs 增量重建 AI 控制器
+        val seatConfigs = authorityStore.buildSeatConfigs()
+        rebuildAiControllers(seatConfigs)
+        val compositeResolver = buildCompositeResolver(seatConfigs)
+        hostMatchController.updateAiActionResolver(compositeResolver)
+
         return actionRouter.startNetworkMatch(
             authorityStore = authorityStore,
             localParticipantId = localParticipantId,
@@ -180,6 +199,87 @@ class NetworkMatchCoordinator(
         )
     }
 
+    /**
+     * 增量重建 AI 控制器。复用 controllerType + difficulty 不变的座位。
+     */
+    private suspend fun rebuildAiControllers(
+        seatConfigs: List<Triple<Int, String, SeatControllerType>>,
+    ) {
+        val aiSeats = seatConfigs.filter { it.third != SeatControllerType.HUMAN }
+        val oldControllers = aiControllersBySeatId
+        val reused = mutableMapOf<Int, AIPlayerController>()
+        val toRelease = mutableListOf<AIPlayerController>()
+        val toCreate = mutableListOf<Triple<Int, String, SeatControllerType>>()
+
+        for ((seatId, _, controllerType) in aiSeats) {
+            val old = oldControllers[seatId]
+            if (old != null && isCompatibleController(old, controllerType)) {
+                reused[seatId] = old
+            } else {
+                old?.let { toRelease += it }
+                toCreate += Triple(seatId, "", controllerType)
+            }
+        }
+
+        toRelease.forEach { it.close() }
+
+        val created = toCreate.associate { (seatId, _, controllerType) ->
+            val result = AIFactory.createAIPlayerWithStatus(
+                context = context,
+                seatIndex = seatId,
+                isOnnxAI = controllerType == SeatControllerType.ONNX_RL_AI,
+            )
+            if (result.isFallback) {
+                android.util.Log.w(TAG, "AI seat $seatId fallback to rule-based: ${result.errorMessage}")
+            }
+            seatId to result.controller
+        }
+
+        if (toRelease.isNotEmpty() || toCreate.isNotEmpty()) {
+            android.util.Log.i(
+                TAG,
+                "BT AI controllers: reused=${reused.keys.sorted()}, " +
+                    "released=${toRelease.map { it.seatIndex }.sorted()}, " +
+                    "created=${created.keys.sorted()}",
+            )
+        }
+
+        aiControllersBySeatId = reused + created
+    }
+
+    private fun isCompatibleController(controller: AIPlayerController, type: SeatControllerType): Boolean {
+        val isOnnx = controller is OnnxAIPlayerController
+        val expectOnnx = type == SeatControllerType.ONNX_RL_AI
+        return isOnnx == expectOnnx
+    }
+
+    private fun buildCompositeResolver(
+        seatConfigs: List<Triple<Int, String, SeatControllerType>>,
+    ): CompositeAiActionResolver {
+        val resolvers = mutableMapOf<Int, AiActionResolver>()
+        for ((seatId, _, _) in seatConfigs) {
+            val controller = aiControllersBySeatId[seatId]
+            if (controller != null) {
+                resolvers[seatId] = AiPlayerControllerAdapter(controller)
+            }
+            // 人类座位不放入 resolver map，
+            // CompositeAiActionResolver 会自动降级到 RuleBasedFallbackResolver
+        }
+        return CompositeAiActionResolver(resolvers)
+    }
+
+    @Suppress("TooGenericExceptionCaught")
+    private fun releaseAiControllers() {
+        aiControllersBySeatId.values.forEach { controller ->
+            try {
+                controller.close()
+            } catch (e: Exception) {
+                android.util.Log.e(TAG, "Failed to close AI controller for seat ${controller.seatIndex}", e)
+            }
+        }
+        aiControllersBySeatId = emptyMap()
+    }
+
     private fun buildActiveMatchSeatAssignments(authorityStore: RoomAuthorityStore): Map<String, Int> {
         return authorityStore.state.slotAssignments.entries
             .mapNotNull { (slotIndex, participantId) -> participantId?.let { it to slotIndex } }
@@ -188,5 +288,9 @@ class NetworkMatchCoordinator(
 
     private fun clearActiveMatchState() {
         activeMatchSeatAssignments = emptyMap()
+    }
+
+    companion object {
+        private const val TAG = "NetworkMatchCoordinator"
     }
 }
