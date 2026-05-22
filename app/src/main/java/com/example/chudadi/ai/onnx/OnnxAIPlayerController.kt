@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
+import com.example.chudadi.ai.base.FallbackDiagnosticLogger
 import com.example.chudadi.ai.base.ValidCombinationResolver
 import com.example.chudadi.ai.base.variant.OnnxModelVariant
 import com.example.chudadi.model.game.entity.Card
@@ -121,6 +122,13 @@ class OnnxAIPlayerController(
             decision
         }
         else -> {
+            FallbackDiagnosticLogger.logInvalidDecision(
+                seatIndex = seatIndex,
+                decision = decision,
+                validActions = validActions,
+                match = match,
+                ruleSet = ruleSet,
+            )
             Log.w(TAG, "[AI-$seatIndex] ONNX decision invalid")
             AIDecision.Error("ONNX decision invalid")
         }

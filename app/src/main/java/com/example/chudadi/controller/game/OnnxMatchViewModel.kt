@@ -8,6 +8,7 @@ import com.example.chudadi.ai.AIFactory
 import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
+import com.example.chudadi.ai.base.FallbackDiagnosticLogger
 import com.example.chudadi.ai.onnx.OnnxTimeoutException
 import com.example.chudadi.ai.onnx.OnnxInferenceException
 import com.example.chudadi.ai.rulebased.RuleBasedAIAdapter
@@ -344,9 +345,18 @@ class OnnxMatchViewModel(
                         }
                         break
                     } else {
-                        android.util.Log.w(
-                            "OnnxMatchViewModel",
-                            "Seat $activeSeat action failed, retrying with rule-based fallback. error=${result.error}",
+                        val fallbackValidActions = aiPlayer?.getValidActions(
+                            latestMatch.seats.getOrNull(activeSeat)?.hand ?: emptyList(),
+                            latestMatch,
+                            currentRuleSet,
+                        ) ?: emptyList()
+                        FallbackDiagnosticLogger.log(
+                            seatIndex = activeSeat,
+                            decision = decision,
+                            validActions = fallbackValidActions,
+                            result = result,
+                            match = latestMatch,
+                            ruleSet = currentRuleSet,
                         )
                         aiErrorMessage = aiErrorMessage
                             ?: "Seat $activeSeat AI action invalid, fallback to rule-based AI"
