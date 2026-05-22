@@ -2,9 +2,12 @@
 
 import android.content.Context
 import android.util.Log
+import com.example.chudadi.ai.base.AIConfig
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
+import com.example.chudadi.ai.base.variant.OnnxModelVariant
 import com.example.chudadi.ai.onnx.OnnxAIPlayerController
+import com.example.chudadi.ai.onnx.variant.V1DqnVariant
 import com.example.chudadi.ai.rulebased.RuleBasedAIAdapter
 import com.example.chudadi.utils.AssetCopier
 import kotlinx.coroutines.Dispatchers
@@ -34,7 +37,8 @@ data class AICreationResult(
  */
 object AIFactory {
     private const val TAG = "AIFactory"
-    private const val MODEL_NAME = "test.onnx"
+
+    private val MODEL_NAME: String get() = AIConfig.getDefaultVariant().modelFileName
 
     /**
      * 创建AI玩家控制器（兼容旧接口，不暴露降级状态）
@@ -77,10 +81,29 @@ object AIFactory {
         difficulty: AIDifficulty = AIDifficulty.NORMAL,
         isOnnxAI: Boolean = true,
     ): AICreationResult {
-        Log.i(TAG, "Creating AI player for seat $seatIndex, difficulty=$difficulty, isOnnxAI=$isOnnxAI")
+        val variant = if (isOnnxAI) AIConfig.getDefaultVariant() else null
+        return createAIPlayerWithStatus(context, seatIndex, difficulty, variant)
+    }
 
-        return if (isOnnxAI) {
-            createOnnxAIPlayerWithStatus(context, seatIndex, difficulty)
+    /**
+     * 创建AI玩家控制器（带变体和降级状态）。
+     *
+     * @param context 应用上下文
+     * @param seatIndex AI玩家座位索引
+     * @param difficulty AI难度级别
+     * @param variant ONNX 模型变体；null 表示使用规则型 AI
+     * @return AICreationResult 包含控制器和降级状态
+     */
+    suspend fun createAIPlayerWithStatus(
+        context: Context,
+        seatIndex: Int,
+        difficulty: AIDifficulty = AIDifficulty.NORMAL,
+        variant: OnnxModelVariant? = null,
+    ): AICreationResult {
+        Log.i(TAG, "Creating AI player for seat $seatIndex, difficulty=$difficulty, variant=${variant?.name}")
+
+        return if (variant != null) {
+            createOnnxAIPlayerWithStatus(context, seatIndex, difficulty, variant)
         } else {
             AICreationResult(
                 controller = createRuleBasedAIPlayer(seatIndex, difficulty),
@@ -98,17 +121,19 @@ object AIFactory {
         context: Context,
         seatIndex: Int,
         difficulty: AIDifficulty,
+        variant: OnnxModelVariant,
     ): AICreationResult = withContext(Dispatchers.IO) {
-        Log.i(TAG, "Creating ONNX AI player for seat $seatIndex")
+        Log.i(TAG, "Creating ONNX AI player for seat $seatIndex with variant=${variant.name}")
 
         // 尝试复制模型文件到私有目录（如果存在）
-        val wasModelAvailable = AssetCopier.isModelAvailable(context, MODEL_NAME)
+        val modelName = variant.modelFileName
+        val wasModelAvailable = AssetCopier.isModelAvailable(context, modelName)
         Log.d(TAG, "Model available in private dir before sync: $wasModelAvailable")
         val copySuccess = AssetCopier.copyModelsToPrivateDir(context)
         Log.i(TAG, "Model sync result: $copySuccess")
 
         // 获取模型路径
-        val modelPath = AssetCopier.getModelPath(context, MODEL_NAME)
+        val modelPath = AssetCopier.getModelPath(context, modelName)
         Log.i(TAG, "Model path: $modelPath")
 
         // 检查模型文件是否真的存在
@@ -130,6 +155,7 @@ object AIFactory {
             seatIndex = seatIndex,
             difficulty = difficulty,
             modelPath = modelPath ?: "",
+            variant = variant,
         )
 
         // 检查ONNX AI是否成功加载（OnnxAIPlayerController内部也有降级逻辑）
@@ -227,10 +253,12 @@ object AIFactory {
      * 预加载模型文件
      *
      * 在应用启动时调用，确保模型文件已复制到私有目录。
+     * 同时注册默认的模型变体。
      *
      * @param context 应用上下文
      */
     fun preloadModels(context: Context) {
+        registerDefaultVariant()
         AssetCopier.copyModelsToPrivateDir(context)
     }
 
@@ -242,5 +270,14 @@ object AIFactory {
      */
     fun isModelAvailable(context: Context): Boolean {
         return AssetCopier.isModelAvailable(context, MODEL_NAME)
+    }
+
+    /**
+     * 注册默认 V1 DQN 变体（幂等）。
+     */
+    private fun registerDefaultVariant() {
+        if (AIConfig.getVariant(V1DqnVariant.name) == null) {
+            AIConfig.register(V1DqnVariant)
+        }
     }
 }

@@ -8,8 +8,7 @@ sealed interface RoomGameLaunchEvent {
         val seatConfigs: List<SeatConfig>,
         val localSeatId: Int,
         val ruleSet: GameRuleSet,
-        val aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS,
+        val aiMoveDelayMillis: Long = 0L,
+        val aiPlaySpeed: AiPlaySpeed = AiPlaySpeed.NORMAL,
     ) : RoomGameLaunchEvent
 }
-
-private const val DEFAULT_AI_MOVE_DELAY_MILLIS = 450L

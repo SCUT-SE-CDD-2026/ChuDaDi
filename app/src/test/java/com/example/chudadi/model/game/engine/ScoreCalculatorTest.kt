@@ -12,6 +12,8 @@ import com.example.chudadi.model.game.fixture.MatchFixtureFactory
 import com.example.chudadi.model.game.rule.CombinationType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @Suppress("MagicNumber")
@@ -165,6 +167,9 @@ class ScoreCalculatorTest {
         assertEquals(0, scoreOf(scores, 1))
         assertEquals(-3, scoreOf(scores, 2))
         assertEquals(0, scoreOf(scores, 3))
+        assertFalse(scores.first { it.seatId == 2 }.isBaopei == false)
+        assertTrue(scores.first { it.seatId == 2 }.isBaopei)
+        assertFalse(scores.first { it.seatId == 1 }.isBaopei)
     }
 
     @Test(expected = IllegalArgumentException::class)

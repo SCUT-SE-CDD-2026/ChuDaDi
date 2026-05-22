@@ -73,7 +73,6 @@ fun ChuDaDiNavGraph(
     var requestedRoute by rememberSaveable { mutableStateOf(AppFlowRoute.HOME) }
     var gameViewModelType by remember { mutableStateOf(GameViewModelType.LOCAL) }
     var autoRoundState by remember { mutableStateOf(AutoRoundState()) }
-    var pendingAiPlaySpeed by remember { mutableStateOf<AiPlaySpeed?>(null) }
     var pendingOnnxStart by remember { mutableStateOf<PendingOnnxStart?>(null) }
     var isGameStarting by remember { mutableStateOf(false) }
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
@@ -231,10 +230,9 @@ fun ChuDaDiNavGraph(
                         autoRoundState = AutoRoundState(
                             isActive = seatConfigs.all {
                                 it.controllerType != SeatControllerType.HUMAN
-                            } && roomUiState.aiPlaySpeed == AiPlaySpeed.DEBUG_100_ROUNDS,
+                            } && event.aiPlaySpeed == AiPlaySpeed.DEBUG_100_ROUNDS,
                             roundsRemaining = AiPlaySpeed.DEBUG_100_ROUNDS.autoRounds,
                         )
-                        pendingAiPlaySpeed = roomUiState.aiPlaySpeed
                         isGameStarting = true
                         pendingOnnxStart = PendingOnnxStart(
                             seatConfigs = seatConfigs,
@@ -384,6 +382,9 @@ fun ChuDaDiNavGraph(
                         }
 
                         is RoomAction.ExitRoom -> {
+                            if (gameViewModelType == GameViewModelType.ONNX) {
+                                onnxViewModel.onExitToHome()
+                            }
                             roomViewModel.dispatch(action)
                             requestedRoute = AppFlowRoute.HOME
                         }
@@ -392,6 +393,9 @@ fun ChuDaDiNavGraph(
                     }
                 },
                 onNavigateBack = {
+                    if (gameViewModelType == GameViewModelType.ONNX) {
+                        onnxViewModel.onExitToHome()
+                    }
                     roomViewModel.dispatch(RoomAction.ResetRoom)
                     requestedRoute = AppFlowRoute.HOME
                 },
@@ -445,7 +449,12 @@ fun ChuDaDiNavGraph(
                         delay(AUTO_ROUND_DELAY_MS)
                         val remaining = autoRoundState.roundsRemaining - 1
                         autoRoundState = autoRoundState.copy(roundsRemaining = remaining)
+                        android.util.Log.d(
+                            "AutoRound",
+                            "Round finished, remaining=$remaining, restarting...",
+                        )
                         if (remaining > 0) {
+                            isGameStarting = true
                             onnxViewModel.onRequestRestartMatch()
                             requestedRoute = AppFlowRoute.GAME
                         } else {
@@ -467,7 +476,7 @@ fun ChuDaDiNavGraph(
                     if (appFlowState.useNetworkMatch) {
                         roomViewModel.dispatchGameAction(LocalGameAction.ExitToHome)
                     } else if (gameViewModelType == GameViewModelType.ONNX) {
-                        onnxViewModel.onExitToHome()
+                        onnxViewModel.onReturnToRoom()
                     } else {
                         viewModel.dispatch(LocalGameAction.ExitToHome)
                     }

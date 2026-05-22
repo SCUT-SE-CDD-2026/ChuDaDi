@@ -1,5 +1,6 @@
 ﻿package com.example.chudadi.ai.onnx
 
+import com.example.chudadi.ai.base.variant.ObservationEncoder
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardSuit
 import com.example.chudadi.model.game.entity.Match
@@ -23,7 +24,9 @@ import com.example.chudadi.model.game.rule.GameRuleSet
  * - 332：is_next_warning（下家是否只剩 1 张，1）
  * - 333：is_northern_rule（是否北方规则，1）
  */
-class GameStateEncoder {
+class GameStateEncoder : ObservationEncoder {
+
+    override val inputDim: Int = INPUT_DIM
 
     companion object {
         const val INPUT_DIM = 334
@@ -58,6 +61,14 @@ class GameStateEncoder {
             return tensor
         }
     }
+
+    /**
+     * 编码单个座位视角的观测向量（334 维）。
+     *
+     * [ObservationEncoder] 接口实现，委托给 [encode]。
+     */
+    override fun encode(match: Match, seatIndex: Int, ruleSet: GameRuleSet): FloatArray =
+        encode(match, seatIndex)
 
     /**
      * 编码单个座位视角的观测向量（334 维）。
@@ -264,8 +275,6 @@ class GameStateEncoder {
         val nextPlayer = match.seats.getOrNull(nextSeat)
         return nextPlayer?.hand?.size == 1
     }
-
-    fun getInputDim(): Int = INPUT_DIM
 
     private data class LastActionInfo(
         val cards: List<Card>,

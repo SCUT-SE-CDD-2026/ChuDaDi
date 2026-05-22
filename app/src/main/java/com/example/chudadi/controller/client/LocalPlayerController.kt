@@ -2,7 +2,7 @@
 
 package com.example.chudadi.controller.client
 
-import com.example.chudadi.ai.rulebased.AiDecision
+import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.controller.game.MatchTurnTimer
 import com.example.chudadi.controller.game.MatchUiStateMapper
@@ -43,14 +43,14 @@ class LocalPlayerController(
     private var lastSeatConfigs: List<SeatConfig>? = null
     private var lastLocalSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
     private var lastRuleSet: GameRuleSet = GameRuleSet.SOUTHERN
-    private var lastAiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
-    private var aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
+    private var lastAiMoveDelayMillis: Long = 0L
+    private var aiMoveDelayMillis: Long = 0L
 
     fun onRequestStartLocalMatch(
         seatConfigs: List<SeatConfig>? = null,
         localSeatId: Int = 0,
         ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
-        aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS,
+        aiMoveDelayMillis: Long = 0L,
     ) {
         turnLoopJob?.cancel()
 
@@ -231,12 +231,17 @@ class LocalPlayerController(
         seatId: Int,
         lastMessage: String?,
     ) = when (val decision = aiPlayer.decideAction(match, seatId)) {
-        is AiDecision.Play -> serverController.handleCommand(
+        is AIDecision.PlayCards -> serverController.handleCommand(
             match = match,
             seatIndex = seatId,
-            command = PlayCardCommand(decision.cardIds),
+            command = PlayCardCommand(decision.cards.map { it.id }.toSet()),
         )
-        AiDecision.Pass -> serverController.handleCommand(
+        AIDecision.Pass -> serverController.handleCommand(
+            match = match,
+            seatIndex = seatId,
+            command = PassCommand,
+        )
+        is AIDecision.Error -> serverController.handleCommand(
             match = match,
             seatIndex = seatId,
             command = PassCommand,
@@ -254,8 +259,10 @@ class LocalPlayerController(
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
             activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
+        val isLeadingTurn = match.trickState.currentCombination == null
         turnTimer.scheduleTurn(
             isAiDrivenTurn = isAiDrivenTurn,
+            isLeadingTurn = isLeadingTurn,
             aiDelayMillis = if (isAiDrivenTurn) aiMoveDelayMillis else 0L,
         )
     }
@@ -271,6 +278,5 @@ class LocalPlayerController(
 
     companion object {
         private const val TURN_LOOP_INTERVAL_MS = 250L
-        private const val DEFAULT_AI_MOVE_DELAY_MILLIS = 450L
     }
 }

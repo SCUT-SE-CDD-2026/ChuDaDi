@@ -11,6 +11,7 @@
 package com.example.chudadi.network.room
 
 import android.content.Context
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.data.repository.ReconnectSession
 import com.example.chudadi.data.repository.ReconnectSessionRepository
@@ -587,7 +588,8 @@ class BluetoothRoomRepository private constructor(
 
     fun handleRemoveSlotOccupant(slotIndex: Int) {
         val participantId = authorityStore.occupantAt(slotIndex)
-        if (roomRole !is RoomRole.Host || participantId == null || participantId == HOST_PARTICIPANT_ID) return
+        if (roomRole !is RoomRole.Host || participantId == null) return
+        if (participantId == HOST_PARTICIPANT_ID && !BuildConfig.DEBUG) return
         val participant = authorityStore.state.participants[participantId]
         val notifyFailure = participant?.let {
             tryNotifyRemovedFromRoomIfNeeded(participantId = participantId, participant = it)

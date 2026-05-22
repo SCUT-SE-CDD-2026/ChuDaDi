@@ -10,7 +10,7 @@ import com.example.chudadi.model.game.rule.GameRuleSet
  * 定义AI玩家的标准接口，使AI对于游戏引擎而言与真人玩家无区别。
  * 采用适配器模式，不同的AI实现（ONNX、规则基础等）都实现此接口。
  */
-interface AIPlayerController {
+interface AIPlayerController : AutoCloseable {
     /**
      * AI玩家所在的座位索引
      */
@@ -51,4 +51,10 @@ interface AIPlayerController {
         match: Match,
         ruleSet: GameRuleSet,
     ): List<List<Card>>
+
+    /**
+     * 释放 AI 控制器持有的资源（如 ONNX session）。
+     * 默认空实现，ONNX AI 覆写为释放 native session。
+     */
+    override fun close() {}
 }

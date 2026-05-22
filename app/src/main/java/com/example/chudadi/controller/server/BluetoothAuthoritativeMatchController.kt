@@ -2,7 +2,7 @@
 
 package com.example.chudadi.controller.server
 
-import com.example.chudadi.ai.rulebased.AiDecision
+import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.controller.client.GameActionMessageFormatter
 import com.example.chudadi.controller.game.MatchTurnTimer
@@ -258,8 +258,10 @@ class BluetoothAuthoritativeMatchController private constructor(
         }
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = !forceHumanWindow && isAiDrivenSeatLocked(activeSeat.seatId, activeSeat.controllerType)
+        val isLeadingTurn = match.trickState.currentCombination == null
         turnTimer.scheduleTurn(
             isAiDrivenTurn = isAiDrivenTurn,
+            isLeadingTurn = isLeadingTurn,
             aiDelayMillis = if (isAiDrivenTurn) aiMoveDelayMillis else 0L,
         )
     }
@@ -406,8 +408,9 @@ private class RuleBasedAiActionResolver(
         engine: GameEngine,
     ): ActionResult {
         return when (val decision = aiPlayer.decideAction(match, seatId)) {
-            is AiDecision.Play -> PlayCardCommand(decision.cardIds).execute(match, seatId, engine)
-            AiDecision.Pass -> PassCommand.execute(match, seatId, engine)
+            is AIDecision.PlayCards -> PlayCardCommand(decision.cards.map { it.id }.toSet()).execute(match, seatId, engine)
+            AIDecision.Pass -> PassCommand.execute(match, seatId, engine)
+            is AIDecision.Error -> PassCommand.execute(match, seatId, engine)
         }
     }
 }

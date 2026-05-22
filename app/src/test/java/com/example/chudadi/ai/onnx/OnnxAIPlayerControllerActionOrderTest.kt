@@ -1,6 +1,7 @@
 package com.example.chudadi.ai.onnx
 
 import com.example.chudadi.ai.base.AIDifficulty
+import com.example.chudadi.ai.onnx.pipeline.DqnBatchPipeline
 import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.fixture.MatchFixtureFactory
 import com.example.chudadi.model.game.rule.CombinationType
@@ -13,11 +14,7 @@ class OnnxAIPlayerControllerActionOrderTest {
 
     @Test
     fun buildActionCandidates_preservesActionOrderAndAppendsPassForSouthern() {
-        val controller = OnnxAIPlayerController(
-            seatIndex = 0,
-            difficulty = AIDifficulty.NORMAL,
-            modelPath = "",
-        )
+        val pipeline = DqnBatchPipeline()
         val baseMatch = MatchFixtureFactory.localMatch(ruleSet = GameRuleSet.SOUTHERN)
         val lastActionCard = MatchFixtureFactory.card(
             rank = com.example.chudadi.model.game.entity.CardRank.SEVEN,
@@ -38,10 +35,11 @@ class OnnxAIPlayerControllerActionOrderTest {
         val actionB = listOf(hand[1])
         val validActions = listOf(actionA, actionB, actionA) // duplicate A should be de-duplicated by first occurrence
 
-        val candidates = controller.buildActionCandidates(
+        val candidates = pipeline.buildActionCandidates(
             handCards = hand,
             validActions = validActions,
             match = match,
+            seatIndex = 0,
             ruleSet = GameRuleSet.SOUTHERN,
         )
 
@@ -53,4 +51,3 @@ class OnnxAIPlayerControllerActionOrderTest {
         assertTrue(candidates.all { it.feature.size == ActionFeatureEncoder.ACTION_FEATURE_DIM })
     }
 }
-

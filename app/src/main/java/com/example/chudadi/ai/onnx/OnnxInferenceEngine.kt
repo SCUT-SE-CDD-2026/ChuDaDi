@@ -12,32 +12,24 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import com.example.chudadi.ai.base.variant.ModelIoContract
+import com.example.chudadi.ai.onnx.variant.V1DqnVariant
 import java.io.File
 import java.nio.FloatBuffer
-
-data class OnnxModelIoContract(
-    val obsInputName: String,
-    val actionsInputName: String,
-    val outputName: String,
-    val obsDim: Int,
-    val actionDim: Int,
-    val outputDim: Int,
-)
 
 /**
  * ONNX 推理引擎。
  *
  * 负责模型加载与推理执行，提供线程安全调用、超时控制与统一异常封装。
  */
-class OnnxInferenceEngine(modelPath: String) {
+class OnnxInferenceEngine(
+    modelPath: String,
+    contract: ModelIoContract = V1DqnVariant.ioContract,
+) {
 
     companion object {
         private const val TAG = "OnnxInferenceEngine"
         private const val INFERENCE_TIMEOUT_MS = 5000L
-        private const val EXPECTED_OBS_INPUT_DIM = GameStateEncoder.INPUT_DIM
-        private const val EXPECTED_ACTION_INPUT_DIM = ActionFeatureEncoder.ACTION_FEATURE_DIM
-        // Note: must stay in sync with RLCard ChuDaDi contract (334 / 139)
-        private const val EXPECTED_OUTPUT_DIM = 1
 
         // OrtEnvironment is process-wide singleton; do not close it per engine instance.
         private val sharedEnvironment: OrtEnvironment by lazy { OrtEnvironment.getEnvironment() }
@@ -50,14 +42,7 @@ class OnnxInferenceEngine(modelPath: String) {
     @Volatile
     private var isInitialized = false
 
-    var ioContract: OnnxModelIoContract = OnnxModelIoContract(
-        obsInputName = "obs",
-        actionsInputName = "actions",
-        outputName = "Q",
-        obsDim = EXPECTED_OBS_INPUT_DIM,
-        actionDim = EXPECTED_ACTION_INPUT_DIM,
-        outputDim = EXPECTED_OUTPUT_DIM,
-    )
+    var ioContract: ModelIoContract = contract
         private set
 
     init {
@@ -91,10 +76,11 @@ class OnnxInferenceEngine(modelPath: String) {
                 ?: throw IllegalStateException(
                     "Model input names $modelInputNames do not contain required 'obs' input",
                 )
-            val actionsInputName = modelInputNames.find { it.contains("action", ignoreCase = true) }
-                ?: throw IllegalStateException(
-                    "Model input names $modelInputNames do not contain required 'actions' input",
-                )
+            val actionsInputName = if (contract.actionsInputName != null) {
+                modelInputNames.find { it.contains("action", ignoreCase = true) }
+            } else {
+                null
+            }
             val outputName = modelOutputNames.first()
 
             val obsNodeInfo = session?.inputInfo?.get(obsInputName)
@@ -109,30 +95,46 @@ class OnnxInferenceEngine(modelPath: String) {
                 )
             }
             val detectedObsDim = obsShape[1].toInt()
-            if (detectedObsDim != EXPECTED_OBS_INPUT_DIM) {
+            if (detectedObsDim != contract.obsDim) {
                 throw IllegalStateException(
-                    "Obs input dim mismatch: expected=$EXPECTED_OBS_INPUT_DIM, " +
+                    "Obs input dim mismatch: expected=${contract.obsDim}, " +
                         "detected=$detectedObsDim, shape=${obsShape.contentToString()}",
                 )
             }
 
-            val actionsNodeInfo = session?.inputInfo?.get(actionsInputName)
-                ?: throw IllegalStateException("Missing node info for actions input '$actionsInputName'")
-            val actionsTensorInfo = actionsNodeInfo.info as? ai.onnxruntime.TensorInfo
-                ?: throw IllegalStateException("Actions input '$actionsInputName' is not a tensor")
-            val actionsShape = actionsTensorInfo.shape
-                ?: throw IllegalStateException("Actions input '$actionsInputName' shape is null")
-            if (actionsShape.size < 2 || actionsShape[1] <= 0) {
-                throw IllegalStateException(
-                    "Invalid actions input shape for '$actionsInputName': ${actionsShape.contentToString()}",
-                )
-            }
-            val detectedActionsDim = actionsShape[1].toInt()
-            if (detectedActionsDim != EXPECTED_ACTION_INPUT_DIM) {
-                throw IllegalStateException(
-                    "Actions input dim mismatch: expected=$EXPECTED_ACTION_INPUT_DIM, " +
-                        "detected=$detectedActionsDim, shape=${actionsShape.contentToString()}",
-                )
+            val detectedActionsDim = if (actionsInputName != null) {
+                val actionsNodeInfo = session?.inputInfo?.get(actionsInputName)
+                    ?: throw IllegalStateException(
+                        "Missing node info for actions input '$actionsInputName'",
+                    )
+                val actionsTensorInfo = actionsNodeInfo.info as? ai.onnxruntime.TensorInfo
+                    ?: throw IllegalStateException(
+                        "Actions input '$actionsInputName' is not a tensor",
+                    )
+                val actionsShape = actionsTensorInfo.shape
+                    ?: throw IllegalStateException(
+                        "Actions input '$actionsInputName' shape is null",
+                    )
+                if (actionsShape.size < 2 || actionsShape[1] <= 0) {
+                    throw IllegalStateException(
+                        "Invalid actions input shape for '$actionsInputName': " +
+                            actionsShape.contentToString(),
+                    )
+                }
+                val dim = actionsShape[1].toInt()
+                val expected = contract.actionDim
+                    ?: throw IllegalStateException(
+                        "Model has actions input '$actionsInputName' but contract.actionDim is null",
+                    )
+                if (dim != expected) {
+                    throw IllegalStateException(
+                        "Actions input dim mismatch: expected=$expected, " +
+                            "detected=$dim, shape=${actionsShape.contentToString()}",
+                    )
+                }
+                dim
+            } else {
+                null
             }
 
             val outputNodeInfo = session?.outputInfo?.get(outputName)
@@ -144,19 +146,19 @@ class OnnxInferenceEngine(modelPath: String) {
             val detectedOutputDim = when {
                 outputShape.size >= 2 && outputShape[1] > 0 -> outputShape[1].toInt()
                 outputShape.size == 1 && outputShape[0] > 0 -> outputShape[0].toInt()
-                outputShape.size == 1 -> EXPECTED_OUTPUT_DIM
+                outputShape.size == 1 -> contract.outputDim
                 else -> throw IllegalStateException(
                     "Invalid output shape for '$outputName': ${outputShape.contentToString()}",
                 )
             }
-            if (detectedOutputDim != EXPECTED_OUTPUT_DIM) {
+            if (detectedOutputDim != contract.outputDim) {
                 throw IllegalStateException(
-                    "Output dim mismatch: expected=$EXPECTED_OUTPUT_DIM, " +
+                    "Output dim mismatch: expected=${contract.outputDim}, " +
                         "detected=$detectedOutputDim, shape=${outputShape.contentToString()}",
                 )
             }
 
-            ioContract = OnnxModelIoContract(
+            ioContract = ModelIoContract(
                 obsInputName = obsInputName,
                 actionsInputName = actionsInputName,
                 outputName = outputName,
@@ -242,11 +244,13 @@ class OnnxInferenceEngine(modelPath: String) {
             )
             inputs[obsInputName] = obsInputTensor
 
-            val (actionsInputName, actionsInputTensor) = createActionsInput(
+            val actionsInput = createActionsInput(
                 actionsTensor = actionsTensor,
                 normalizedBatchSize = normalizedBatchSize,
             )
-            inputs[actionsInputName] = actionsInputTensor
+            if (actionsInput != null) {
+                inputs[actionsInput.first] = actionsInput.second
+            }
 
             return runSession(inputs)
         } finally {
@@ -269,9 +273,11 @@ class OnnxInferenceEngine(modelPath: String) {
     private fun createActionsInput(
         actionsTensor: FloatArray?,
         normalizedBatchSize: Int,
-    ): Pair<String, OnnxTensor> {
-        val actionsInputName = ioContract.actionsInputName
-        val expectedActionSize = normalizedBatchSize * ioContract.actionDim
+    ): Pair<String, OnnxTensor>? {
+        val actionsInputName = ioContract.actionsInputName ?: return null
+        val actionDim = ioContract.actionDim
+            ?: return null
+        val expectedActionSize = normalizedBatchSize * actionDim
         val actionsData = actionsTensor ?: FloatArray(expectedActionSize)
         val normalizedActionsData = when {
             actionsData.size < expectedActionSize ->
@@ -280,7 +286,7 @@ class OnnxInferenceEngine(modelPath: String) {
             actionsData.size > expectedActionSize -> actionsData.copyOf(expectedActionSize)
             else -> actionsData
         }
-        val actionsShape = longArrayOf(normalizedBatchSize.toLong(), ioContract.actionDim.toLong())
+        val actionsShape = longArrayOf(normalizedBatchSize.toLong(), actionDim.toLong())
         val actionsBuffer = FloatBuffer.wrap(normalizedActionsData)
         val actionsOnnxTensor = OnnxTensor.createTensor(environment, actionsBuffer, actionsShape)
         return actionsInputName to actionsOnnxTensor

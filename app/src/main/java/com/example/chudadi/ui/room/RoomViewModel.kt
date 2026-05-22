@@ -9,6 +9,7 @@ import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.controller.game.LocalGameAction
+import com.example.chudadi.controller.game.MatchUiStateMapper
 import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.data.repository.ReconnectSessionRepository
@@ -123,7 +124,7 @@ class RoomViewModel(
         observeMatchFinishedEvents()
     }
 
-    @Suppress("CyclomaticComplexMethod")
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     fun dispatch(action: RoomAction) {
         when (action) {
             RoomAction.StartBluetoothDiscovery -> {
@@ -141,8 +142,31 @@ class RoomViewModel(
                 }
                 bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
             }
-            is RoomAction.RemoveSlotOccupant -> bluetoothRoomRepository.handleRemoveSlotOccupant(action.slotIndex)
-            is RoomAction.RequestSwapWithSlot -> bluetoothRoomRepository.handleSwapRequest(action.targetSlotIndex)
+            is RoomAction.RemoveSlotOccupant -> {
+                scoreAdjustments.update { it - action.slotIndex }
+                bluetoothRoomRepository.handleRemoveSlotOccupant(action.slotIndex)
+            }
+            is RoomAction.RequestSwapWithSlot -> {
+                val localSlot = uiState.value.slots.firstOrNull { it.isLocalPlayer }
+                if (uiState.value.roomMode == RoomMode.LOCAL &&
+                    localSlot != null &&
+                    localSlot.seatId != action.targetSlotIndex
+                ) {
+                    val fromKey = localSlot.seatId
+                    val toKey = action.targetSlotIndex
+                    scoreAdjustments.update { map ->
+                        val fromScore = map[fromKey]
+                        val toScore = map[toKey]
+                        val updated = map.toMutableMap()
+                        updated.remove(fromKey)
+                        updated.remove(toKey)
+                        if (toScore != null) updated[fromKey] = toScore
+                        if (fromScore != null) updated[toKey] = fromScore
+                        updated
+                    }
+                }
+                bluetoothRoomRepository.handleSwapRequest(action.targetSlotIndex)
+            }
             is RoomAction.ConfirmSwap -> bluetoothRoomRepository.handleSwapDecision(action.request, accepted = true)
             RoomAction.DeclineSwap -> {
                 uiState.value.pendingSwapRequest?.let {
@@ -399,18 +423,20 @@ class RoomViewModel(
                 aiDifficulty = aiDifficulty,
             )
         }
-        val localSeatId = slots.firstOrNull { it.isLocalPlayer }?.seatId ?: 0
+        val localSeatId = slots.firstOrNull { it.isLocalPlayer }?.seatId
+            ?: MatchUiStateMapper.NO_LOCAL_SEAT_ID
         val ruleSet = when (uiState.value.currentRule) {
             GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
             GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
         }
-        val aiMoveDelayMillis = localAiState.value.aiPlaySpeed.delayMillis
+        val aiPlaySpeed = localAiState.value.aiPlaySpeed
         _gameLaunchEvents.tryEmit(
             RoomGameLaunchEvent.StartLocalMatch(
                 seatConfigs = seatConfigs,
                 localSeatId = localSeatId,
                 ruleSet = ruleSet,
-                aiMoveDelayMillis = aiMoveDelayMillis,
+                aiMoveDelayMillis = aiPlaySpeed.delayMillis,
+                aiPlaySpeed = aiPlaySpeed,
             ),
         )
     }

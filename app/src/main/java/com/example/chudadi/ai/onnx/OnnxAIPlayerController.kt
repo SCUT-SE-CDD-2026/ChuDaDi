@@ -4,48 +4,53 @@ import android.util.Log
 import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
+import com.example.chudadi.ai.base.ValidCombinationResolver
+import com.example.chudadi.ai.base.variant.OnnxModelVariant
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.Match
-import kotlinx.coroutines.CancellationException
-import java.io.File
-import com.example.chudadi.model.game.entity.PlayCombination
-import com.example.chudadi.model.game.rule.CombinationComparator
-import com.example.chudadi.model.game.rule.CombinationEvaluator
-import com.example.chudadi.model.game.rule.CombinationGenerator
-import com.example.chudadi.model.game.rule.CombinationParser
-import com.example.chudadi.model.game.rule.CombinationType
 import com.example.chudadi.model.game.rule.GameRuleSet
-import com.example.chudadi.model.game.rule.GameRules
+import java.io.File
 
 /**
  * ONNX AI玩家控制器
  *
  * 实现AIPlayerController接口，将ONNX模型包装成游戏可用的AI玩家。
- * 采用适配器模式，使ONNX AI与规则基础AI对游戏引擎而言是多态的。
+ * 通过 [OnnxModelVariant] 支持可插拔的模型变体架构，
+ * 实际的编码、推理、解码由 variant 提供的 pipeline 处理。
  *
  * @property seatIndex AI玩家座位索引
  * @property difficulty AI难度级别
  * @property modelPath ONNX模型文件路径
+ * @property variant 模型变体描述（编码器、管道、I/O契约）
  */
 class OnnxAIPlayerController(
     override val seatIndex: Int,
     override val difficulty: AIDifficulty,
     private val modelPath: String,
-) : AIPlayerController, AutoCloseable {
+    private val variant: OnnxModelVariant,
+) : AIPlayerController {
+
+    /**
+     * 向后兼容构造函数（无 variant 参数）。
+     * 使用 V1 DQN 默认变体。
+     */
+    constructor(
+        seatIndex: Int,
+        difficulty: AIDifficulty,
+        modelPath: String,
+    ) : this(seatIndex, difficulty, modelPath, com.example.chudadi.ai.onnx.variant.V1DqnVariant)
 
     companion object {
         private const val TAG = "OnnxAIPlayerController"
     }
 
-    internal data class ActionCandidate(
-        val actionId: Long,
-        val feature: FloatArray,
-    )
+    private val pipeline = variant.createPipeline()
+    private val obsEncoder = variant.createObsEncoder()
 
     private val model: OnnxModel? = if (modelPath.isNotBlank() && File(modelPath).exists()) {
         Log.i(TAG, "[AI-$seatIndex] Loading ONNX model from: $modelPath")
         try {
-            val m = OnnxModel(modelPath)
+            val m = OnnxModel(modelPath, variant.ioContract)
             Log.i(TAG, "[AI-$seatIndex] ONNX model loaded successfully, available=${m.isAvailable()}")
             m
         } catch (e: Exception) {
@@ -59,8 +64,6 @@ class OnnxAIPlayerController(
         )
         null
     }
-    private val decoder: ActionDecoder = ActionDecoder()
-    private val actionFeatureEncoder: ActionFeatureEncoder = ActionFeatureEncoder()
 
     init {
         if (model?.isAvailable() != true) {
@@ -87,60 +90,23 @@ class OnnxAIPlayerController(
 
         val validActions = getValidActions(seat.hand, match, ruleSet)
         Log.d(TAG, "[AI-$seatIndex] Valid actions count: ${validActions.size}")
-        val actionCandidates = buildActionCandidates(
-            handCards = seat.hand,
-            validActions = validActions,
-            match = match,
-            ruleSet = ruleSet,
-        )
-        val validActionMask = actionCandidates.map { it.actionId }.toLongArray()
 
-        val rawDecision = inferOnnxDecision(match, seat.hand, actionCandidates, validActionMask)
-        return validateDecision(rawDecision, match, ruleSet, validActions)
-    }
-
-    private suspend fun inferOnnxDecision(
-        match: Match,
-        handCards: List<Card>,
-        actionCandidates: List<ActionCandidate>,
-        validActionMask: LongArray,
-    ): AIDecision {
-        if (model?.isAvailable() != true) {
+        val rawDecision = if (model?.isAvailable() != true) {
             Log.w(TAG, "[AI-$seatIndex] ONNX model not available")
-            return AIDecision.Error("ONNX model unavailable")
-        }
-
-        val prediction = try {
-            val startTime = System.currentTimeMillis()
-            model.predictActionValues(
+            AIDecision.Error("ONNX model unavailable")
+        } else {
+            pipeline.decide(
+                model = model,
+                obsEncoder = obsEncoder,
                 match = match,
                 seatIndex = seatIndex,
-                actionFeatures = actionCandidates.map { it.feature },
-            ).also {
-                Log.d(TAG, "[AI-$seatIndex] ONNX inference completed in ${System.currentTimeMillis() - startTime}ms")
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            val msg = when (e) {
-                is OnnxTimeoutException -> "ONNX inference timeout"
-                is OnnxInferenceException -> "ONNX inference failed"
-                else -> throw e
-            }
-            Log.e(TAG, "[AI-$seatIndex] $msg", e)
-            return AIDecision.Error(msg, e)
-        }
-
-        return if (prediction != null) {
-            decoder.decode(
-                modelOutput = prediction,
-                handCards = handCards,
-                validActionMask = validActionMask,
+                handCards = seat.hand,
+                validActions = validActions,
+                ruleSet = ruleSet,
                 difficulty = difficulty,
             )
-        } else {
-            AIDecision.Error("ONNX returned empty prediction")
         }
+        return validateDecision(rawDecision, match, ruleSet, validActions)
     }
 
     private fun validateDecision(
@@ -160,94 +126,11 @@ class OnnxAIPlayerController(
         }
     }
 
-    internal fun buildActionCandidates(
-        handCards: List<Card>,
-        validActions: List<List<Card>>,
-        match: Match,
-        ruleSet: GameRuleSet,
-    ): List<ActionCandidate> {
-        val candidates = mutableListOf<ActionCandidate>()
-        val seenActionIds = mutableSetOf<Long>()
-        val parser = CombinationParser()
-
-        for (cards in validActions) {
-            val actionId = actionIdFromCards(cards)
-            if (!seenActionIds.add(actionId)) {
-                continue
-            }
-            val parsedType = parser.parse(cards)?.type
-            val feature = actionFeatureEncoder.encodeActionFeature(
-                handCards = handCards,
-                actionCards = cards,
-                actionType = parsedType,
-            )
-            candidates += ActionCandidate(actionId = actionId, feature = feature)
-        }
-
-        if (isPassLegal(match, ruleSet)) {
-            val passId = 0L
-            if (seenActionIds.add(passId)) {
-                val passFeature = actionFeatureEncoder.encodeActionFeature(
-                    handCards = handCards,
-                    actionCards = emptyList(),
-                    actionType = null,
-                )
-                candidates += ActionCandidate(actionId = passId, feature = passFeature)
-            }
-        }
-
-        // Guarantee at least one candidate to avoid empty-batch inference.
-        if (candidates.isEmpty()) {
-            val passFeature = actionFeatureEncoder.encodeActionFeature(
-                handCards = handCards,
-                actionCards = emptyList(),
-                actionType = null,
-            )
-            candidates += ActionCandidate(actionId = 0L, feature = passFeature)
-        }
-
-        return candidates
-    }
-
-    private fun isPassLegal(match: Match, ruleSet: GameRuleSet): Boolean {
-        return when (ruleSet) {
-            GameRuleSet.SOUTHERN -> match.trickState.currentCombination != null
-            GameRuleSet.NORTHERN -> canPassUnderNorthernRule(match, ruleSet)
-        }
-    }
-
     /**
      * 与 RLCard 北方规则对齐：只有当有同类型可压时才不能 pass。
      */
-    private fun canPassUnderNorthernRule(match: Match, ruleSet: GameRuleSet): Boolean {
-        val currentCombination = match.trickState.currentCombination
-        val seat = match.seats.getOrNull(seatIndex)
-        val rules = GameRules.forRuleSet(ruleSet)
-        if (currentCombination == null || seat == null || !rules.mustBeatIfPossible) {
-            return currentCombination != null
-        }
-        val evaluator = CombinationEvaluator(rules)
-        val hasMandatoryResponse = evaluator
-            .generateAllValidCombinations(seat.hand)
-            .any { candidate ->
-                !rules.isBomb(candidate.type) &&
-                    candidate.type == currentCombination.type &&
-                    candidate.cardCount == currentCombination.cardCount &&
-                    evaluator.canBeat(candidate, currentCombination)
-            }
-        return !hasMandatoryResponse
-    }
-
-    private fun actionIdFromCards(cards: List<Card>): Long {
-        var mask = 0L
-        for (card in cards) {
-            val index = GameStateEncoder.cardToIndex(card)
-            if (index in 0 until Long.SIZE_BITS) {
-                mask = mask or (1L shl index)
-            }
-        }
-        return mask
-    }
+    private fun canPassUnderNorthernRule(match: Match, ruleSet: GameRuleSet): Boolean =
+        ValidCombinationResolver.canPassUnderNorthernRule(match, seatIndex, ruleSet)
 
     /**
      * 获取当前有效的出牌动作列表
@@ -256,42 +139,7 @@ class OnnxAIPlayerController(
         handCards: List<Card>,
         match: Match,
         ruleSet: GameRuleSet
-    ): List<List<Card>> {
-        val rules = GameRules.forRuleSet(ruleSet)
-        val parser = CombinationParser()
-        val comparator = CombinationComparator(rules)
-        val generator = CombinationGenerator(parser, comparator)
-
-        val currentCombination = match.trickState.currentCombination
-
-        return if (currentCombination == null) {
-            // 本轮首出
-            generateAllValidCombinations(handCards, generator)
-        } else {
-            // 需要压牌
-            generateValidResponses(handCards, currentCombination, generator, comparator)
-        }
-    }
-
-    private fun generateAllValidCombinations(
-        handCards: List<Card>,
-        generator: CombinationGenerator
-    ): List<List<Card>> {
-        val combinations = generator.generateAllValidCombinations(handCards)
-        return combinations.map { it.cards }
-    }
-
-    private fun generateValidResponses(
-        handCards: List<Card>,
-        currentCombination: PlayCombination,
-        generator: CombinationGenerator,
-        comparator: CombinationComparator
-    ): List<List<Card>> {
-        val allCombinations = generator.generateAllValidCombinations(handCards)
-        return allCombinations
-            .filter { comparator.canBeat(it, currentCombination) }
-            .map { it.cards }
-    }
+    ): List<List<Card>> = ValidCombinationResolver.resolve(handCards, match, ruleSet, seatIndex)
 
     private fun isValidDecision(
         decision: AIDecision,

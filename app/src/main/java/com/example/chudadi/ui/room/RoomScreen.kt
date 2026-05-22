@@ -200,7 +200,7 @@ private fun RoomTopBar(
         Spacer(modifier = Modifier.width(16.dp))
         if (uiState.totalGamesPlayed > 0) {
             Text(
-                text = "总分局数 ${uiState.totalGamesPlayed}",
+                text = "总局数 ${uiState.totalGamesPlayed}",
                 style = MaterialTheme.typography.labelMedium,
                 color = TextMuted,
             )
@@ -355,7 +355,9 @@ private fun SlotActionMenu(
                 },
             )
         }
-        if (isHost && !slot.isLocalPlayer && slot.occupantType != null) {
+        val canRemoveOccupant = isHost && slot.occupantType != null &&
+            (!slot.isLocalPlayer || BuildConfig.DEBUG)
+        if (canRemoveOccupant) {
             DropdownMenuItem(
                 text = { Text("移除", color = Color(0xFFE57373)) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },

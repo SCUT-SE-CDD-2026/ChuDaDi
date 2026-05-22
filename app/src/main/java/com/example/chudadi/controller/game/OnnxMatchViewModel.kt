@@ -8,10 +8,9 @@ import com.example.chudadi.ai.AIFactory
 import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
-import com.example.chudadi.ai.onnx.OnnxAIPlayerController
-import com.example.chudadi.ai.onnx.OnnxInferenceException
 import com.example.chudadi.ai.onnx.OnnxTimeoutException
-import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
+import com.example.chudadi.ai.onnx.OnnxInferenceException
+import com.example.chudadi.ai.rulebased.RuleBasedAIAdapter
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.engine.ActionResult
 import com.example.chudadi.model.game.engine.GameEngine
@@ -31,8 +30,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import com.example.chudadi.ai.rulebased.AiDecision as RuleBasedDecision
 
 class OnnxMatchViewModel(
     application: Application,
@@ -46,7 +45,6 @@ class OnnxMatchViewModel(
     private val serverController = LocalAuthoritativeController(engine)
 
     private var aiControllersBySeatId: Map<Int, AIPlayerController> = emptyMap()
-    private val fallbackRuleBasedAi = RuleBasedAiPlayer()
 
     private val _uiState = MutableStateFlow(MatchUiState())
     val uiState: StateFlow<MatchUiState> = _uiState.asStateFlow()
@@ -59,11 +57,12 @@ class OnnxMatchViewModel(
     private var lastActionMessage: String? = null
     private var localSeatId: Int = DEFAULT_LOCAL_SEAT_ID
     private var lastSeatConfigs: List<SeatConfig>? = null
-    private var aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
-    private var lastAiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS
+    private var aiMoveDelayMillis: Long = 0L
+    private var lastAiMoveDelayMillis: Long = 0L
     private val inferenceFailureCountBySeat: MutableMap<Int, Int> = mutableMapOf()
     private val lastInferenceErrorReportAtBySeat: MutableMap<Int, Long> = mutableMapOf()
     private var aiTurnJob: Job? = null
+    private var humanTurnLoopJob: Job? = null
     private val turnTimer = MatchTurnTimer()
 
     init {
@@ -74,9 +73,8 @@ class OnnxMatchViewModel(
         seatConfigs: List<SeatConfig>? = null,
         localSeatId: Int = DEFAULT_LOCAL_SEAT_ID,
         ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
-        aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS,
+        aiMoveDelayMillis: Long = 0L,
     ) {
-        releaseAiControllers()
         currentRuleSet = ruleSet
         this.localSeatId = localSeatId
         this.lastSeatConfigs = seatConfigs
@@ -85,6 +83,13 @@ class OnnxMatchViewModel(
         inferenceFailureCountBySeat.clear()
         lastInferenceErrorReportAtBySeat.clear()
 
+        // 同步重置 UI 状态，避免旧 FINISHED phase 残留导致导航竞态
+        currentMatch = null
+        selectedCardIds = emptySet()
+        lastActionMessage = null
+        turnTimer.reset()
+        pushUiState()
+
         val aiSeatConfigs = seatConfigs
             ?.filter { it.controllerType != SeatControllerType.HUMAN }
             ?.sortedBy { it.seatId }
@@ -92,36 +97,14 @@ class OnnxMatchViewModel(
 
         viewModelScope.launch {
             var loadError: AIErrorState? = null
+
+            // 增量复用：只释放/创建变化的座位，复用不变的 AI 控制器
             aiControllersBySeatId = try {
-                val creationResultsBySeat = aiSeatConfigs.associate { config ->
-                    val result = AIFactory.createAIPlayerWithStatus(
-                        context = context,
-                        seatIndex = config.seatId,
-                        difficulty = config.aiDifficulty ?: AIDifficulty.NORMAL,
-                        isOnnxAI = config.controllerType == SeatControllerType.ONNX_RL_AI,
-                    )
-                    config.seatId to result
-                }
-
-                val fallbackEntries = creationResultsBySeat.filterValues { it.isFallback }
-                if (fallbackEntries.isNotEmpty()) {
-                    val seatIds = fallbackEntries.keys.sorted()
-                    val errorMessages = fallbackEntries.values.mapNotNull { it.errorMessage }.distinct()
-                    loadError = AIErrorState.ModelLoadFailed(
-                        message = errorMessages.firstOrNull() ?: "Some AI seats have fallen back to rule-based AI",
-                        fallbackToRuleBased = true,
-                    )
-                    android.util.Log.w(
-                        "OnnxMatchViewModel",
-                        "AI fallback seats: $seatIds, errors: $errorMessages",
-                    )
-                }
-
-                creationResultsBySeat.mapValues { it.value.controller }
+                rebuildControllers(aiSeatConfigs)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                android.util.Log.e("OnnxMatchViewModel", "Failed to create AI players", e)
+                android.util.Log.e(TAG, "Failed to rebuild AI controllers", e)
                 loadError = AIErrorState.ModelLoadFailed(
                     message = "AI initialization failed: ${e.localizedMessage ?: "unknown error"}",
                     fallbackToRuleBased = true,
@@ -144,6 +127,7 @@ class OnnxMatchViewModel(
             lastActionMessage = loadError?.message
             scheduleCurrentTurn()
             pushUiState()
+            startHumanTurnLoop()
             maybeResolveAiTurns()
         }
     }
@@ -217,11 +201,31 @@ class OnnxMatchViewModel(
         _errorState.value = null
     }
 
+    /**
+     * 从结果页返回房间。清理游戏状态但保留 AI 控制器，以便再来一局时复用。
+     */
+    fun onReturnToRoom() {
+        currentMatch = null
+        selectedCardIds = emptySet()
+        lastActionMessage = null
+        _errorState.value = null
+        humanTurnLoopJob?.cancel()
+        aiTurnJob?.cancel()
+        inferenceFailureCountBySeat.clear()
+        lastInferenceErrorReportAtBySeat.clear()
+        turnTimer.reset()
+        pushUiState()
+    }
+
+    /**
+     * 真正退出房间/应用。清理游戏状态并释放所有 AI 控制器。
+     */
     fun onExitToHome() {
         currentMatch = null
         selectedCardIds = emptySet()
         lastActionMessage = null
         _errorState.value = null
+        humanTurnLoopJob?.cancel()
         releaseAiControllers()
         inferenceFailureCountBySeat.clear()
         lastInferenceErrorReportAtBySeat.clear()
@@ -384,26 +388,51 @@ class OnnxMatchViewModel(
         }
     }
 
-    private fun executeRuleBasedFallback(
+    private suspend fun executeRuleBasedFallback(
         match: Match,
         seatIndex: Int,
     ): ActionResult {
-        return when (val ruleDecision = fallbackRuleBasedAi.decideAction(match, seatIndex)) {
-            is RuleBasedDecision.Play -> {
-                serverController.handleCommand(
+        // 使用独立的 RuleBasedAIAdapter，不复用 aiControllersBySeatId 中的 ONNX 控制器
+        val fallbackController = RuleBasedAIAdapter(
+            seatIndex = seatIndex,
+            difficulty = aiControllersBySeatId[seatIndex]?.difficulty ?: AIDifficulty.NORMAL,
+        )
+        return try {
+            when (val decision = fallbackController.requestDecision(match, currentRuleSet)) {
+                is AIDecision.PlayCards -> serverController.handleCommand(
                     match = match,
                     seatIndex = seatIndex,
-                    command = com.example.chudadi.network.protocol.PlayCardCommand(ruleDecision.cardIds),
+                    command = com.example.chudadi.network.protocol.PlayCardCommand(
+                        decision.cards.map { it.id }.toSet(),
+                    ),
                 )
-            }
-
-            RuleBasedDecision.Pass -> {
-                serverController.handleCommand(
+                AIDecision.Pass -> serverController.handleCommand(
                     match = match,
                     seatIndex = seatIndex,
                     command = com.example.chudadi.network.protocol.PassCommand,
                 )
+                is AIDecision.Error -> {
+                    android.util.Log.e(
+                        TAG,
+                        "Fallback decision error for seat $seatIndex: ${decision.reason}",
+                        decision.exception,
+                    )
+                    serverController.handleCommand(
+                        match = match,
+                        seatIndex = seatIndex,
+                        command = com.example.chudadi.network.protocol.PassCommand,
+                    )
+                }
             }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Fallback requestDecision failed for seat $seatIndex", e)
+            serverController.handleCommand(
+                match = match,
+                seatIndex = seatIndex,
+                command = com.example.chudadi.network.protocol.PassCommand,
+            )
         }
     }
 
@@ -456,9 +485,95 @@ class OnnxMatchViewModel(
         return "Seat $seatId ONNX inference failed ($failureCount): $reason"
     }
 
+    /**
+     * 增量重建 AI 控制器。
+     *
+     * 对比新旧座位配置：复用 controllerType + difficulty 不变的控制器，
+     * 只释放不再需要的、创建新增或变化的。
+     */
+    private suspend fun rebuildControllers(
+        newAiSeatConfigs: List<SeatConfig>,
+    ): Map<Int, AIPlayerController> {
+        val oldControllers = aiControllersBySeatId
+        val reused = mutableMapOf<Int, AIPlayerController>()
+        val toRelease = mutableListOf<AIPlayerController>()
+        val toCreate = mutableListOf<SeatConfig>()
+
+        // 1. 对旧控制器分类：复用 or 释放
+        for ((seatId, controller) in oldControllers) {
+            val newConfig = newAiSeatConfigs.firstOrNull { it.seatId == seatId }
+            if (newConfig != null && isCompatibleConfig(controller, newConfig)) {
+                reused[seatId] = controller
+            } else {
+                toRelease += controller
+            }
+        }
+
+        // 2. 找出需要新建的座位
+        for (config in newAiSeatConfigs) {
+            if (config.seatId !in reused) {
+                toCreate += config
+            }
+        }
+
+        // 3. 释放不再需要的控制器
+        for (controller in toRelease) {
+            try {
+                controller.close()
+            } catch (e: Exception) {
+                android.util.Log.w(TAG, "Failed to close controller for seat ${controller.seatIndex}", e)
+            }
+        }
+
+        // 4. 创建新控制器
+        val created = if (toCreate.isNotEmpty()) {
+            val creationResults = toCreate.associate { config ->
+                val result = AIFactory.createAIPlayerWithStatus(
+                    context = context,
+                    seatIndex = config.seatId,
+                    difficulty = config.aiDifficulty ?: AIDifficulty.NORMAL,
+                    isOnnxAI = config.controllerType == SeatControllerType.ONNX_RL_AI,
+                )
+                config.seatId to result
+            }
+            val fallbackEntries = creationResults.filterValues { it.isFallback }
+            if (fallbackEntries.isNotEmpty()) {
+                val seatIds = fallbackEntries.keys.sorted()
+                val errorMessages = fallbackEntries.values.mapNotNull { it.errorMessage }.distinct()
+                android.util.Log.w(TAG, "AI fallback seats: $seatIds, errors: $errorMessages")
+            }
+            creationResults.mapValues { it.value.controller }
+        } else {
+            emptyMap()
+        }
+
+        if (toRelease.isNotEmpty() || toCreate.isNotEmpty()) {
+            android.util.Log.i(
+                TAG,
+                "Controllers rebuilt: reused=${reused.keys.sorted()}, " +
+                    "released=${toRelease.map { it.seatIndex }.sorted()}, " +
+                    "created=${created.keys.sorted()}",
+            )
+        }
+
+        return reused + created
+    }
+
+    /**
+     * 判断现有控制器是否与新配置兼容（可复用）。
+     *
+     * 条件：controllerType 一致、difficulty 一致。
+     */
+    private fun isCompatibleConfig(controller: AIPlayerController, config: SeatConfig): Boolean {
+        val isOnnxController = controller is com.example.chudadi.ai.onnx.OnnxAIPlayerController
+        val expectedOnnx = config.controllerType == SeatControllerType.ONNX_RL_AI
+        val expectedDifficulty = config.aiDifficulty ?: AIDifficulty.NORMAL
+        return isOnnxController == expectedOnnx && controller.difficulty == expectedDifficulty
+    }
+
     private fun releaseAiControllers() {
         aiScope.coroutineContext.cancelChildren()
-        aiControllersBySeatId.values.forEach { (it as? OnnxAIPlayerController)?.release() }
+        aiControllersBySeatId.values.forEach { it.close() }
         aiControllersBySeatId = emptyMap()
     }
 
@@ -480,10 +595,97 @@ class OnnxMatchViewModel(
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
             activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
+        val isLeadingTurn = match.trickState.currentCombination == null
         turnTimer.scheduleTurn(
             isAiDrivenTurn = isAiDrivenTurn,
+            isLeadingTurn = isLeadingTurn,
             aiDelayMillis = if (isAiDrivenTurn) aiMoveDelayMillis else 0L,
         )
+    }
+
+    private fun startHumanTurnLoop() {
+        humanTurnLoopJob?.cancel()
+        humanTurnLoopJob = viewModelScope.launch {
+            while (isActive) {
+                delay(HUMAN_TURN_LOOP_INTERVAL_MS)
+                if (!tickHumanTurnLoop()) {
+                    break
+                }
+            }
+        }
+    }
+
+    private fun tickHumanTurnLoop(): Boolean {
+        val match = currentMatch ?: return false
+        val shouldContinue = when {
+            match.phase == MatchPhase.FINISHED -> {
+                turnTimer.reset()
+                false
+            }
+
+            match.activeSeatIndex != localSeatId -> true
+
+            turnTimer.isExpired() -> {
+                resolveHumanTimeout(match)
+                currentMatch?.phase != MatchPhase.FINISHED
+            }
+
+            else -> true
+        }
+        pushUiState()
+        return shouldContinue
+    }
+
+    private fun resolveHumanTimeout(match: Match) {
+        val seatName = match.seats.first { it.seatId == localSeatId }.displayName
+        val result = if (serverController.canPass(match = match, seatIndex = localSeatId)) {
+            serverController.handleCommand(
+                match = match,
+                seatIndex = localSeatId,
+                command = com.example.chudadi.network.protocol.PassCommand,
+            ).also {
+                lastActionMessage = if (it.success) "$seatName 超时过牌" else {
+                    it.message ?: com.example.chudadi.controller.client.GameActionMessageFormatter.format(it.error)
+                }
+            }
+        } else {
+            val fallbackController = RuleBasedAIAdapter(
+                seatIndex = localSeatId,
+                difficulty = com.example.chudadi.ai.base.AIDifficulty.NORMAL,
+            )
+            val decision = runCatching {
+                kotlinx.coroutines.runBlocking {
+                    fallbackController.requestDecision(match, currentRuleSet)
+                }
+            }.getOrDefault(AIDecision.Pass)
+            when (decision) {
+                is AIDecision.PlayCards -> serverController.handleCommand(
+                    match = match,
+                    seatIndex = localSeatId,
+                    command = com.example.chudadi.network.protocol.PlayCardCommand(
+                        decision.cards.map { it.id }.toSet(),
+                    ),
+                )
+                else -> serverController.handleCommand(
+                    match = match,
+                    seatIndex = localSeatId,
+                    command = com.example.chudadi.network.protocol.PassCommand,
+                )
+            }.also {
+                lastActionMessage = if (it.success) "$seatName 超时，系统已代出" else {
+                    it.message ?: com.example.chudadi.controller.client.GameActionMessageFormatter.format(it.error)
+                }
+            }
+        }
+
+        currentMatch = result.match
+        selectedCardIds = emptySet()
+        if (result.success) {
+            scheduleCurrentTurn()
+            maybeResolveAiTurns()
+        } else if (currentMatch?.phase == MatchPhase.FINISHED) {
+            turnTimer.reset()
+        }
     }
 
     override fun onCleared() {
@@ -493,12 +695,13 @@ class OnnxMatchViewModel(
     }
 
     companion object {
-        private const val DEFAULT_AI_MOVE_DELAY_MILLIS = 450L
+        private const val TAG = "OnnxMatchViewModel"
         private const val DEFAULT_LOCAL_SEAT_ID = 0
         private const val TOTAL_SEATS = 4
         private const val MAX_AI_CHAIN = 32
         private const val MAX_FULL_AI_CHAIN = 512
         private const val INFERENCE_ERROR_REPORT_INTERVAL_MS = 3000L
+        private const val HUMAN_TURN_LOOP_INTERVAL_MS = 250L
     }
 }
 

@@ -9,7 +9,7 @@ sealed interface LocalGameAction {
         val seatConfigs: List<SeatConfig>? = null,
         val localSeatId: Int = 0,
         val ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
-        val aiMoveDelayMillis: Long = DEFAULT_AI_MOVE_DELAY_MILLIS,
+        val aiMoveDelayMillis: Long = 0L,
     ) : LocalGameAction
     data class ToggleCardSelection(val cardId: String) : LocalGameAction
     data object ClearSelection : LocalGameAction
@@ -33,5 +33,3 @@ data class SeatConfig(
     val controllerType: SeatControllerType,
     val aiDifficulty: AIDifficulty? = null,
 )
-
-private const val DEFAULT_AI_MOVE_DELAY_MILLIS = 450L

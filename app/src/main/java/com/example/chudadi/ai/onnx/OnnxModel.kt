@@ -1,26 +1,29 @@
 ﻿package com.example.chudadi.ai.onnx
 
 import android.util.Log
-import com.example.chudadi.model.game.entity.Match
+import com.example.chudadi.ai.base.variant.ModelIoContract
+import com.example.chudadi.ai.onnx.variant.V1DqnVariant
 import kotlinx.coroutines.CancellationException
 
 /**
  * ONNX model wrapper for match-state inference.
  */
-class OnnxModel(modelPath: String) {
+class OnnxModel(
+    modelPath: String,
+    private val ioContract: ModelIoContract = V1DqnVariant.ioContract,
+) {
 
     companion object {
         private const val TAG = "OnnxModel"
     }
 
-    private val encoder = GameStateEncoder()
     private var inferenceEngine: OnnxInferenceEngine? = null
     @Volatile
     private var isLoaded = false
 
     init {
         try {
-            inferenceEngine = OnnxInferenceEngine(modelPath)
+            inferenceEngine = OnnxInferenceEngine(modelPath, ioContract)
             isLoaded = inferenceEngine?.isAvailable() == true
 
             if (isLoaded) {
@@ -41,46 +44,13 @@ class OnnxModel(modelPath: String) {
     }
 
     /**
-     * 执行推理
+     * Batch predict Q-values with a pre-encoded observation.
      *
-     * @param match 当前游戏状态
-     * @param seatIndex AI玩家座位索引
-     * @return 模型输出的FloatArray，如果推理失败则返回null
+     * The caller (pipeline) provides a pre-encoded obs vector,
+     * avoiding redundant re-encoding per inference call.
      */
-    suspend fun predict(match: Match, seatIndex: Int): FloatArray? {
-        if (!isLoaded || inferenceEngine == null) {
-            Log.w(TAG, "Model not loaded, cannot predict")
-            return null
-        }
-
-        return try {
-            val obsTensor = encoder.encode(match, seatIndex)
-            val output = inferenceEngine?.infer(
-                obsTensor = obsTensor,
-                actionsTensor = null,
-                batchSize = 1,
-                obsDim = obsTensor.size,
-            )
-            Log.d(TAG, "Prediction completed for seat $seatIndex")
-            output
-        } catch (e: OnnxInferenceException) {
-            Log.e(TAG, "Inference failed", e)
-            null
-        } catch (e: OnnxTimeoutException) {
-            Log.e(TAG, "Inference timeout", e)
-            null
-        } catch (e: CancellationException) {
-            throw e
-        }
-    }
-
-    /**
-     * Batch predict Q-values for legal actions.
-     * Output order aligns with [actionFeatures].
-     */
-    suspend fun predictActionValues(
-        match: Match,
-        seatIndex: Int,
+    suspend fun predictActionValuesWithObs(
+        obs: FloatArray,
         actionFeatures: List<FloatArray>,
     ): FloatArray? {
         if (!isLoaded || inferenceEngine == null || actionFeatures.isEmpty()) {
@@ -88,7 +58,6 @@ class OnnxModel(modelPath: String) {
         }
 
         return try {
-            val obs = encoder.encode(match, seatIndex)
             val batchedInput = buildBatchedActionInput(obs = obs, actionFeatures = actionFeatures)
             val rawValues = inferenceEngine?.infer(
                 obsTensor = batchedInput.obsBatch,
@@ -108,17 +77,7 @@ class OnnxModel(modelPath: String) {
         }
     }
 
-    suspend fun predictBatch(matches: List<Match>, seatIndex: Int): List<FloatArray?> {
-        return matches.map { match ->
-            predict(match, seatIndex)
-        }
-    }
-
     fun isAvailable(): Boolean = isLoaded && inferenceEngine?.isAvailable() == true
-
-    fun getInputDim(): Int = inferenceEngine?.ioContract?.obsDim ?: encoder.getInputDim()
-
-    fun getOutputDim(): Int = inferenceEngine?.ioContract?.outputDim ?: 0
 
     fun release() {
         try {
@@ -131,29 +90,6 @@ class OnnxModel(modelPath: String) {
             Log.e(TAG, "Error releasing model", e)
         }
     }
-
-    fun getStatus(): ModelStatus {
-        val contract = inferenceEngine?.ioContract
-        return ModelStatus(
-            isLoaded = isLoaded,
-            isAvailable = inferenceEngine?.isAvailable() == true,
-            ioContract = contract,
-            inputDim = getInputDim(),
-            actionDim = contract?.actionDim ?: ActionFeatureEncoder.ACTION_FEATURE_DIM,
-            outputDim = getOutputDim(),
-            outputName = contract?.outputName.orEmpty(),
-        )
-    }
-
-    data class ModelStatus(
-        val isLoaded: Boolean,
-        val isAvailable: Boolean,
-        val ioContract: OnnxModelIoContract?,
-        val inputDim: Int,
-        val actionDim: Int,
-        val outputDim: Int,
-        val outputName: String,
-    )
 }
 
 internal data class BatchedActionInput(
