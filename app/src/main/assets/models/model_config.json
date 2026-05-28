@@ -1,0 +1,17 @@
+{
+  "defaultVariant": "v1_dqn",
+  "variants": [
+    {
+      "name": "v1_dqn",
+      "modelFileName": "chudadi_v0_01.onnx",
+      "ioContract": {
+        "obsInputName": "obs",
+        "actionsInputName": "actions",
+        "outputName": "Q",
+        "obsDim": 334,
+        "actionDim": 139,
+        "outputDim": 1
+      }
+    }
+  ]
+}

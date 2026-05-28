@@ -39,7 +39,7 @@ class OnnxAIPlayerController(
         seatIndex: Int,
         difficulty: AIDifficulty,
         modelPath: String,
-    ) : this(seatIndex, difficulty, modelPath, com.example.chudadi.ai.onnx.variant.V1DqnVariant)
+    ) : this(seatIndex, difficulty, modelPath, com.example.chudadi.ai.onnx.variant.V1DqnVariant.createDefault())
 
     companion object {
         private const val TAG = "OnnxAIPlayerController"

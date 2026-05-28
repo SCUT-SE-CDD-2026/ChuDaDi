@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import com.example.chudadi.ai.base.variant.ModelIoContract
 import java.io.File
 import java.nio.FloatBuffer
 
@@ -24,7 +25,7 @@ import java.nio.FloatBuffer
  */
 class OnnxInferenceEngine(
     modelPath: String,
-    contract: ModelIoContract = V1DqnVariant.ioContract,
+    contract: ModelIoContract,
 ) {
 
     companion object {

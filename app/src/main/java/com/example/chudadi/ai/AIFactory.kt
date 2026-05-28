@@ -5,6 +5,7 @@ import android.util.Log
 import com.example.chudadi.ai.base.AIConfig
 import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
+import com.example.chudadi.ai.base.config.ModelConfigLoader
 import com.example.chudadi.ai.base.variant.OnnxModelVariant
 import com.example.chudadi.ai.onnx.OnnxAIPlayerController
 import com.example.chudadi.ai.onnx.variant.V1DqnVariant
@@ -252,13 +253,21 @@ object AIFactory {
     /**
      * 预加载模型文件
      *
-     * 在应用启动时调用，确保模型文件已复制到私有目录。
-     * 同时注册默认的模型变体。
+     * 从 `assets/models/model_config.json` 读取配置并初始化变体注册表，
+     * 然后复制模型文件到私有目录。
+     *
+     * 配置文件不存在或解析失败时，降级到硬编码默认值。
      *
      * @param context 应用上下文
      */
     fun preloadModels(context: Context) {
-        registerDefaultVariant()
+        val config = ModelConfigLoader.load(context)
+        if (config != null) {
+            AIConfig.initialize(config)
+        } else {
+            Log.w(TAG, "Model config not found, falling back to hardcoded defaults")
+            registerDefaultVariant()
+        }
         AssetCopier.copyModelsToPrivateDir(context)
     }
 
@@ -273,11 +282,11 @@ object AIFactory {
     }
 
     /**
-     * 注册默认 V1 DQN 变体（幂等）。
+     * 注册默认 V1 DQN 变体（配置文件不可用时的降级路径）。
      */
     private fun registerDefaultVariant() {
-        if (AIConfig.getVariant(V1DqnVariant.name) == null) {
-            AIConfig.register(V1DqnVariant)
+        if (AIConfig.getVariant(V1DqnVariant.COMPANION_NAME) == null) {
+            AIConfig.register(V1DqnVariant.createDefault())
         }
     }
 }
