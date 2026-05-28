@@ -3,7 +3,6 @@
 package com.example.chudadi.network.room
 
 import android.content.Context
-import android.util.Log
 import com.example.chudadi.ai.AIFactory
 import com.example.chudadi.ai.base.AIPlayerController
 import com.example.chudadi.ai.onnx.OnnxAIPlayerController

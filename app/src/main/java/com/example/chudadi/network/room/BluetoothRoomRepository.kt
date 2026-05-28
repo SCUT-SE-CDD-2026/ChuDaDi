@@ -23,21 +23,17 @@ import com.example.chudadi.network.bluetooth.transport.ClassicBluetoothTransport
 import com.example.chudadi.network.bluetooth.transport.HostTransportConfig
 import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
-import com.example.chudadi.network.game.GameWireMessage
 import com.example.chudadi.network.room.presentation.BluetoothErrorMessageMapper
 import com.example.chudadi.network.room.presentation.RoomUiStateMapper
-import com.example.chudadi.ui.room.AiSelectionStep
-import com.example.chudadi.ui.room.AIType
-import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomMode
 import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.room.SlotState
 import com.example.chudadi.ui.room.SwapRequest
-import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -48,6 +44,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 /**
  * Orchestrates bluetooth room state, UI-facing room state, and room membership/game coordinators.

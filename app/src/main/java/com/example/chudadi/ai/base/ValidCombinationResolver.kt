@@ -1,9 +1,9 @@
 package com.example.chudadi.ai.base
 
 import android.util.Log
+import com.example.chudadi.model.game.engine.MatchFactory
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.Match
-import com.example.chudadi.model.game.engine.MatchFactory
 import com.example.chudadi.model.game.rule.CombinationComparator
 import com.example.chudadi.model.game.rule.CombinationEvaluator
 import com.example.chudadi.model.game.rule.CombinationGenerator

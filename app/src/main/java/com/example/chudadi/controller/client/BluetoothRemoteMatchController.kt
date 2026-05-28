@@ -7,7 +7,6 @@ import com.example.chudadi.network.game.toMatchUiState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 
 class BluetoothRemoteMatchController {
     private val _uiState = MutableStateFlow(MatchUiState())

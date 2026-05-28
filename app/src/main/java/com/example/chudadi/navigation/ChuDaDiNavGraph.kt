@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -14,7 +15,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import androidx.compose.runtime.mutableStateOf
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.LocalMatchViewModel
 import com.example.chudadi.controller.game.OnnxMatchViewModel
@@ -30,10 +30,8 @@ import com.example.chudadi.ui.home.HomeScreen
 import com.example.chudadi.ui.result.ResultScreen
 import com.example.chudadi.ui.room.AiPlaySpeed
 import com.example.chudadi.ui.room.BluetoothSearchScreen
-import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomScreen
-import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.RoomViewModel
 import com.example.chudadi.ui.settings.SettingsScreen
 import com.example.chudadi.ui.settings.SettingsViewModel

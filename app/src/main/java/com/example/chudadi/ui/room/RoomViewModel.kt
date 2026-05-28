@@ -2,6 +2,7 @@
 
 package com.example.chudadi.ui.room
 
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -22,7 +23,6 @@ import com.example.chudadi.navigation.AppFlowNavigationEvent
 import com.example.chudadi.navigation.AppFlowRoute
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
 import com.example.chudadi.network.room.BluetoothRoomRepository
-import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job

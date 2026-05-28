@@ -1,18 +1,13 @@
 package com.example.chudadi.ai.rulebased
 
 import com.example.chudadi.ai.base.AIDecision
-import com.example.chudadi.model.game.entity.Match
-import com.example.chudadi.model.game.entity.PlayCombination
-import com.example.chudadi.ai.rulebased.policy.CandidatePolicy
 import com.example.chudadi.ai.rulebased.policy.DefaultCandidatePolicy
 import com.example.chudadi.ai.rulebased.policy.DefaultTurnConstraintPolicy
-import com.example.chudadi.ai.rulebased.policy.PassPolicy
 import com.example.chudadi.ai.rulebased.policy.ProbabilisticPassPolicy
-import com.example.chudadi.ai.rulebased.policy.SelectionPolicy
-import com.example.chudadi.ai.rulebased.policy.TurnConstraintPolicy
 import com.example.chudadi.ai.rulebased.policy.WeightedTopSelectionPolicy
 import com.example.chudadi.ai.rulebased.scoring.DefaultScoringPolicy
-import com.example.chudadi.ai.rulebased.scoring.ScoringPolicy
+import com.example.chudadi.model.game.entity.Match
+import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.rule.CombinationEvaluator
 import com.example.chudadi.model.game.rule.GameRules
 import kotlin.random.Random

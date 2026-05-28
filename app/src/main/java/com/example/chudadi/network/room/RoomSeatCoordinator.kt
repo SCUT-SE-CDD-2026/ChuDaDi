@@ -7,8 +7,8 @@ package com.example.chudadi.network.room
 
 import com.example.chudadi.R
 import com.example.chudadi.network.bluetooth.transport.RoomTransport
-import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.room.SwapRequest
 
