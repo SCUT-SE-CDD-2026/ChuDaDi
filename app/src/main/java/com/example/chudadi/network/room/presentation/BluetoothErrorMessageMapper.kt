@@ -1,9 +1,9 @@
 package com.example.chudadi.network.room.presentation
 
 import com.example.chudadi.network.room.UserVisibleRoomException
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.SerializationException
+import java.io.IOException
 
 /**
  * Maps bluetooth failures and known bluetooth error cases into user-facing messages.

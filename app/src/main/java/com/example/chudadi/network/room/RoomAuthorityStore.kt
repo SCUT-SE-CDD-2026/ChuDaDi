@@ -7,9 +7,9 @@ import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.RoundScore
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.ui.room.AIType
-import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomMatchRules
 import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.room.SlotState

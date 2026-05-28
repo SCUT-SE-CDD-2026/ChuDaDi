@@ -14,7 +14,6 @@ import android.os.Build
 import android.os.Parcelable
 import android.util.Log
 import com.example.chudadi.network.bluetooth.BluetoothPermissionUtils
-import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import java.io.IOException
 
 data class BluetoothDiscoveredDevice(
     val name: String,

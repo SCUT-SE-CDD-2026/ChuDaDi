@@ -20,6 +20,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -46,8 +48,6 @@ import androidx.compose.ui.unit.dp
 import com.example.chudadi.R
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 
 private val BgOuter = Color(0xFF1A1008)
 private val BgCard = Color(0xFF241912)
