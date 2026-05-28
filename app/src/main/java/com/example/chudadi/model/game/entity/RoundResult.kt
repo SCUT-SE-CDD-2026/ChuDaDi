@@ -5,6 +5,8 @@ data class RoundScore(
     val playerName: String,
     val remainingCards: Int,
     val roundScore: Int,
+    /** 是否因包赔承担全部罚分 */
+    val isBaopei: Boolean = false,
 )
 
 data class ScoreSummary(

@@ -103,7 +103,7 @@ class RoomMembershipCoordinatorTest {
         val store = hostAuthorityStore()
         val port = FakeMembershipPort(store)
         val transport = FakeRoomTransport(
-            onAttach = {
+            onReplace = {
                 assertNoParticipant(store, "Player One")
                 assertTrue(port.hints.none { hint -> hint.contains("Player One 已加入房间") })
             },
@@ -227,7 +227,7 @@ class RoomMembershipCoordinatorTest {
         val store = hostAuthorityStore()
         val port = FakeMembershipPort(store)
         val transport = FakeRoomTransport(
-            attachAction = { throw IOException("attach failed") },
+            replaceAction = { throw IOException("attach failed") },
         )
         val output = CloseAwareOutputStream()
         val coordinator = coordinator(store, transport, port)
@@ -319,7 +319,10 @@ class RoomMembershipCoordinatorTest {
             scope = CoroutineScope(SupervisorJob()),
             authorityStore = authorityStore,
             roomTransport = roomTransport,
-            matchCoordinator = NetworkMatchCoordinator(CoroutineScope(SupervisorJob())),
+            matchCoordinator = NetworkMatchCoordinator(
+                scope = CoroutineScope(SupervisorJob()),
+                context = org.mockito.Mockito.mock(android.content.Context::class.java),
+            ),
             reconnectSessionRepository = mock(ReconnectSessionRepository::class.java),
             port = port,
         )
@@ -438,8 +441,6 @@ class RoomMembershipCoordinatorTest {
     }
 
     private class FakeRoomTransport(
-        private val attachAction: () -> Unit = {},
-        private val onAttach: () -> Unit = {},
         private val replaceAction: () -> Unit = {},
         private val onReplace: () -> Unit = {},
     ) : RoomTransport {
@@ -464,8 +465,8 @@ class RoomMembershipCoordinatorTest {
             participantId: String,
             connection: RoomSocketConnection,
         ) {
-            attachAction()
-            onAttach()
+            replaceAction()
+            onReplace()
             attachedParticipants += participantId
         }
 

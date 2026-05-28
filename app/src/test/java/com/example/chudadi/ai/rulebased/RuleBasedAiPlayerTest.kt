@@ -1,5 +1,6 @@
 package com.example.chudadi.ai.rulebased
 
+import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
@@ -51,8 +52,8 @@ class RuleBasedAiPlayerTest {
 
         val decision = aiPlayer.decideAction(match, 1)
 
-        assertTrue(decision is AiDecision.Play)
-        val playedCardIds = (decision as AiDecision.Play).cardIds
+        assertTrue(decision is AIDecision.PlayCards)
+        val playedCardIds = (decision as AIDecision.PlayCards).cards.map { it.id }.toSet()
         assertTrue(playedCardIds.contains(MatchFixtureFactory.card(CardRank.THREE, CardSuit.DIAMONDS).id))
         assertTrue(playedCardIds.size > 1)
     }
@@ -89,8 +90,8 @@ class RuleBasedAiPlayerTest {
 
         val decision = aiPlayer.decideAction(match, 1)
 
-        assertTrue(decision is AiDecision.Play)
-        val playedIds = (decision as AiDecision.Play).cardIds
+        assertTrue(decision is AIDecision.PlayCards)
+        val playedIds = (decision as AIDecision.PlayCards).cards.map { it.id }.toSet()
         assertEquals(1, playedIds.size)
         assertTrue(playedIds.first() in setOf(
             MatchFixtureFactory.card(CardRank.SIX, CardSuit.CLUBS).id,
@@ -141,7 +142,7 @@ class RuleBasedAiPlayerTest {
 
         val decision = aiPlayer.decideAction(match, 1)
 
-        assertTrue(decision is AiDecision.Play)
+        assertTrue(decision is AIDecision.PlayCards)
         assertEquals(
             setOf(
                 MatchFixtureFactory.card(CardRank.THREE, CardSuit.SPADES).id,
@@ -150,7 +151,7 @@ class RuleBasedAiPlayerTest {
                 MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES).id,
                 MatchFixtureFactory.card(CardRank.JACK, CardSuit.SPADES).id,
             ),
-            (decision as AiDecision.Play).cardIds,
+            (decision as AIDecision.PlayCards).cards.map { it.id }.toSet(),
         )
     }
 
@@ -186,10 +187,10 @@ class RuleBasedAiPlayerTest {
 
         val decision = aiPlayer.decideAction(match, 1)
 
-        assertTrue(decision is AiDecision.Play)
+        assertTrue(decision is AIDecision.PlayCards)
         assertEquals(
             setOf(MatchFixtureFactory.card(CardRank.ACE, CardSuit.SPADES).id),
-            (decision as AiDecision.Play).cardIds,
+            (decision as AIDecision.PlayCards).cards.map { it.id }.toSet(),
         )
     }
 
@@ -228,7 +229,7 @@ class RuleBasedAiPlayerTest {
 
         val decision = aiPlayer.decideAction(match, 1)
 
-        assertEquals(AiDecision.Pass, decision)
+        assertEquals(AIDecision.Pass, decision)
     }
 
     @Test
@@ -264,12 +265,16 @@ class RuleBasedAiPlayerTest {
 
         val decision = aiPlayer.decideAction(match, 1)
 
-        assertTrue(decision is AiDecision.Play)
+        assertTrue(decision is AIDecision.PlayCards)
         assertEquals(
             setOf(MatchFixtureFactory.card(CardRank.NINE, CardSuit.SPADES).id),
-            (decision as AiDecision.Play).cardIds,
+            (decision as AIDecision.PlayCards).cards.map { it.id }.toSet(),
         )
-        assertFalse(decision.cardIds.contains(MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS).id))
+        assertFalse(
+            (decision as AIDecision.PlayCards).cards.any {
+                it.id == MatchFixtureFactory.card(CardRank.EIGHT, CardSuit.CLUBS).id
+            },
+        )
     }
 
     private fun createMatch(

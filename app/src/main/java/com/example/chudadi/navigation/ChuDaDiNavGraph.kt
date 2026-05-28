@@ -14,14 +14,21 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.runtime.mutableStateOf
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.LocalMatchViewModel
+import com.example.chudadi.controller.game.OnnxMatchViewModel
+import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
+import com.example.chudadi.model.game.entity.MatchPhase
+import com.example.chudadi.model.game.entity.SeatControllerType
+import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.ui.game.GameScreen
 import com.example.chudadi.ui.game.GameScreenActions
 import com.example.chudadi.ui.home.HomeScreen
 import com.example.chudadi.ui.result.ResultScreen
+import com.example.chudadi.ui.room.AiPlaySpeed
 import com.example.chudadi.ui.room.BluetoothSearchScreen
 import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.RoomAction
@@ -30,7 +37,26 @@ import com.example.chudadi.ui.room.RoomUiState
 import com.example.chudadi.ui.room.RoomViewModel
 import com.example.chudadi.ui.settings.SettingsScreen
 import com.example.chudadi.ui.settings.SettingsViewModel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+
+private enum class GameViewModelType { LOCAL, ONNX }
+
+private data class AutoRoundState(
+    val isActive: Boolean = false,
+    val roundsRemaining: Int = 0,
+)
+
+private data class PendingOnnxStart(
+    val seatConfigs: List<SeatConfig>,
+    val localSeatId: Int,
+    val ruleSet: GameRuleSet,
+    val aiMoveDelayMillis: Long,
+)
+
+private fun hasOnnxAiSeats(seatConfigs: List<SeatConfig>): Boolean {
+    return seatConfigs.any { it.controllerType == SeatControllerType.ONNX_RL_AI }
+}
 
 @Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")
 @Composable
@@ -44,10 +70,17 @@ fun ChuDaDiNavGraph(
 ) {
     val navController = rememberNavController()
     val scope = rememberCoroutineScope()
-    var requestedRoute by rememberSaveable { androidx.compose.runtime.mutableStateOf(AppFlowRoute.HOME) }
+    var requestedRoute by rememberSaveable { mutableStateOf(AppFlowRoute.HOME) }
+    var gameViewModelType by remember { mutableStateOf(GameViewModelType.LOCAL) }
+    var autoRoundState by remember { mutableStateOf(AutoRoundState()) }
+    var pendingOnnxStart by remember { mutableStateOf<PendingOnnxStart?>(null) }
+    var isGameStarting by remember { mutableStateOf(false) }
     val uiState = viewModel.uiState.collectAsStateWithLifecycle().value
     val roomUiState = roomViewModel.uiState.collectAsStateWithLifecycle().value
     val networkMatchUiState = roomViewModel.matchUiState.collectAsStateWithLifecycle().value
+    // Collect ONNX state for route-aware navigation
+    val onnxViewModel: OnnxMatchViewModel = viewModel()
+    val onnxUiState by onnxViewModel.uiState.collectAsStateWithLifecycle()
     val appFlowState = remember(requestedRoute, uiState, roomUiState, networkMatchUiState) {
         buildAppFlowState(
             requestedRoute = requestedRoute,
@@ -191,13 +224,34 @@ fun ChuDaDiNavGraph(
         roomViewModel.gameLaunchEvents.collect { event ->
             when (event) {
                 is com.example.chudadi.ui.room.RoomGameLaunchEvent.StartLocalMatch -> {
-                    viewModel.dispatch(
-                        LocalGameAction.StartLocalMatch(
-                            seatConfigs = event.seatConfigs,
+                    val seatConfigs = event.seatConfigs
+                    if (hasOnnxAiSeats(seatConfigs)) {
+                        gameViewModelType = GameViewModelType.ONNX
+                        autoRoundState = AutoRoundState(
+                            isActive = seatConfigs.all {
+                                it.controllerType != SeatControllerType.HUMAN
+                            } && event.aiPlaySpeed == AiPlaySpeed.DEBUG_100_ROUNDS,
+                            roundsRemaining = AiPlaySpeed.DEBUG_100_ROUNDS.autoRounds,
+                        )
+                        isGameStarting = true
+                        pendingOnnxStart = PendingOnnxStart(
+                            seatConfigs = seatConfigs,
                             localSeatId = event.localSeatId,
                             ruleSet = event.ruleSet,
-                        ),
-                    )
+                            aiMoveDelayMillis = event.aiMoveDelayMillis,
+                        )
+                    } else {
+                        gameViewModelType = GameViewModelType.LOCAL
+                        pendingOnnxStart = null
+                        viewModel.dispatch(
+                            LocalGameAction.StartLocalMatch(
+                                seatConfigs = event.seatConfigs,
+                                localSeatId = event.localSeatId,
+                                ruleSet = event.ruleSet,
+                                aiMoveDelayMillis = event.aiMoveDelayMillis,
+                            ),
+                        )
+                    }
                     requestedRoute = AppFlowRoute.GAME
                 }
             }
@@ -214,6 +268,33 @@ fun ChuDaDiNavGraph(
                                 requestedRoute = AppFlowRoute.ROOM
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+    // Auto-navigate for ONNX game state changes (GAME → RESULT → ROOM)
+    LaunchedEffect(onnxUiState.phase, gameViewModelType) {
+        if (gameViewModelType == GameViewModelType.ONNX && !appFlowState.useNetworkMatch) {
+            when (onnxUiState.phase) {
+                MatchPhase.FINISHED -> {
+                    if (requestedRoute == AppFlowRoute.GAME) {
+                        requestedRoute = AppFlowRoute.RESULT
+                    }
+                }
+                MatchPhase.NOT_STARTED -> {
+                    if (requestedRoute == AppFlowRoute.RESULT || requestedRoute == AppFlowRoute.GAME) {
+                        // Only reset if not in auto-round mode and not starting a new game
+                        if (!autoRoundState.isActive && !isGameStarting) {
+                            requestedRoute = AppFlowRoute.ROOM
+                        }
+                    }
+                }
+                else -> {
+                    // When game successfully starts (phase changes from NOT_STARTED to DEALING/PLAYER_TURN),
+                    // clear the starting flag so that future NOT_STARTED transitions will navigate properly
+                    if (isGameStarting) {
+                        isGameStarting = false
                     }
                 }
             }
@@ -301,6 +382,9 @@ fun ChuDaDiNavGraph(
                         }
 
                         is RoomAction.ExitRoom -> {
+                            if (gameViewModelType == GameViewModelType.ONNX) {
+                                onnxViewModel.onExitToHome()
+                            }
                             roomViewModel.dispatch(action)
                             requestedRoute = AppFlowRoute.HOME
                         }
@@ -309,31 +393,90 @@ fun ChuDaDiNavGraph(
                     }
                 },
                 onNavigateBack = {
+                    if (gameViewModelType == GameViewModelType.ONNX) {
+                        onnxViewModel.onExitToHome()
+                    }
                     roomViewModel.dispatch(RoomAction.ResetRoom)
                     requestedRoute = AppFlowRoute.HOME
                 },
             )
         }
         composable(AppFlowRoute.GAME.route) {
+            val activeUiState = when {
+                appFlowState.useNetworkMatch -> appFlowState.activeMatchUiState
+                gameViewModelType == GameViewModelType.ONNX -> onnxUiState
+                else -> appFlowState.activeMatchUiState
+            }
+            // Dispatch ONNX start when pending params are available
+            val startParams = pendingOnnxStart
+            if (startParams != null && gameViewModelType == GameViewModelType.ONNX) {
+                LaunchedEffect(startParams) {
+                    onnxViewModel.onRequestStartLocalMatch(
+                        seatConfigs = startParams.seatConfigs,
+                        localSeatId = startParams.localSeatId,
+                        ruleSet = startParams.ruleSet,
+                        aiMoveDelayMillis = startParams.aiMoveDelayMillis,
+                    )
+                    pendingOnnxStart = null
+                    isGameStarting = false
+                }
+            }
             GameScreenRoute(
                 localViewModel = viewModel,
+                onnxViewModel = onnxViewModel,
                 roomViewModel = roomViewModel,
-                uiState = appFlowState.activeMatchUiState,
+                uiState = activeUiState,
                 useNetworkMatch = appFlowState.useNetworkMatch,
+                gameViewModelType = gameViewModelType,
             )
         }
         composable(AppFlowRoute.RESULT.route) {
-            val roundScores = appFlowState.activeMatchUiState.resultSummary?.roundScores.orEmpty()
+            val resultUiState = when {
+                appFlowState.useNetworkMatch -> appFlowState.activeMatchUiState
+                gameViewModelType == GameViewModelType.ONNX -> onnxUiState
+                else -> appFlowState.activeMatchUiState
+            }
+            val roundScores = resultUiState.resultSummary?.roundScores.orEmpty()
             LaunchedEffect(roundScores, appFlowState.useNetworkMatch) {
                 if (!appFlowState.useNetworkMatch && roundScores.isNotEmpty()) {
                     roomViewModel.dispatch(RoomAction.AccumulateScores(roundScores))
                 }
             }
+            // Auto-round loop for DEBUG_100_ROUNDS mode (all-AI seats only)
+            if (autoRoundState.isActive && gameViewModelType == GameViewModelType.ONNX) {
+                LaunchedEffect(resultUiState.phase) {
+                    if (resultUiState.phase == MatchPhase.FINISHED && autoRoundState.roundsRemaining > 0) {
+                        delay(AUTO_ROUND_DELAY_MS)
+                        val remaining = autoRoundState.roundsRemaining - 1
+                        autoRoundState = autoRoundState.copy(roundsRemaining = remaining)
+                        android.util.Log.d(
+                            "AutoRound",
+                            "Round finished, remaining=$remaining, restarting...",
+                        )
+                        if (remaining > 0) {
+                            isGameStarting = true
+                            onnxViewModel.onRequestRestartMatch()
+                            requestedRoute = AppFlowRoute.GAME
+                        } else {
+                            autoRoundState = autoRoundState.copy(isActive = false)
+                            if (gameViewModelType == GameViewModelType.ONNX) {
+                                onnxViewModel.onExitToHome()
+                            } else {
+                                viewModel.dispatch(LocalGameAction.ExitToHome)
+                            }
+                            requestedRoute = AppFlowRoute.ROOM
+                        }
+                    }
+                }
+            }
             ResultScreen(
-                uiState = appFlowState.activeMatchUiState,
+                uiState = resultUiState,
                 onReturnToRoom = {
+                    autoRoundState = autoRoundState.copy(isActive = false)
                     if (appFlowState.useNetworkMatch) {
                         roomViewModel.dispatchGameAction(LocalGameAction.ExitToHome)
+                    } else if (gameViewModelType == GameViewModelType.ONNX) {
+                        onnxViewModel.onReturnToRoom()
                     } else {
                         viewModel.dispatch(LocalGameAction.ExitToHome)
                     }
@@ -344,34 +487,48 @@ fun ChuDaDiNavGraph(
     }
 }
 
+@Suppress("LongParameterList")
 @Composable
 private fun GameScreenRoute(
     localViewModel: LocalMatchViewModel,
+    onnxViewModel: OnnxMatchViewModel,
     roomViewModel: RoomViewModel,
     uiState: MatchUiState,
     useNetworkMatch: Boolean,
+    gameViewModelType: GameViewModelType,
 ) {
     GameScreen(
         uiState = uiState,
         actions = GameScreenActions(
             onToggleCardSelection = { cardId ->
-                if (useNetworkMatch) {
-                    roomViewModel.dispatchGameAction(LocalGameAction.ToggleCardSelection(cardId))
-                } else {
-                    localViewModel.dispatch(LocalGameAction.ToggleCardSelection(cardId))
+                when {
+                    useNetworkMatch -> roomViewModel.dispatchGameAction(
+                        LocalGameAction.ToggleCardSelection(cardId),
+                    )
+                    gameViewModelType == GameViewModelType.ONNX -> onnxViewModel.onToggleCardSelection(cardId)
+                    else -> localViewModel.dispatch(LocalGameAction.ToggleCardSelection(cardId))
                 }
             },
             onClearSelection = {
-                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.ClearSelection)
-                else localViewModel.dispatch(LocalGameAction.ClearSelection)
+                when {
+                    useNetworkMatch -> roomViewModel.dispatchGameAction(LocalGameAction.ClearSelection)
+                    gameViewModelType == GameViewModelType.ONNX -> onnxViewModel.onClearSelection()
+                    else -> localViewModel.dispatch(LocalGameAction.ClearSelection)
+                }
             },
             onSubmitSelectedCards = {
-                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.SubmitSelectedCards)
-                else localViewModel.dispatch(LocalGameAction.SubmitSelectedCards)
+                when {
+                    useNetworkMatch -> roomViewModel.dispatchGameAction(LocalGameAction.SubmitSelectedCards)
+                    gameViewModelType == GameViewModelType.ONNX -> onnxViewModel.onRequestPlayCards()
+                    else -> localViewModel.dispatch(LocalGameAction.SubmitSelectedCards)
+                }
             },
             onPassTurn = {
-                if (useNetworkMatch) roomViewModel.dispatchGameAction(LocalGameAction.PassTurn)
-                else localViewModel.dispatch(LocalGameAction.PassTurn)
+                when {
+                    useNetworkMatch -> roomViewModel.dispatchGameAction(LocalGameAction.PassTurn)
+                    gameViewModelType == GameViewModelType.ONNX -> onnxViewModel.onRequestPass()
+                    else -> localViewModel.dispatch(LocalGameAction.PassTurn)
+                }
             },
         ),
     )
@@ -395,3 +552,5 @@ private fun navigateToFlowRoute(
         launchSingleTop = true
     }
 }
+
+private const val AUTO_ROUND_DELAY_MS = 300L

@@ -1,4 +1,4 @@
-@file:Suppress("TooManyFunctions")
+﻿@file:Suppress("TooManyFunctions", "FunctionNaming")
 
 package com.example.chudadi.ui.room
 
@@ -43,6 +43,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
@@ -133,9 +134,15 @@ fun RoomScreen(
             }
         }
 
-        if (uiState.showAiDifficultyDialog) {
-            AiDifficultyDialog(
-                onSelect = { diff -> onAction(RoomAction.AddAiToSlot(uiState.aiDialogTargetSlot, diff)) },
+        if (uiState.showRoomAiDifficultyDialog) {
+            RoomAiDifficultyDialog(
+                step = uiState.aiSelectionStep,
+                selectedAiType = uiState.selectedAiType,
+                onSelectType = { onAction(RoomAction.SelectAiType(it)) },
+                onSelectDifficulty = { diff ->
+                    onAction(RoomAction.AddAiToSlot(uiState.aiDialogTargetSlot, diff))
+                },
+                onBack = { onAction(RoomAction.BackToAiTypeSelection) },
                 onDismiss = { onAction(RoomAction.DismissAiDialog) },
             )
         }
@@ -191,6 +198,14 @@ private fun RoomTopBar(
             color = TextSecondary,
         )
         Spacer(modifier = Modifier.width(16.dp))
+        if (uiState.totalGamesPlayed > 0) {
+            Text(
+                text = "总局数 ${uiState.totalGamesPlayed}",
+                style = MaterialTheme.typography.labelMedium,
+                color = TextMuted,
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+        }
         if (uiState.isHost) {
             TextButton(onClick = onResetScores) {
                 Text("重置分数", style = MaterialTheme.typography.labelMedium, color = TextMuted)
@@ -340,7 +355,9 @@ private fun SlotActionMenu(
                 },
             )
         }
-        if (isHost && !slot.isLocalPlayer && slot.occupantType != null) {
+        val canRemoveOccupant = isHost && slot.occupantType != null &&
+            (!slot.isLocalPlayer || BuildConfig.DEBUG)
+        if (canRemoveOccupant) {
             DropdownMenuItem(
                 text = { Text("移除", color = Color(0xFFE57373)) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },
@@ -446,7 +463,10 @@ private fun FilledSlotContent(slot: SlotState) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             val typeLabel = when (slot.occupantType) {
-                SlotOccupantType.AI -> "AI"
+                SlotOccupantType.AI -> {
+                    val aiLabel = slot.aiType?.let { it.shortLabel + " AI" } ?: "AI"
+                    aiLabel
+                }
                 SlotOccupantType.HUMAN_HOST -> "房主"
                 SlotOccupantType.HUMAN_MEMBER -> "成员"
                 null -> ""
@@ -561,14 +581,24 @@ private fun ControlPanel(
         if (uiState.isHost) {
             Text("房主操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
             Spacer(modifier = Modifier.height(4.dp))
-            ChuButton(
-                text = "切换: ${uiState.currentRule.label}",
-                onClick = { onAction(RoomAction.ToggleRule) },
-                style = ChuButtonStyle.SECONDARY,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(HostActionButtonHeight),
-            )
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                ChuButton(
+                    text = "规则: ${uiState.currentRule.label}",
+                    onClick = { onAction(RoomAction.ToggleRule) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(HostActionButtonHeight),
+                )
+                ChuButton(
+                    text = "AI速度: ${uiState.aiPlaySpeed.label}",
+                    onClick = { onAction(RoomAction.ToggleAiPlaySpeed) },
+                    style = ChuButtonStyle.SECONDARY,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(HostActionButtonHeight),
+                )
+            }
 
             Spacer(modifier = Modifier.weight(1f))
 
@@ -629,27 +659,72 @@ private fun ControlPanel(
     }
 }
 
+@Suppress("LongMethod", "UnusedParameter")
 @Composable
-private fun AiDifficultyDialog(
-    onSelect: (AiDifficulty) -> Unit,
+private fun RoomAiDifficultyDialog(
+    step: AiSelectionStep,
+    selectedAiType: AIType?,
+    onSelectType: (AIType) -> Unit,
+    onSelectDifficulty: (RoomAiDifficulty) -> Unit,
+    onBack: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val onnxDifficulties = RoomAiDifficulty.entries.filter { it.aiType == AIType.ONNX_RL }
+    val isOnnxAvailable = BuildConfig.ONNX_AVAILABLE
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("选择 AI 类型", style = MaterialTheme.typography.titleMedium, color = TextPrimary) },
+        title = {
+            Text(
+                when (step) {
+                    AiSelectionStep.SELECT_TYPE -> "选择 AI 类型"
+                    AiSelectionStep.SELECT_DIFFICULTY -> "选择 AI 难度"
+                },
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                AiDifficulty.entries.forEach { diff ->
-                    ChuButton(
-                        text = diff.label,
-                        onClick = { onSelect(diff) },
-                        style = ChuButtonStyle.SECONDARY,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
+                when (step) {
+                    AiSelectionStep.SELECT_TYPE -> {
+                        ChuButton(
+                            text = "规则型 AI",
+                            onClick = {
+                                onSelectType(AIType.RULE_BASED)
+                                onSelectDifficulty(RoomAiDifficulty.RULE_NORMAL)
+                            },
+                            style = ChuButtonStyle.SECONDARY,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        ChuButton(
+                            text = if (isOnnxAvailable) "RL训练 AI" else "RL训练 AI（暂不可用）",
+                            onClick = { onSelectType(AIType.ONNX_RL) },
+                            style = ChuButtonStyle.SECONDARY,
+                            enabled = isOnnxAvailable,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    }
+                    AiSelectionStep.SELECT_DIFFICULTY -> {
+                        onnxDifficulties.forEach { diff ->
+                            ChuButton(
+                                text = diff.difficultyLevel.symbol + " " + diff.label.substringAfter(" - "),
+                                onClick = { onSelectDifficulty(diff) },
+                                style = ChuButtonStyle.SECONDARY,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
             }
         },
-        confirmButton = {},
+        confirmButton = {
+            if (step == AiSelectionStep.SELECT_DIFFICULTY) {
+                TextButton(onClick = onBack) {
+                    Text("返回", color = TextSecondary)
+                }
+            }
+        },
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("取消", color = TextSecondary)

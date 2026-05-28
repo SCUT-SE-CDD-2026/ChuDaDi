@@ -25,7 +25,7 @@ import com.example.chudadi.model.game.entity.TrickState
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.navigation.ChuDaDiNavGraph
 import com.example.chudadi.network.room.BluetoothRoomRepository
-import com.example.chudadi.ui.room.AiDifficulty
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomAction
 import com.example.chudadi.ui.room.RoomViewModel
 import org.junit.Rule
@@ -47,9 +47,9 @@ class ResultFlowTest {
             reconnectSessionRepository = reconnectSessionRepository,
         ).apply {
             createHostRoom(hostDeviceName = "Test Device")
-            dispatch(RoomAction.AddAiToSlot(1, AiDifficulty.RULE_BASED))
-            dispatch(RoomAction.AddAiToSlot(2, AiDifficulty.RULE_BASED))
-            dispatch(RoomAction.AddAiToSlot(3, AiDifficulty.RULE_BASED))
+dispatch(RoomAction.AddAiToSlot(1, RoomAiDifficulty.RULE_NORMAL))
+dispatch(RoomAction.AddAiToSlot(2, RoomAiDifficulty.RULE_NORMAL))
+dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
         }
 
         composeRule.setContent {
@@ -101,7 +101,6 @@ class ResultFlowTest {
                     leadSeatIndex = 0,
                     lastWinningSeatIndex = 0,
                     currentCombination = null,
-                    passCount = 0,
                     roundNumber = 1,
                 ),
                 playHistory = listOf("You win"),

@@ -6,7 +6,8 @@ import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.entity.RoundScore
 import com.example.chudadi.model.game.entity.SeatControllerType
-import com.example.chudadi.ui.room.AiDifficulty
+import com.example.chudadi.ui.room.AIType
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.RoomMatchRules
@@ -19,7 +20,8 @@ data class ParticipantRecord(
     val displayName: String,
     val avatarResId: Int?,
     val connectionStatus: MemberConnectionStatus?,
-    val aiDifficulty: AiDifficulty? = null,
+    val aiDifficulty: RoomAiDifficulty? = null,
+    val aiType: AIType? = null,
     val cumulativeScore: Int = 0,
 )
 
@@ -117,7 +119,7 @@ class RoomAuthorityStore {
         return "ai-$index"
     }
 
-    fun nextAiDisplayName(difficulty: AiDifficulty): String {
+    fun nextAiDisplayName(difficulty: RoomAiDifficulty): String {
         val usedNumbers = state.participants.values
             .filter { it.occupantType == SlotOccupantType.AI }
             .mapNotNull { it.displayName.substringAfterLast(' ').toIntOrNull() }
@@ -142,6 +144,7 @@ class RoomAuthorityStore {
                     avatarResId = participant.avatarResId,
                     connectionStatus = participant.connectionStatus,
                     aiDifficulty = participant.aiDifficulty,
+                    aiType = participant.aiType,
                     cumulativeScore = participant.cumulativeScore,
                     isLocalPlayer = participant.participantId == localParticipantId,
                 )
@@ -166,6 +169,7 @@ class RoomAuthorityStore {
                     avatarResId = slot.avatarResId,
                     connectionStatus = slot.connectionStatus?.name,
                     aiDifficulty = slot.aiDifficulty?.name,
+                    aiType = slot.aiType?.name,
                     cumulativeScore = slot.cumulativeScore,
                 )
             },
@@ -180,10 +184,12 @@ class RoomAuthorityStore {
         return (0 until SLOT_COUNT).map { slotIndex ->
             val participantId = state.slotAssignments[slotIndex]
             val participant = participantId?.let(state.participants::get)
-            val controllerType = if (participant?.occupantType == SlotOccupantType.AI) {
-                SeatControllerType.RULE_BASED_AI
-            } else {
-                SeatControllerType.HUMAN
+            val controllerType = when {
+                participant?.occupantType == SlotOccupantType.AI && participant.aiType == AIType.ONNX_RL ->
+                    SeatControllerType.ONNX_RL_AI
+                participant?.occupantType == SlotOccupantType.AI ->
+                    SeatControllerType.RULE_BASED_AI
+                else -> SeatControllerType.HUMAN
             }
             val displayName = participant?.displayName ?: "玩家${slotIndex + 1}"
             Triple(slotIndex, displayName, controllerType)
@@ -244,7 +250,8 @@ class RoomAuthorityStore {
                 displayName = slot.displayName,
                 avatarResId = slot.avatarResId,
                 connectionStatus = slot.connectionStatus?.let(MemberConnectionStatus::valueOf),
-                aiDifficulty = slot.aiDifficulty?.let(AiDifficulty::valueOf),
+                aiDifficulty = slot.aiDifficulty?.let(RoomAiDifficulty::valueOf),
+                aiType = slot.aiType?.let(AIType::valueOf),
                 cumulativeScore = slot.cumulativeScore,
             )
             slotAssignments[slot.slotIndex] = participantId

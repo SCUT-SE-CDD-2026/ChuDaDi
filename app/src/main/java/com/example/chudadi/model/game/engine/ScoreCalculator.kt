@@ -63,7 +63,7 @@ object ScoreCalculator {
         val finalLoserScores = if (baopeiSeatId != null && baopeiSeatId != winnerSeatId) {
             loserScores.map { score ->
                 if (score.seatId == baopeiSeatId) {
-                    score.copy(roundScore = -totalPenalty)
+                    score.copy(roundScore = -totalPenalty, isBaopei = true)
                 } else {
                     score.copy(roundScore = 0)
                 }

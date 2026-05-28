@@ -7,7 +7,7 @@ import com.example.chudadi.network.bluetooth.transport.HostTransportConfig
 import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
 import com.example.chudadi.model.game.entity.MatchPhase
-import com.example.chudadi.ui.room.AiDifficulty
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.RoomMode
@@ -449,7 +449,7 @@ class BluetoothRoomRepositoryTest {
             avatarResId = null,
             hostDeviceName = "HostDevice",
         )
-        repository.handleAddAiToSlot(slotIndex = 1, difficulty = AiDifficulty.RULE_BASED)
+        repository.handleAddAiToSlot(slotIndex = 1, difficulty = RoomAiDifficulty.RULE_NORMAL)
         val authorityStore = repository.authorityStoreForTest()
         val aiParticipantId = requireNotNull(authorityStore.state.slotAssignments[1])
         val broadcastCountBeforeRemove = transport.broadcastCallCount
@@ -581,7 +581,7 @@ class BluetoothRoomRepositoryTest {
                 displayName = participantId,
                 avatarResId = null,
                 connectionStatus = MemberConnectionStatus.READY,
-                aiDifficulty = AiDifficulty.RULE_BASED,
+                aiDifficulty = RoomAiDifficulty.RULE_NORMAL,
             )
             assignments[slotIndex] = participantId
             slotIndex++
@@ -612,6 +612,7 @@ class BluetoothRoomRepositoryTest {
             scope = scope,
             permissionChecker = permissionChecker,
             persistReconnectSessionAction = persistReconnectSessionAction,
+            appContext = org.mockito.Mockito.mock(android.content.Context::class.java),
         )
     }
 

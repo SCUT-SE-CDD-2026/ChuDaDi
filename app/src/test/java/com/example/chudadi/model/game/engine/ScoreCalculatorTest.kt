@@ -4,6 +4,7 @@ import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
 import com.example.chudadi.model.game.entity.PlayCombination
+import com.example.chudadi.model.game.entity.RoundScore
 import com.example.chudadi.model.game.entity.Seat
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.entity.SeatStatus
@@ -11,6 +12,8 @@ import com.example.chudadi.model.game.fixture.MatchFixtureFactory
 import com.example.chudadi.model.game.rule.CombinationType
 import com.example.chudadi.model.game.rule.GameRuleSet
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @Suppress("MagicNumber")
@@ -164,6 +167,9 @@ class ScoreCalculatorTest {
         assertEquals(0, scoreOf(scores, 1))
         assertEquals(-3, scoreOf(scores, 2))
         assertEquals(0, scoreOf(scores, 3))
+        assertFalse(scores.first { it.seatId == 2 }.isBaopei == false)
+        assertTrue(scores.first { it.seatId == 2 }.isBaopei)
+        assertFalse(scores.first { it.seatId == 1 }.isBaopei)
     }
 
     @Test(expected = IllegalArgumentException::class)
@@ -296,7 +302,80 @@ class ScoreCalculatorTest {
         )
     }
 
-    private fun scoreOf(scores: List<com.example.chudadi.model.game.entity.RoundScore>, seatId: Int): Int {
+    // -- ONNX-adapted tests: score conservation checks with new API --
+
+    @Test
+    fun calculateRoundScores_winnerEqualsSumOfLoserDeductions_southern() {
+        val seats = listOf(
+            seat(0, emptyList()),
+            seat(1, List(4) { MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS) }),
+            seat(2, List(10) { MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS) }),
+            seat(3, List(13) { MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES) }),
+        )
+
+        val scores = ScoreCalculator.calculateRoundScores(
+            ruleSet = GameRuleSet.SOUTHERN,
+            seats = seats,
+            winnerSeatId = 0,
+            winningCombination = null,
+        )
+
+        assertConservedScore(scores, winnerSeatId = 0)
+    }
+
+    @Test
+    fun calculateRoundScores_winnerEqualsSumOfLoserDeductions_northern() {
+        val seats = listOf(
+            seat(0, emptyList()),
+            seat(1, List(4) { MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS) }),
+            seat(2, List(10) { MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS) }),
+            seat(3, List(13) { MatchFixtureFactory.card(CardRank.SIX, CardSuit.SPADES) }),
+        )
+
+        val scores = ScoreCalculator.calculateRoundScores(
+            ruleSet = GameRuleSet.NORTHERN,
+            seats = seats,
+            winnerSeatId = 0,
+            winningCombination = null,
+        )
+
+        assertConservedScore(scores, winnerSeatId = 0)
+    }
+
+    @Test
+    fun calculateRoundScores_withSpadeTwo_winnerEqualsSumOfLoserDeductions() {
+        val winningCombination = PlayCombination(
+            type = CombinationType.SINGLE,
+            cards = listOf(MatchFixtureFactory.card(CardRank.TWO, CardSuit.SPADES)),
+            primaryRank = CardRank.TWO.strength,
+            primarySuit = CardSuit.SPADES.sortOrder,
+        )
+        val seats = listOf(
+            seat(0, emptyList()),
+            seat(1, List(4) { MatchFixtureFactory.card(CardRank.FOUR, CardSuit.CLUBS) }),
+            seat(2, List(10) { MatchFixtureFactory.card(CardRank.FIVE, CardSuit.HEARTS) }),
+        )
+
+        val scores = ScoreCalculator.calculateRoundScores(
+            ruleSet = GameRuleSet.SOUTHERN,
+            seats = seats,
+            winnerSeatId = 0,
+            winningCombination = winningCombination,
+        )
+
+        assertConservedScore(scores, winnerSeatId = 0)
+    }
+
+    private fun scoreOf(scores: List<RoundScore>, seatId: Int): Int {
         return scores.first { it.seatId == seatId }.roundScore
+    }
+
+    private fun assertConservedScore(
+        scores: List<RoundScore>,
+        winnerSeatId: Int,
+    ) {
+        val winner = scores.first { it.seatId == winnerSeatId }
+        val loserDeduction = scores.filterNot { it.seatId == winnerSeatId }.sumOf { -it.roundScore }
+        assertEquals(loserDeduction, winner.roundScore)
     }
 }

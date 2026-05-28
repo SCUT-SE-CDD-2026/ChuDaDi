@@ -2,10 +2,11 @@
 
 package com.example.chudadi.controller.client
 
-import com.example.chudadi.ai.rulebased.AiDecision
+import com.example.chudadi.ai.base.AIDecision
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
 import com.example.chudadi.controller.game.MatchTurnTimer
 import com.example.chudadi.controller.game.MatchUiStateMapper
+import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.MatchPhase
@@ -39,21 +40,45 @@ class LocalPlayerController(
     private var localSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
     private val turnTimer = MatchTurnTimer()
 
+    private var lastSeatConfigs: List<SeatConfig>? = null
+    private var lastLocalSeatId: Int = MatchUiStateMapper.DEFAULT_LOCAL_SEAT_ID
+    private var lastRuleSet: GameRuleSet = GameRuleSet.SOUTHERN
+    private var lastAiMoveDelayMillis: Long = 0L
+    private var aiMoveDelayMillis: Long = 0L
+
     fun onRequestStartLocalMatch(
-        seatConfigs: List<Triple<Int, String, SeatControllerType>>? = null,
+        seatConfigs: List<SeatConfig>? = null,
         localSeatId: Int = 0,
         ruleSet: GameRuleSet = GameRuleSet.SOUTHERN,
+        aiMoveDelayMillis: Long = 0L,
     ) {
         turnLoopJob?.cancel()
-        this.localSeatId = localSeatId
-        currentMatch = if (seatConfigs != null) {
-            serverController.startLocalMatch(
-                ruleSet = ruleSet,
-                seatConfigs = seatConfigs,
-            )
+
+        val effectiveSeatConfigs: List<SeatConfig>
+        val effectiveLocalSeatId: Int
+        val effectiveRuleSet: GameRuleSet
+
+        if (seatConfigs != null) {
+            lastSeatConfigs = seatConfigs
+            lastLocalSeatId = localSeatId
+            lastRuleSet = ruleSet
+            lastAiMoveDelayMillis = aiMoveDelayMillis
+            effectiveSeatConfigs = seatConfigs
+            effectiveLocalSeatId = localSeatId
+            effectiveRuleSet = ruleSet
         } else {
-            serverController.startLocalMatch(ruleSet)
+            effectiveSeatConfigs = lastSeatConfigs ?: emptyList()
+            effectiveLocalSeatId = lastLocalSeatId
+            effectiveRuleSet = lastRuleSet
         }
+
+        this.localSeatId = effectiveLocalSeatId
+        this.aiMoveDelayMillis = effectiveSeatConfigs.let { lastAiMoveDelayMillis }
+
+        currentMatch = serverController.startLocalMatch(
+            ruleSet = effectiveRuleSet,
+            seatConfigs = effectiveSeatConfigs.map { Triple(it.seatId, it.name, it.controllerType) },
+        )
         selectedCardIds = emptySet()
         lastActionMessage = null
         scheduleCurrentTurn()
@@ -206,12 +231,17 @@ class LocalPlayerController(
         seatId: Int,
         lastMessage: String?,
     ) = when (val decision = aiPlayer.decideAction(match, seatId)) {
-        is AiDecision.Play -> serverController.handleCommand(
+        is AIDecision.PlayCards -> serverController.handleCommand(
             match = match,
             seatIndex = seatId,
-            command = PlayCardCommand(decision.cardIds),
+            command = PlayCardCommand(decision.cards.map { it.id }.toSet()),
         )
-        AiDecision.Pass -> serverController.handleCommand(
+        AIDecision.Pass -> serverController.handleCommand(
+            match = match,
+            seatIndex = seatId,
+            command = PassCommand,
+        )
+        is AIDecision.Error -> serverController.handleCommand(
             match = match,
             seatIndex = seatId,
             command = PassCommand,
@@ -227,8 +257,14 @@ class LocalPlayerController(
             return
         }
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
-        val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI
-        turnTimer.scheduleTurn(isAiDrivenTurn = isAiDrivenTurn)
+        val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
+        val isLeadingTurn = match.trickState.currentCombination == null
+        turnTimer.scheduleTurn(
+            isAiDrivenTurn = isAiDrivenTurn,
+            isLeadingTurn = isLeadingTurn,
+            aiDelayMillis = if (isAiDrivenTurn) aiMoveDelayMillis else 0L,
+        )
     }
 
     private fun pushUiState() {

@@ -46,6 +46,8 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        buildConfigField("boolean", "ONNX_AVAILABLE", "true")
     }
 
     signingConfigs {
@@ -126,6 +128,10 @@ android {
                 "ExportedService",
             ),
         )
+    }
+
+    testOptions {
+        unitTests.isReturnDefaultValues = true
     }
 }
 

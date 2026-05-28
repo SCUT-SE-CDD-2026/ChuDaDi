@@ -13,9 +13,16 @@ class MatchTurnTimer(
         state = TurnTimerState.Idle
     }
 
-    fun scheduleTurn(isAiDrivenTurn: Boolean, nowMillis: Long = System.currentTimeMillis()) {
+    fun scheduleTurn(
+        isAiDrivenTurn: Boolean,
+        isLeadingTurn: Boolean = false,
+        nowMillis: Long = System.currentTimeMillis(),
+        aiDelayMillis: Long = random.nextLong(AI_DELAY_MIN_MS, AI_DELAY_MAX_MS + 1),
+    ) {
         val deadlineAtMillis = nowMillis + if (isAiDrivenTurn) {
-            random.nextLong(AI_DELAY_MIN_MS, AI_DELAY_MAX_MS + 1)
+            aiDelayMillis
+        } else if (isLeadingTurn) {
+            FIRST_TURN_DURATION_MS
         } else {
             HUMAN_TURN_DURATION_MS
         }
@@ -43,6 +50,7 @@ class MatchTurnTimer(
 
     companion object {
         const val HUMAN_TURN_DURATION_MS = 15_000L
+        const val FIRST_TURN_DURATION_MS = 25_000L
         const val AI_DELAY_MIN_MS = 2_000L
         const val AI_DELAY_MAX_MS = 3_500L
     }

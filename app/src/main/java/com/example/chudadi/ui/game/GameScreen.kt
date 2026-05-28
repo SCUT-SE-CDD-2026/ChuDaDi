@@ -21,6 +21,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -41,8 +43,10 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -77,12 +81,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import android.graphics.BlurMaskFilter
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.toArgb
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
 import com.example.chudadi.model.game.entity.Card as GameCard
+import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.model.game.snapshot.OpponentSummary
 import com.example.chudadi.model.game.snapshot.TablePlaySummary
@@ -190,7 +197,44 @@ fun GameScreen(
                             .testTag(ComposeTestTags.ACTION_MESSAGE),
                     )
                 }
+                if (BuildConfig.DEBUG && uiState.debugOpponentHands.isNotEmpty()) {
+                    DebugAiHandsButton(uiState = uiState)
+                }
+                if (uiState.phase == MatchPhase.NOT_STARTED) {
+                    LoadingOverlay(
+                        message = stringResource(R.string.loading_ai),
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
+        }
+    }
+}
+
+@Composable
+private fun LoadingOverlay(
+    message: String,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .background(TableOuter.copy(alpha = 0.85f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            CircularProgressIndicator(
+                color = CardGlow,
+                strokeWidth = 3.dp,
+                modifier = Modifier.size(48.dp),
+            )
+            Text(
+                text = message,
+                color = InfoTextPrimary,
+                style = MaterialTheme.typography.bodyLarge,
+            )
         }
     }
 }
@@ -1554,6 +1598,62 @@ private fun CornerPip(
             text = suit,
             color = suitColor,
             style = if (compact) CompactCardSuitTextStyle else CardSuitTextStyle,
+        )
+    }
+}
+
+@Composable
+private fun DebugAiHandsButton(uiState: MatchUiState) {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        contentAlignment = Alignment.BottomEnd,
+    ) {
+        Button(
+            onClick = { showDialog = true },
+            modifier = Modifier
+                .size(width = 64.dp, height = 28.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = Color(0xFFB0BEC5),
+                contentColor = Color.Black,
+            ),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+        ) {
+            Text(text = "AI Hands", fontSize = 10.sp)
+        }
+    }
+
+    if (showDialog) {
+        AlertDialog(
+            onDismissRequest = { showDialog = false },
+            title = { Text(text = "AI Opponent Hands") },
+            text = {
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    uiState.debugOpponentHands.forEach { hand ->
+                        Column {
+                            Text(
+                                text = hand.displayName,
+                                style = MaterialTheme.typography.titleSmall,
+                            )
+                            Text(
+                                text = hand.cards.joinToString(" "),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showDialog = false }) {
+                    Text("Close")
+                }
+            },
         )
     }
 }

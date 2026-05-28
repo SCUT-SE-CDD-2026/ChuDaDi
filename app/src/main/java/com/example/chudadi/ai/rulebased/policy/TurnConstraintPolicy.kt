@@ -21,7 +21,7 @@ internal class DefaultTurnConstraintPolicy : TurnConstraintPolicy {
     override fun requiresOpeningThree(context: RuleBasedAiContext): Boolean {
         return context.match.trickState.currentCombination == null &&
             context.match.trickState.roundNumber == OPENING_ROUND_NUMBER &&
-            context.match.trickState.passCount == ZERO_PASS_COUNT &&
+            context.match.trickState.passedSeatIndices.isEmpty() &&
             context.match.trickState.leadSeatIndex == context.seatIndex &&
             context.match.trickState.lastWinningSeatIndex == context.seatIndex
     }
@@ -38,13 +38,12 @@ internal class DefaultTurnConstraintPolicy : TurnConstraintPolicy {
         return legalResponses.any { candidate ->
             !context.rules.isBomb(candidate.type) &&
                 !context.rules.isBomb(currentCombination.type) &&
-                candidate.type == currentCombination.type &&
-                candidate.cardCount == currentCombination.cardCount
+                candidate.cardCount == currentCombination.cardCount &&
+                context.evaluator.canBeat(candidate, currentCombination)
         }
     }
 
     private companion object {
         const val OPENING_ROUND_NUMBER = 1
-        const val ZERO_PASS_COUNT = 0
     }
 }

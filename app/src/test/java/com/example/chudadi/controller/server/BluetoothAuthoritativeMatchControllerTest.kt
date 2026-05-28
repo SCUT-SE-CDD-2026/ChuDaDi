@@ -7,6 +7,7 @@ import com.example.chudadi.model.game.entity.Match
 import com.example.chudadi.model.game.entity.SeatControllerType
 import com.example.chudadi.model.game.fixture.MatchFixtureFactory
 import com.example.chudadi.model.game.rule.GameRuleSet
+import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -40,13 +41,13 @@ class BluetoothAuthoritativeMatchControllerTest {
     }
 
     @Test
-    fun hostMatchController_whenOldAiResultReturns_ignoresStaleTurn() {
+    fun hostMatchController_whenOldAiResultReturns_ignoresStaleTurn() = runTest {
         lateinit var controller: BluetoothAuthoritativeMatchController
         lateinit var oldExpectedTurn: AuthoritativeTurnSnapshot
         lateinit var matchAfterPlayerAction: Match
         var aiDecisionStarted = false
         val engine = FixtureGameEngine()
-        val aiActionResolver = AiActionResolver { match, seatId, actionEngine ->
+        val aiActionResolver = AiActionResolver { match, seatId, actionEngine, _ ->
             aiDecisionStarted = true
             val playResult = controller.handlePlayRequest(
                 seatId = 0,

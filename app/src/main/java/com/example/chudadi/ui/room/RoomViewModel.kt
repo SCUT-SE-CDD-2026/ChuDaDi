@@ -5,8 +5,12 @@ package com.example.chudadi.ui.room
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.R
+import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.controller.game.LocalGameAction
+import com.example.chudadi.controller.game.MatchUiStateMapper
+import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.model.game.entity.MatchPhase
@@ -18,6 +22,7 @@ import com.example.chudadi.navigation.AppFlowNavigationEvent
 import com.example.chudadi.navigation.AppFlowRoute
 import com.example.chudadi.network.room.BluetoothDiscoveredDevice
 import com.example.chudadi.network.room.BluetoothRoomRepository
+import android.util.Log
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -42,6 +47,13 @@ class RoomViewModel(
     private val reconnectSessionRepository: ReconnectSessionRepository,
 ) : ViewModel() {
 
+    private data class LocalAiState(
+        val aiPlaySpeed: AiPlaySpeed = AiPlaySpeed.NORMAL,
+        val aiSelectionStep: AiSelectionStep = AiSelectionStep.SELECT_TYPE,
+        val selectedAiType: AIType? = null,
+        val totalGamesPlayed: Int = 0,
+    )
+
     val playerName: StateFlow<String> = playerPrefsRepository.playerName
         .stateIn(
             scope = viewModelScope,
@@ -63,6 +75,7 @@ class RoomViewModel(
     private var connectJob: Job? = null
     private var connectionCancelRequested: Boolean = false
     private var clientJoinCompleted: Boolean = false
+    private val localAiState = MutableStateFlow(LocalAiState())
 
     val matchUiState: StateFlow<MatchUiState> = bluetoothRoomRepository.matchUiState
         .stateIn(
@@ -75,7 +88,8 @@ class RoomViewModel(
         bluetoothRoomRepository.roomUiState,
         playerName,
         scoreAdjustments,
-    ) { roomState, latestPlayerName, scoreMap ->
+        localAiState,
+    ) { roomState, latestPlayerName, scoreMap, aiState ->
         roomState.copy(
             slots = roomState.slots.map { slot ->
                 val slotWithLatestName = if (slot.isLocalPlayer && slot.displayName != latestPlayerName) {
@@ -91,6 +105,10 @@ class RoomViewModel(
                     slotWithLatestName
                 }
             },
+            aiPlaySpeed = aiState.aiPlaySpeed,
+            aiSelectionStep = aiState.aiSelectionStep,
+            selectedAiType = aiState.selectedAiType,
+            totalGamesPlayed = aiState.totalGamesPlayed,
         )
     }.stateIn(
         scope = viewModelScope,
@@ -107,7 +125,7 @@ class RoomViewModel(
         observeMatchFinishedEvents()
     }
 
-    @Suppress("CyclomaticComplexMethod")
+    @Suppress("CyclomaticComplexMethod", "LongMethod")
     fun dispatch(action: RoomAction) {
         when (action) {
             RoomAction.StartBluetoothDiscovery -> {
@@ -119,9 +137,37 @@ class RoomViewModel(
             RoomAction.CancelPendingConnection -> cancelPendingConnection()
             RoomAction.CancelPendingConnectionIfNotJoined -> cancelPendingConnectionIfNotJoined()
             RoomAction.ToggleRule -> bluetoothRoomRepository.handleToggleRule()
-            is RoomAction.AddAiToSlot -> bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
-            is RoomAction.RemoveSlotOccupant -> bluetoothRoomRepository.handleRemoveSlotOccupant(action.slotIndex)
-            is RoomAction.RequestSwapWithSlot -> bluetoothRoomRepository.handleSwapRequest(action.targetSlotIndex)
+            is RoomAction.AddAiToSlot -> {
+                localAiState.update {
+                    it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null)
+                }
+                bluetoothRoomRepository.handleAddAiToSlot(action.slotIndex, action.difficulty)
+            }
+            is RoomAction.RemoveSlotOccupant -> {
+                scoreAdjustments.update { it - action.slotIndex }
+                bluetoothRoomRepository.handleRemoveSlotOccupant(action.slotIndex)
+            }
+            is RoomAction.RequestSwapWithSlot -> {
+                val localSlot = uiState.value.slots.firstOrNull { it.isLocalPlayer }
+                if (uiState.value.roomMode == RoomMode.LOCAL &&
+                    localSlot != null &&
+                    localSlot.seatId != action.targetSlotIndex
+                ) {
+                    val fromKey = localSlot.seatId
+                    val toKey = action.targetSlotIndex
+                    scoreAdjustments.update { map ->
+                        val fromScore = map[fromKey]
+                        val toScore = map[toKey]
+                        val updated = map.toMutableMap()
+                        updated.remove(fromKey)
+                        updated.remove(toKey)
+                        if (toScore != null) updated[fromKey] = toScore
+                        if (fromScore != null) updated[toKey] = fromScore
+                        updated
+                    }
+                }
+                bluetoothRoomRepository.handleSwapRequest(action.targetSlotIndex)
+            }
             is RoomAction.ConfirmSwap -> bluetoothRoomRepository.handleSwapDecision(action.request, accepted = true)
             RoomAction.DeclineSwap -> {
                 uiState.value.pendingSwapRequest?.let {
@@ -138,10 +184,32 @@ class RoomViewModel(
                 bluetoothRoomRepository.resetRoomScores()
             }
             is RoomAction.AccumulateScores -> accumulateScores(action.scores)
-            is RoomAction.OpenAiDialog -> bluetoothRoomRepository.openAiDialog(action.slotIndex)
-            RoomAction.DismissAiDialog -> bluetoothRoomRepository.dismissMenus()
+            is RoomAction.OpenAiDialog -> {
+                localAiState.update {
+                    it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null)
+                }
+                bluetoothRoomRepository.openAiDialog(action.slotIndex)
+            }
+            RoomAction.DismissAiDialog -> {
+                localAiState.update {
+                    it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null)
+                }
+                bluetoothRoomRepository.dismissMenus()
+            }
             is RoomAction.OpenSlotActionMenu -> bluetoothRoomRepository.openSlotActionMenu(action.slotIndex)
             RoomAction.DismissSlotActionMenu -> bluetoothRoomRepository.dismissMenus()
+            is RoomAction.ToggleAiPlaySpeed -> toggleAiPlaySpeed()
+            is RoomAction.SelectAiType -> {
+                localAiState.update {
+                    it.copy(
+                        selectedAiType = action.aiType,
+                        aiSelectionStep = AiSelectionStep.SELECT_DIFFICULTY,
+                    )
+                }
+            }
+            RoomAction.BackToAiTypeSelection -> {
+                localAiState.update { it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null) }
+            }
             RoomAction.ExitRoom -> {
                 cancelPendingConnection()
                 bluetoothRoomRepository.leaveRoom()
@@ -299,40 +367,85 @@ class RoomViewModel(
             }
             updated
         }
+        localAiState.update { it.copy(totalGamesPlayed = it.totalGamesPlayed + 1) }
+    }
+
+    private fun toggleAiPlaySpeed() {
+        localAiState.update { current ->
+            val allSpeeds = AiPlaySpeed.entries.filter {
+                it != AiPlaySpeed.DEBUG_100_ROUNDS || BuildConfig.DEBUG
+            }
+            val nextIndex = (allSpeeds.indexOf(current.aiPlaySpeed) + 1) % allSpeeds.size
+            current.copy(aiPlaySpeed = allSpeeds[nextIndex])
+        }
     }
 
     private fun startConfiguredGame() {
         when (uiState.value.roomMode) {
             RoomMode.LOCAL -> emitLocalGameLaunch()
-            RoomMode.BLUETOOTH_HOST -> bluetoothRoomRepository.startNetworkMatch()
+            RoomMode.BLUETOOTH_HOST -> {
+                val aiMoveDelayMillis = localAiState.value.aiPlaySpeed.delayMillis
+                viewModelScope.launch {
+                    try {
+                        bluetoothRoomRepository.startNetworkMatch(aiMoveDelayMillis = aiMoveDelayMillis)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
+                        Log.e(TAG, "Failed to start network match", e)
+                    }
+                }
+            }
             RoomMode.BLUETOOTH_CLIENT -> Unit
         }
     }
 
     private fun emitLocalGameLaunch() {
         val slots = uiState.value.slots
+        var aiNumber = 0
         val seatConfigs = slots.map { slot ->
-            val controllerType = if (slot.occupantType == SlotOccupantType.AI) {
-                SeatControllerType.RULE_BASED_AI
-            } else {
-                SeatControllerType.HUMAN
+            val controllerType: SeatControllerType
+            val aiDifficulty: AIDifficulty? = when {
+                slot.occupantType == SlotOccupantType.AI && slot.aiType == AIType.ONNX_RL -> {
+                    aiNumber++
+                    controllerType = SeatControllerType.ONNX_RL_AI
+                    slot.aiDifficulty?.difficultyLevel?.toAIDifficulty()
+                }
+                slot.occupantType == SlotOccupantType.AI -> {
+                    aiNumber++
+                    controllerType = SeatControllerType.RULE_BASED_AI
+                    slot.aiDifficulty?.difficultyLevel?.toAIDifficulty()
+                }
+                else -> {
+                    controllerType = SeatControllerType.HUMAN
+                    null
+                }
             }
-            Triple(
-                slot.seatId,
-                slot.displayName.ifBlank { "玩家${slot.seatId + 1}" },
-                controllerType,
+            val displayName = if (slot.occupantType == SlotOccupantType.AI && slot.aiDifficulty != null) {
+                generateAiDisplayName(slot.aiDifficulty, aiNumber)
+            } else {
+                slot.displayName.ifBlank { "玩家${slot.seatId + 1}" }
+            }
+            SeatConfig(
+                seatId = slot.seatId,
+                name = displayName,
+                controllerType = controllerType,
+                aiDifficulty = aiDifficulty,
             )
         }
-        val localSeatId = slots.firstOrNull { it.isLocalPlayer }?.seatId ?: 0
+        val localSeatId = slots.firstOrNull { it.isLocalPlayer }?.seatId
+            ?: MatchUiStateMapper.NO_LOCAL_SEAT_ID
         val ruleSet = when (uiState.value.currentRule) {
             GameRuleDisplay.SOUTHERN -> GameRuleSet.SOUTHERN
             GameRuleDisplay.NORTHERN -> GameRuleSet.NORTHERN
         }
+        val aiPlaySpeed = localAiState.value.aiPlaySpeed
         _gameLaunchEvents.tryEmit(
             RoomGameLaunchEvent.StartLocalMatch(
                 seatConfigs = seatConfigs,
                 localSeatId = localSeatId,
                 ruleSet = ruleSet,
+                aiMoveDelayMillis = aiPlaySpeed.delayMillis,
+                aiPlaySpeed = aiPlaySpeed,
             ),
         )
     }
@@ -394,6 +507,21 @@ class RoomViewModel(
     }
 
     companion object {
+        private const val TAG = "RoomViewModel"
+
+        fun generateAiDisplayName(difficulty: RoomAiDifficulty, aiNumber: Int): String {
+            return when (difficulty.aiType) {
+                AIType.RULE_BASED -> "AIN$aiNumber"
+                AIType.ONNX_RL -> "${difficulty.aiType.shortLabel}${difficulty.difficultyLevel.symbol}$aiNumber"
+            }
+        }
+
+        private fun DifficultyLevel.toAIDifficulty(): AIDifficulty = when (this) {
+            DifficultyLevel.EASY -> AIDifficulty.EASY
+            DifficultyLevel.NORMAL -> AIDifficulty.NORMAL
+            DifficultyLevel.HARD -> AIDifficulty.HARD
+        }
+
         fun factory(
             playerPrefsRepository: PlayerPreferencesRepository,
             bluetoothRoomRepository: BluetoothRoomRepository,

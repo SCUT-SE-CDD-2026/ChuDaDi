@@ -11,6 +11,7 @@
 package com.example.chudadi.network.room
 
 import android.content.Context
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.data.repository.ReconnectSession
 import com.example.chudadi.data.repository.ReconnectSessionRepository
@@ -25,7 +26,9 @@ import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
 import com.example.chudadi.network.game.GameWireMessage
 import com.example.chudadi.network.room.presentation.BluetoothErrorMessageMapper
 import com.example.chudadi.network.room.presentation.RoomUiStateMapper
-import com.example.chudadi.ui.room.AiDifficulty
+import com.example.chudadi.ui.room.AiSelectionStep
+import com.example.chudadi.ui.room.AIType
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
@@ -68,8 +71,10 @@ class BluetoothRoomRepository private constructor(
         scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
         permissionChecker: BluetoothPermissionChecker? = null,
         persistReconnectSessionAction: (suspend (ReconnectSession) -> Unit)? = null,
+        appContext: Context,
     ) : this(
         BluetoothRoomRepositoryDependencies(
+            appContext = appContext,
             reconnectSessionRepository = null,
             scope = scope,
             permissionChecker = permissionChecker,
@@ -90,7 +95,7 @@ class BluetoothRoomRepository private constructor(
     private val roomUiStateMapper = RoomUiStateMapper()
     private val errorMessageMapper = BluetoothErrorMessageMapper()
     private val roomTransport = dependencies.roomTransport
-    private val matchCoordinator = NetworkMatchCoordinator(scope)
+    private val matchCoordinator = NetworkMatchCoordinator(scope, context = dependencies.appContext)
     private val membershipPort = object : RoomMembershipPort {
         override fun snapshotOfCurrentRoom(): RemoteRoomSnapshot = this@BluetoothRoomRepository.snapshotOfCurrentRoom()
 
@@ -504,13 +509,14 @@ class BluetoothRoomRepository private constructor(
         }
     }
 
-    fun startNetworkMatch() {
+    suspend fun startNetworkMatch(aiMoveDelayMillis: Long = 0L) {
         if (roomRole !is RoomRole.Host || _roomUiState.value.roomMode != RoomMode.BLUETOOTH_HOST) return
         val startResult = matchCoordinator.startNetworkMatch(
             authorityStore = authorityStore,
             localParticipantId = localParticipantId(),
             sendToParticipant = roomTransport::sendToParticipant,
             onMatchStartedSendFailed = ::handleMatchStartedSendFailure,
+            aiMoveDelayMillis = aiMoveDelayMillis,
         )
         if (startResult.isFailure) {
             matchCoordinator.reset()
@@ -576,15 +582,16 @@ class BluetoothRoomRepository private constructor(
         broadcastSnapshot()
     }
 
-    fun handleAddAiToSlot(slotIndex: Int, difficulty: AiDifficulty) {
+    fun handleAddAiToSlot(slotIndex: Int, difficulty: RoomAiDifficulty) {
         if (roomRole !is RoomRole.Host) return
         seatCoordinator.handleAddAiToSlot(slotIndex, difficulty)
-        publishUiState(showAiDifficultyDialog = false, aiDialogTargetSlot = -1)
+        publishUiState(showRoomAiDifficultyDialog = false, aiDialogTargetSlot = -1)
     }
 
     fun handleRemoveSlotOccupant(slotIndex: Int) {
         val participantId = authorityStore.occupantAt(slotIndex)
-        if (roomRole !is RoomRole.Host || participantId == null || participantId == HOST_PARTICIPANT_ID) return
+        if (roomRole !is RoomRole.Host || participantId == null) return
+        if (participantId == HOST_PARTICIPANT_ID && !BuildConfig.DEBUG) return
         val participant = authorityStore.state.participants[participantId]
         val notifyFailure = participant?.let {
             tryNotifyRemovedFromRoomIfNeeded(participantId = participantId, participant = it)
@@ -685,7 +692,7 @@ class BluetoothRoomRepository private constructor(
     fun dismissMenus() {
         _roomUiState.update {
             it.copy(
-                showAiDifficultyDialog = false,
+                showRoomAiDifficultyDialog = false,
                 aiDialogTargetSlot = -1,
                 showSlotActionMenu = false,
                 slotActionMenuTarget = -1,
@@ -695,7 +702,7 @@ class BluetoothRoomRepository private constructor(
 
     fun openAiDialog(slotIndex: Int) {
         if (roomRole !is RoomRole.Host) return
-        _roomUiState.update { it.copy(showAiDifficultyDialog = true, aiDialogTargetSlot = slotIndex) }
+        _roomUiState.update { it.copy(showRoomAiDifficultyDialog = true, aiDialogTargetSlot = slotIndex) }
     }
 
     fun openSlotActionMenu(slotIndex: Int) {
@@ -856,6 +863,7 @@ class BluetoothRoomRepository private constructor(
     }
 
     fun clear() {
+        matchCoordinator.reset()
         shutdownCurrentRole()
         roomTransport.closeNow()
         discoveryService.clearDiscoveredDevices()
@@ -1143,7 +1151,7 @@ class BluetoothRoomRepository private constructor(
     private fun publishUiState(
         connectionHint: String? = null,
         pendingSwapRequest: SwapRequest? = _roomUiState.value.pendingSwapRequest,
-        showAiDifficultyDialog: Boolean = _roomUiState.value.showAiDifficultyDialog,
+        showRoomAiDifficultyDialog: Boolean = _roomUiState.value.showRoomAiDifficultyDialog,
         aiDialogTargetSlot: Int = _roomUiState.value.aiDialogTargetSlot,
         showSlotActionMenu: Boolean = _roomUiState.value.showSlotActionMenu,
         slotActionMenuTarget: Int = _roomUiState.value.slotActionMenuTarget,
@@ -1159,7 +1167,7 @@ class BluetoothRoomRepository private constructor(
             discoveredDevices = discoveryService.devices.value,
             connectionHint = connectionHint,
             pendingSwapRequest = pendingSwapRequest,
-            showAiDifficultyDialog = showAiDifficultyDialog,
+            showRoomAiDifficultyDialog = showRoomAiDifficultyDialog,
             aiDialogTargetSlot = aiDialogTargetSlot,
             showSlotActionMenu = showSlotActionMenu,
             slotActionMenuTarget = slotActionMenuTarget,
@@ -1298,6 +1306,7 @@ private class AndroidBluetoothDiscoveryServicePort(
 }
 
 private data class BluetoothRoomRepositoryDependencies(
+    val appContext: Context,
     val reconnectSessionRepository: ReconnectSessionRepository?,
     val scope: CoroutineScope,
     val permissionChecker: BluetoothPermissionChecker?,
@@ -1316,6 +1325,7 @@ private fun createRuntimeDependencies(
     val bluetoothAdapter = permissionChecker.requireBluetoothAdapter()
     val frameCodec = RoomFrameCodec()
     return BluetoothRoomRepositoryDependencies(
+        appContext = appContext,
         reconnectSessionRepository = reconnectSessionRepository,
         scope = scope,
         permissionChecker = permissionChecker,

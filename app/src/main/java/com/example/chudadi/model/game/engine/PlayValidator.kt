@@ -104,7 +104,7 @@ class PlayValidator(
     ): Boolean {
         return match.trickState.currentCombination == null &&
             match.trickState.roundNumber == 1 &&
-            match.trickState.passCount == 0 &&
+            match.trickState.passedSeatIndices.isEmpty() &&
             match.trickState.leadSeatIndex == seatIndex &&
             match.trickState.lastWinningSeatIndex == seatIndex
     }

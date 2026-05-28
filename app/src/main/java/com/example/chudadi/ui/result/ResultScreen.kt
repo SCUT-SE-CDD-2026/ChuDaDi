@@ -47,6 +47,9 @@ private val TextSecondary = Color(0xFFB8A882)
 private val TextMuted = Color(0xFF7A6A50)
 private val ScorePositive = Color(0xFF7EC87E)
 private val ScoreNegative = Color(0xFFE07070)
+private val BaopeiRowBg = Color(0x44E07070)
+private val BaopeiRowBorder = Color(0xAAE07070)
+private val BaopeiTagBg = Color(0x33E07070)
 private val DividerColor = Color(0x33C8A96A)
 private val RankGold = Color(0xFFD4A85A)
 private val RankSilver = Color(0xFF94A3B8)
@@ -266,13 +269,16 @@ private fun ScoreRow(rank: Int, score: RoundScore) {
     val scoreColor = if (score.roundScore >= 0) ScorePositive else ScoreNegative
     val scoreText = if (score.roundScore >= 0) "+${score.roundScore}" else "${score.roundScore}"
 
+    val rowBg = if (score.isBaopei) BaopeiRowBg else RowBg
+    val rowBorder = if (score.isBaopei) BaopeiRowBorder else RowBorder
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .shadow(2.dp, RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
-            .background(RowBg)
-            .border(1.dp, RowBorder, RoundedCornerShape(10.dp))
+            .background(rowBg)
+            .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -288,6 +294,22 @@ private fun ScoreRow(rank: Int, score: RoundScore) {
             color = TextPrimary,
             modifier = Modifier.weight(1f),
         )
+        if (score.isBaopei) {
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(BaopeiTagBg)
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            ) {
+                Text(
+                    text = "包赔",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ScoreNegative,
+                    fontSize = 10.sp,
+                )
+            }
+            Spacer(modifier = Modifier.width(4.dp))
+        }
         Text(
             text = "${score.remainingCards} 张",
             style = MaterialTheme.typography.bodySmall,

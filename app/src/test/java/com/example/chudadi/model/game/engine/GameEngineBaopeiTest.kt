@@ -296,7 +296,6 @@ class GameEngineBaopeiTest {
             leadSeatIndex = lastWinningSeatIndex,
             lastWinningSeatIndex = lastWinningSeatIndex,
             currentCombination = currentCombination,
-            passCount = 0,
             roundNumber = roundNumber,
             baopeiSeatId = baopeiSeatId,
         ),

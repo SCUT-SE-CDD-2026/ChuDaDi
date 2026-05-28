@@ -3,6 +3,7 @@ package com.example.chudadi.network.room
 import com.example.chudadi.controller.server.AuthoritativeTurnSnapshot
 import com.example.chudadi.controller.server.BluetoothAuthoritativeMatchController
 import com.example.chudadi.model.game.entity.MatchPhase
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -25,11 +26,12 @@ class NetworkMatchLoopDriver(
             var shouldStop = false
             while (isActive && !shouldStop) {
                 delay(MATCH_LOOP_INTERVAL_MS)
-                shouldStop = tickOnce(
+                val tickResult = safeTickOnce(
                     updateAllMatchSnapshots = updateAllMatchSnapshots,
                     seatDisplayName = seatDisplayName,
                     isSeatDisconnected = isSeatDisconnected,
-                ) == LoopTickResult.FINISHED
+                )
+                if (tickResult == LoopTickResult.FINISHED) shouldStop = true
             }
         }
     }
@@ -39,10 +41,31 @@ class NetworkMatchLoopDriver(
     }
 
     companion object {
+        private const val TAG = "NetworkMatchLoopDriver"
         private const val MATCH_LOOP_INTERVAL_MS = 250L
     }
 
-    private fun tickOnce(
+    @Suppress("RethrowCaughtException", "TooGenericExceptionCaught")
+    private suspend fun safeTickOnce(
+        updateAllMatchSnapshots: (String?) -> Unit,
+        seatDisplayName: (Int) -> String,
+        isSeatDisconnected: (Int) -> Boolean,
+    ): LoopTickResult {
+        return try {
+            tickOnce(
+                updateAllMatchSnapshots = updateAllMatchSnapshots,
+                seatDisplayName = seatDisplayName,
+                isSeatDisconnected = isSeatDisconnected,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.e(TAG, "Match loop tick failed, continuing", e)
+            LoopTickResult.RUNNING
+        }
+    }
+
+    private suspend fun tickOnce(
         updateAllMatchSnapshots: (String?) -> Unit,
         seatDisplayName: (Int) -> String,
         isSeatDisconnected: (Int) -> Boolean,
@@ -72,7 +95,7 @@ class NetworkMatchLoopDriver(
         return result
     }
 
-    private fun resolveExpiredTurn(
+    private suspend fun resolveExpiredTurn(
         turnSnapshot: AuthoritativeTurnSnapshot,
         seatId: Int,
         seatName: String,

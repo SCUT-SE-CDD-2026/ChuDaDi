@@ -3,6 +3,7 @@ package com.example.chudadi.model.game.entity
 enum class SeatControllerType {
     HUMAN,
     RULE_BASED_AI,
+    ONNX_RL_AI,
 }
 
 enum class SeatStatus {

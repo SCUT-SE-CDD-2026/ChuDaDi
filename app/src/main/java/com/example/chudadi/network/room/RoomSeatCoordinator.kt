@@ -7,7 +7,7 @@ package com.example.chudadi.network.room
 
 import com.example.chudadi.R
 import com.example.chudadi.network.bluetooth.transport.RoomTransport
-import com.example.chudadi.ui.room.AiDifficulty
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
 import com.example.chudadi.ui.room.SwapRequest
@@ -30,7 +30,7 @@ class RoomSeatCoordinator(
     private val localParticipantIdProvider: () -> String,
     private val port: RoomSeatPort,
 ) {
-    fun handleAddAiToSlot(slotIndex: Int, difficulty: AiDifficulty) {
+    fun handleAddAiToSlot(slotIndex: Int, difficulty: RoomAiDifficulty) {
         if (authorityStore.occupantAt(slotIndex) != null) return
         val aiId = authorityStore.nextAiParticipantId()
         authorityStore.update {
@@ -43,6 +43,7 @@ class RoomSeatCoordinator(
                         avatarResId = R.drawable.avatar,
                         connectionStatus = MemberConnectionStatus.READY,
                         aiDifficulty = difficulty,
+                        aiType = difficulty.aiType,
                     )
                 ),
                 slotAssignments = it.slotAssignments + (slotIndex to aiId),

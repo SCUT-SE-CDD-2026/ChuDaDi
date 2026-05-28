@@ -249,6 +249,7 @@ class RoomViewModelConnectionTest {
             scope = CoroutineScope(SupervisorJob() + mainDispatcherRule.dispatcher),
             permissionChecker = bluetoothPermissionChecker(),
             persistReconnectSessionAction = persistReconnectSessionAction,
+            appContext = org.mockito.Mockito.mock(android.content.Context::class.java),
         )
         repository.loadBondedDevicesWithFeedback()
         val viewModel = RoomViewModel(

@@ -36,6 +36,9 @@ object TurnResolver {
                 else -> seat
             }
         }
+        val nextPlayedCardHistory = match.trickState.playedCardHistory + (
+            seatIndex to (match.trickState.playedCardHistory[seatIndex].orEmpty() + combination.cards)
+        )
 
         if (remainingHand.isEmpty()) {
             val rankedSeats = assignFinishOrder(updatedSeats, winnerSeatId = seatIndex)
@@ -46,8 +49,9 @@ object TurnResolver {
                     leadSeatIndex = seatIndex,
                     lastWinningSeatIndex = seatIndex,
                     currentCombination = combination,
-                    passCount = 0,
                     tablePlays = match.trickState.tablePlays + (seatIndex to combination),
+                    playedCardHistory = nextPlayedCardHistory,
+                    passedSeatIndices = emptySet(),
                     tablePlayOrders = match.trickState.tablePlayOrders + (
                         seatIndex to match.trickState.nextTablePlayOrder
                     ),
@@ -73,8 +77,9 @@ object TurnResolver {
                 leadSeatIndex = seatIndex,
                 lastWinningSeatIndex = seatIndex,
                 currentCombination = combination,
-                passCount = 0,
                 tablePlays = match.trickState.tablePlays + (seatIndex to combination),
+                playedCardHistory = nextPlayedCardHistory,
+                passedSeatIndices = emptySet(),
                 tablePlayOrders = match.trickState.tablePlayOrders + (
                     seatIndex to match.trickState.nextTablePlayOrder
                 ),
@@ -97,9 +102,8 @@ object TurnResolver {
             }
         }
 
-        val unfinishedSeats = updatedSeats.filter { it.status != SeatStatus.FINISHED }
-        val nextPassCount = match.trickState.passCount + 1
-        val shouldResetRound = nextPassCount >= unfinishedSeats.size - 1
+        val activeInTrick = updatedSeats.count { it.status == SeatStatus.ACTIVE }
+        val shouldResetRound = activeInTrick <= 1
         // 防御性清理：PASS 玩家理论上不会出现在 tablePlays 中（只有 applyPlay 才会写入），
         // 但此处显式移除可避免异常场景下 tablePlays 中残留旧数据。
         val tablePlaysAfterPass = match.trickState.tablePlays - seatIndex
@@ -119,9 +123,9 @@ object TurnResolver {
                 trickState = match.trickState.copy(
                     leadSeatIndex = match.trickState.lastWinningSeatIndex,
                     currentCombination = null,
-                    passCount = 0,
                     roundNumber = match.trickState.roundNumber + 1,
                     tablePlays = emptyMap(),
+                    passedSeatIndices = emptySet(),
                     // 一轮结束重置包赔标记。若同一轮内有多个玩家触发包赔（极端情况），
                     // 后触发的玩家会覆盖前者；当前规则未定义多触发情形，以最后触发者为准。
                     baopeiSeatId = null,
@@ -137,8 +141,8 @@ object TurnResolver {
                 activeSeatIndex = nextActiveSeatIndex(updatedSeats, seatIndex)
                     ?: throw TurnResolutionException("No active seat found from $seatIndex"),
                 trickState = match.trickState.copy(
-                    passCount = nextPassCount,
                     tablePlays = tablePlaysAfterPass,
+                    passedSeatIndices = match.trickState.passedSeatIndices + seatIndex,
                     tablePlayOrders = match.trickState.tablePlayOrders - seatIndex,
                 ),
                 playHistory = match.playHistory + "${currentSeat.displayName} passed",

@@ -1,5 +1,8 @@
 package com.example.chudadi.ai.rulebased
 
+import com.example.chudadi.ai.base.AIDecision
+import com.example.chudadi.model.game.entity.Match
+import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.ai.rulebased.policy.CandidatePolicy
 import com.example.chudadi.ai.rulebased.policy.DefaultCandidatePolicy
 import com.example.chudadi.ai.rulebased.policy.DefaultTurnConstraintPolicy
@@ -10,19 +13,9 @@ import com.example.chudadi.ai.rulebased.policy.TurnConstraintPolicy
 import com.example.chudadi.ai.rulebased.policy.WeightedTopSelectionPolicy
 import com.example.chudadi.ai.rulebased.scoring.DefaultScoringPolicy
 import com.example.chudadi.ai.rulebased.scoring.ScoringPolicy
-import com.example.chudadi.model.game.entity.Match
-import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.rule.CombinationEvaluator
 import com.example.chudadi.model.game.rule.GameRules
 import kotlin.random.Random
-
-sealed interface AiDecision {
-    data class Play(
-        val cardIds: Set<String>,
-    ) : AiDecision
-
-    data object Pass : AiDecision
-}
 
 class RuleBasedAiPlayer internal constructor(
     private val evaluatorFactory: (Match) -> CombinationEvaluator = { match ->
@@ -49,7 +42,7 @@ class RuleBasedAiPlayer internal constructor(
     fun decideAction(
         match: Match,
         seatIndex: Int,
-    ): AiDecision {
+    ): AIDecision {
         val context = buildContext(match, seatIndex)
 
         return if (context.currentCombination == null) {
@@ -59,10 +52,10 @@ class RuleBasedAiPlayer internal constructor(
         }
     }
 
-    private fun decideLead(context: RuleBasedAiContext): AiDecision {
+    private fun decideLead(context: RuleBasedAiContext): AIDecision {
         val candidates = policies.candidatePolicy.generateLeadCandidates(context)
         if (candidates.isEmpty()) {
-            return AiDecision.Pass
+            return AIDecision.Pass
         }
 
         val scoredCandidates =
@@ -72,16 +65,16 @@ class RuleBasedAiPlayer internal constructor(
                 requiresOpeningThree = policies.turnConstraintPolicy.requiresOpeningThree(context),
             )
 
-        val selected = policies.selectionPolicy.selectWeighted(scoredCandidates) ?: return AiDecision.Pass
-        return AiDecision.Play(selected.cards.map { it.id }.toSet())
+        val selected = policies.selectionPolicy.selectWeighted(scoredCandidates) ?: return AIDecision.Pass
+        return AIDecision.PlayCards(selected.cards)
     }
 
-    private fun decideResponse(context: RuleBasedAiContext): AiDecision {
+    private fun decideResponse(context: RuleBasedAiContext): AIDecision {
         val selected = resolveResponseSelection(context)
         return if (selected == null) {
-            AiDecision.Pass
+            AIDecision.Pass
         } else {
-            AiDecision.Play(selected.cards.map { it.id }.toSet())
+            AIDecision.PlayCards(selected.cards)
         }
     }
 
