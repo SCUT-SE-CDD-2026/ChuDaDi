@@ -39,6 +39,9 @@ data class AICreationResult(
 object AIFactory {
     private const val TAG = "AIFactory"
 
+    @Volatile
+    private var initialized = false
+
     private val MODEL_NAME: String get() = AIConfig.getDefaultVariant().modelFileName
 
     /**
@@ -258,9 +261,16 @@ object AIFactory {
      *
      * 配置文件不存在或解析失败时，降级到硬编码默认值。
      *
+     * 幂等：首次调用执行初始化，后续调用跳过。
+     *
      * @param context 应用上下文
      */
     fun preloadModels(context: Context) {
+        if (initialized) {
+            Log.d(TAG, "preloadModels already done, skipping")
+            return
+        }
+        initialized = true
         val config = ModelConfigLoader.load(context)
         if (config != null) {
             AIConfig.initialize(config)
@@ -268,7 +278,12 @@ object AIFactory {
             Log.w(TAG, "Model config not found, falling back to hardcoded defaults")
             registerDefaultVariant()
         }
-        AssetCopier.copyModelsToPrivateDir(context)
+        @Suppress("TooGenericExceptionCaught")
+        try {
+            AssetCopier.copyModelsToPrivateDir(context)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to copy model assets to private dir", e)
+        }
     }
 
     /**

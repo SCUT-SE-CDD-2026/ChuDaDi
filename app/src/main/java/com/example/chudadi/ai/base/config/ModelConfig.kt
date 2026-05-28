@@ -89,7 +89,9 @@ object ModelConfigLoader {
     @Suppress("SwallowedException")
     fun load(context: Context): ModelConfig? {
         return try {
-            val text = context.assets.open(CONFIG_FILE)
+            val assets = context.assets
+                ?: return null.also { Log.e(TAG, "Context.assets is null") }
+            val text = assets.open(CONFIG_FILE)
                 .bufferedReader()
                 .use { it.readText() }
             val config = json.decodeFromString<ModelConfig>(text)
