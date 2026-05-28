@@ -1,9 +1,6 @@
 package com.example.chudadi.ai.base
 
 import android.util.Log
-import com.example.chudadi.ai.base.AIConfig.defaultVariantName
-import com.example.chudadi.ai.base.AIConfig.lock
-import com.example.chudadi.ai.base.AIConfig.variants
 import com.example.chudadi.ai.base.config.ModelConfig
 import com.example.chudadi.ai.base.config.VariantConfig
 import com.example.chudadi.ai.base.variant.OnnxModelVariant
@@ -41,16 +38,13 @@ object AIConfig {
     }
 
     /** 获取默认变体 */
-    fun getDefaultVariant(): OnnxModelVariant {
+    fun getDefaultVariant(): OnnxModelVariant = synchronized(lock) {
         // 先尝试按配置指定的默认名称查找
         defaultVariantName?.let { name ->
-            getVariant(name)?.let { return it }
+            variants.find { it.name == name }?.let { return@synchronized it }
         }
         // 降级到第一个注册的变体
-        synchronized(lock) {
-            return variants.firstOrNull()
-                ?: error("No ONNX model variant registered")
-        }
+        variants.firstOrNull() ?: error("No ONNX model variant registered")
     }
 
     /** 按名称查找变体 */

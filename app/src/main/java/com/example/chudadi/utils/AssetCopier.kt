@@ -22,7 +22,10 @@ object AssetCopier {
      * - 至少存在一个 .onnx 候选文件；
      * - 复制流程结束后，至少一个 .onnx 文件在私有目录可用；
      * - 且没有 .onnx 文件复制失败。
+     *
+     * 加锁防止并发调用导致文件损坏。
      */
+    @Synchronized
     fun copyModelsToPrivateDir(context: Context): Boolean {
         return try {
             val modelsDir = File(context.filesDir, MODEL_ASSETS_DIR)

@@ -1,6 +1,7 @@
 package com.example.chudadi.ai.onnx.variant
 
 import android.util.Log
+import com.example.chudadi.BuildConfig
 import com.example.chudadi.ai.base.config.VariantConfig
 import com.example.chudadi.ai.base.config.toModelIoContract
 import com.example.chudadi.ai.base.variant.InferencePipeline
@@ -68,22 +69,18 @@ class V1DqnVariant(
         private fun validateDims(config: VariantConfig) {
             val contract = config.ioContract
             if (contract.obsDim != GameStateEncoder.INPUT_DIM) {
-                Log.w(
-                    COMPANION_NAME,
-                    "obsDim mismatch: config=${contract.obsDim}, " +
-                        "encoder=${GameStateEncoder.INPUT_DIM}. " +
-                        "Inference may produce garbage results.",
-                )
+                val msg = "obsDim mismatch: config=${contract.obsDim}, " +
+                    "encoder=${GameStateEncoder.INPUT_DIM}. " +
+                    "Inference may produce garbage results."
+                if (BuildConfig.DEBUG) error(msg) else Log.w(COMPANION_NAME, msg)
             }
             if (contract.actionDim != null &&
                 contract.actionDim != ActionFeatureEncoder.ACTION_FEATURE_DIM
             ) {
-                Log.w(
-                    COMPANION_NAME,
-                    "actionDim mismatch: config=${contract.actionDim}, " +
-                        "encoder=${ActionFeatureEncoder.ACTION_FEATURE_DIM}. " +
-                        "Inference may produce garbage results.",
-                )
+                val msg = "actionDim mismatch: config=${contract.actionDim}, " +
+                    "encoder=${ActionFeatureEncoder.ACTION_FEATURE_DIM}. " +
+                    "Inference may produce garbage results."
+                if (BuildConfig.DEBUG) error(msg) else Log.w(COMPANION_NAME, msg)
             }
         }
 

@@ -89,8 +89,9 @@ object ModelConfigLoader {
     @Suppress("SwallowedException")
     fun load(context: Context): ModelConfig? {
         return try {
+            // 单元测试中 mock Context.assets 可能返回 null，需防御性检查
             val assets = context.assets
-                ?: return null.also { Log.e(TAG, "Context.assets is null") }
+                ?: return null.also { Log.e(TAG, "Context.assets is null — unexpected in production") }
             val text = assets.open(CONFIG_FILE)
                 .bufferedReader()
                 .use { it.readText() }

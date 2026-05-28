@@ -39,7 +39,7 @@ data class AICreationResult(
 object AIFactory {
     private const val TAG = "AIFactory"
 
-    @Volatile
+    private val initLock = Any()
     private var initialized = false
 
     private val MODEL_NAME: String get() = AIConfig.getDefaultVariant().modelFileName
@@ -129,14 +129,8 @@ object AIFactory {
     ): AICreationResult = withContext(Dispatchers.IO) {
         Log.i(TAG, "Creating ONNX AI player for seat $seatIndex with variant=${variant.name}")
 
-        // 尝试复制模型文件到私有目录（如果存在）
+        // 获取模型路径（preloadModels 已负责复制）
         val modelName = variant.modelFileName
-        val wasModelAvailable = AssetCopier.isModelAvailable(context, modelName)
-        Log.d(TAG, "Model available in private dir before sync: $wasModelAvailable")
-        val copySuccess = AssetCopier.copyModelsToPrivateDir(context)
-        Log.i(TAG, "Model sync result: $copySuccess")
-
-        // 获取模型路径
         val modelPath = AssetCopier.getModelPath(context, modelName)
         Log.i(TAG, "Model path: $modelPath")
 
@@ -259,30 +253,32 @@ object AIFactory {
      * 从 `assets/models/model_config.json` 读取配置并初始化变体注册表，
      * 然后复制模型文件到私有目录。
      *
-     * 配置文件不存在或解析失败时，降级到硬编码默认值。
-     *
-     * 幂等：首次调用执行初始化，后续调用跳过。
-     *
-     * @param context 应用上下文
-     */
+      * 配置文件不存在或解析失败时，降级到硬编码默认值。
+      *
+      * 幂等：首次成功调用后跳过；失败时允许下次重试。
+      *
+      * @param context 应用上下文
+      */
     fun preloadModels(context: Context) {
-        if (initialized) {
-            Log.d(TAG, "preloadModels already done, skipping")
-            return
-        }
-        initialized = true
-        val config = ModelConfigLoader.load(context)
-        if (config != null) {
-            AIConfig.initialize(config)
-        } else {
-            Log.w(TAG, "Model config not found, falling back to hardcoded defaults")
-            registerDefaultVariant()
-        }
-        @Suppress("TooGenericExceptionCaught")
-        try {
-            AssetCopier.copyModelsToPrivateDir(context)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to copy model assets to private dir", e)
+        synchronized(initLock) {
+            if (initialized) {
+                Log.d(TAG, "preloadModels already done, skipping")
+                return
+            }
+            val config = ModelConfigLoader.load(context)
+            if (config != null) {
+                AIConfig.initialize(config)
+            } else {
+                Log.w(TAG, "Model config not found, falling back to hardcoded defaults")
+                registerDefaultVariant()
+            }
+            @Suppress("TooGenericExceptionCaught")
+            try {
+                AssetCopier.copyModelsToPrivateDir(context)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to copy model assets to private dir", e)
+            }
+            initialized = true
         }
     }
 
