@@ -1,6 +1,9 @@
 package com.example.chudadi.ai.base
 
 import android.util.Log
+import com.example.chudadi.ai.base.AIConfig.defaultVariantName
+import com.example.chudadi.ai.base.AIConfig.lock
+import com.example.chudadi.ai.base.AIConfig.variants
 import com.example.chudadi.ai.base.config.ModelConfig
 import com.example.chudadi.ai.base.config.VariantConfig
 import com.example.chudadi.ai.base.variant.OnnxModelVariant

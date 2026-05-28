@@ -1,8 +1,8 @@
 package com.example.chudadi.controller.client
 
 import com.example.chudadi.ai.rulebased.RuleBasedAiPlayer
-import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.controller.game.MatchUiStateMapper
+import com.example.chudadi.controller.game.SeatConfig
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Match
