@@ -1,6 +1,5 @@
 package com.example.chudadi.ai.onnx
 
-import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.onnx.pipeline.DqnBatchPipeline
 import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.fixture.MatchFixtureFactory

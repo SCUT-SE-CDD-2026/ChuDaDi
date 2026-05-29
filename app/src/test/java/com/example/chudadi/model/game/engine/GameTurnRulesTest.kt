@@ -1,6 +1,5 @@
 ﻿package com.example.chudadi.model.game.engine
 
-import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
 import com.example.chudadi.model.game.entity.MatchPhase

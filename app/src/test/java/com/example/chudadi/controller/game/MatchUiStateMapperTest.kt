@@ -1,11 +1,11 @@
 package com.example.chudadi.controller.game
 
+import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.entity.Card
 import com.example.chudadi.model.game.entity.CardRank
 import com.example.chudadi.model.game.entity.CardSuit
 import com.example.chudadi.model.game.entity.PlayCombination
 import com.example.chudadi.model.game.entity.TrickState
-import com.example.chudadi.model.game.engine.GameEngine
 import com.example.chudadi.model.game.fixture.MatchFixtureFactory
 import com.example.chudadi.model.game.rule.CombinationType
 import org.junit.Assert.assertEquals

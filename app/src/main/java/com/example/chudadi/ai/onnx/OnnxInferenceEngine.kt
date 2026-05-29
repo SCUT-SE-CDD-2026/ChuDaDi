@@ -5,7 +5,6 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import android.util.Log
 import com.example.chudadi.ai.base.variant.ModelIoContract
-import com.example.chudadi.ai.onnx.variant.V1DqnVariant
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -24,7 +23,7 @@ import java.nio.FloatBuffer
  */
 class OnnxInferenceEngine(
     modelPath: String,
-    contract: ModelIoContract = V1DqnVariant.ioContract,
+    contract: ModelIoContract,
 ) {
 
     companion object {

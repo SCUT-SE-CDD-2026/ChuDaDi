@@ -9,12 +9,6 @@ import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
 import com.example.chudadi.ui.room.MemberConnectionStatus
 import com.example.chudadi.ui.room.SlotOccupantType
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
-import java.io.DataInputStream
-import java.io.IOException
-import java.io.OutputStream
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
@@ -30,6 +24,12 @@ import org.mockito.Mockito.atLeastOnce
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
+import java.io.IOException
+import java.io.OutputStream
+import java.util.UUID
 
 class RoomMembershipCoordinatorTest {
     @Test

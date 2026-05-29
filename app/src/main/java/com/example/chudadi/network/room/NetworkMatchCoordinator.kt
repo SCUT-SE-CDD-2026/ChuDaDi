@@ -204,6 +204,8 @@ class NetworkMatchCoordinator(
     private suspend fun rebuildAiControllers(
         seatConfigs: List<Triple<Int, String, SeatControllerType>>,
     ) {
+        // 确保 ONNX 变体已注册（蓝牙联机可能先于本地游戏启动）
+        AIFactory.preloadModels(context)
         val aiSeats = seatConfigs.filter { it.third != SeatControllerType.HUMAN }
         val oldControllers = aiControllersBySeatId
         val reused = mutableMapOf<Int, AIPlayerController>()

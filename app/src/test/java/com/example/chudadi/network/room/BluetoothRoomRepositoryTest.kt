@@ -1,19 +1,17 @@
 package com.example.chudadi.network.room
 
 import com.example.chudadi.data.repository.ReconnectSession
-import com.example.chudadi.network.bluetooth.transport.BroadcastResult
+import com.example.chudadi.model.game.entity.MatchPhase
 import com.example.chudadi.network.bluetooth.platform.BluetoothPermissionChecker
+import com.example.chudadi.network.bluetooth.transport.BroadcastResult
 import com.example.chudadi.network.bluetooth.transport.HostTransportConfig
 import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
-import com.example.chudadi.model.game.entity.MatchPhase
-import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomMode
 import com.example.chudadi.ui.room.SlotOccupantType
-import java.io.IOException
-import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
@@ -30,6 +28,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.mockito.Mockito.mock
 import org.mockito.Mockito.`when`
+import java.io.IOException
+import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class BluetoothRoomRepositoryTest {

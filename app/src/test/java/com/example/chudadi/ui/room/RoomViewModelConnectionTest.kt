@@ -17,8 +17,6 @@ import com.example.chudadi.network.room.RemoteSlotSnapshot
 import com.example.chudadi.network.room.RoomClientConnection
 import com.example.chudadi.network.room.RoomSocketConnection
 import com.example.chudadi.network.room.RoomWireMessage
-import java.io.IOException
-import java.util.UUID
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -47,6 +45,8 @@ import org.mockito.Mockito.mock
 import org.mockito.Mockito.never
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.`when`
+import java.io.IOException
+import java.util.UUID
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class RoomViewModelConnectionTest {

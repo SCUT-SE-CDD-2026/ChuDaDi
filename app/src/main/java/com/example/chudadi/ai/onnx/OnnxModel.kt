@@ -2,7 +2,6 @@
 
 import android.util.Log
 import com.example.chudadi.ai.base.variant.ModelIoContract
-import com.example.chudadi.ai.onnx.variant.V1DqnVariant
 import kotlinx.coroutines.CancellationException
 
 /**
@@ -10,7 +9,7 @@ import kotlinx.coroutines.CancellationException
  */
 class OnnxModel(
     modelPath: String,
-    private val ioContract: ModelIoContract = V1DqnVariant.ioContract,
+    private val ioContract: ModelIoContract,
 ) {
 
     companion object {

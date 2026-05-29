@@ -4,7 +4,6 @@ import com.example.chudadi.network.bluetooth.transport.BroadcastResult
 import com.example.chudadi.network.bluetooth.transport.HostTransportConfig
 import com.example.chudadi.network.bluetooth.transport.RoomTransport
 import com.example.chudadi.network.bluetooth.transport.RoomTransportEvent
-import java.util.UUID
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
@@ -17,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.UUID
 
 class BluetoothClientJoinConnectorTest {
     @OptIn(ExperimentalCoroutinesApi::class)

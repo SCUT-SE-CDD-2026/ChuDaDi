@@ -25,8 +25,8 @@ import com.example.chudadi.model.game.entity.TrickState
 import com.example.chudadi.model.game.rule.GameRuleSet
 import com.example.chudadi.navigation.ChuDaDiNavGraph
 import com.example.chudadi.network.room.BluetoothRoomRepository
-import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomAction
+import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomViewModel
 import org.junit.Rule
 import org.junit.Test
