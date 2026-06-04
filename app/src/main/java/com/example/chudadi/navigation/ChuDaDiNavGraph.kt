@@ -53,7 +53,11 @@ private data class PendingOnnxStart(
 )
 
 private fun hasOnnxAiSeats(seatConfigs: List<SeatConfig>): Boolean {
-    return seatConfigs.any { it.controllerType == SeatControllerType.ONNX_RL_AI }
+    return seatConfigs.any {
+        it.controllerType == SeatControllerType.ONNX_RL_AI ||
+            it.controllerType == SeatControllerType.ONNX_RL_V2_AI ||
+            it.controllerType == SeatControllerType.ONNX_RL_V3_AI
+    }
 }
 
 @Suppress("LongMethod", "LongParameterList", "CyclomaticComplexMethod")

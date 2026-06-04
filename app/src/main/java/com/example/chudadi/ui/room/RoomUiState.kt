@@ -46,17 +46,25 @@ enum class RoomAiDifficulty(val label: String, val aiType: AIType, val difficult
     ONNX_EASY("RL训练 AI - 简单", AIType.ONNX_RL, DifficultyLevel.EASY),
     ONNX_NORMAL("RL训练 AI - 普通", AIType.ONNX_RL, DifficultyLevel.NORMAL),
     ONNX_HARD("RL训练 AI - 困难", AIType.ONNX_RL, DifficultyLevel.HARD),
+
+    // 扩展 RL AI（不区分 UI 难度，固定 HARD / argmax）
+    ONNX_V2("RL-V2", AIType.ONNX_RL_V2, DifficultyLevel.HARD),
+    ONNX_V3("RL-V3", AIType.ONNX_RL_V3, DifficultyLevel.HARD),
 }
 
 enum class AIType {
     RULE_BASED,
     ONNX_RL,
+    ONNX_RL_V2,
+    ONNX_RL_V3,
 }
 
 val AIType.shortLabel: String
     get() = when (this) {
         AIType.RULE_BASED -> "规则"
         AIType.ONNX_RL -> "RL"
+        AIType.ONNX_RL_V2 -> "RL2"
+        AIType.ONNX_RL_V3 -> "RL3"
     }
 
 val DifficultyLevel.symbol: String
@@ -125,6 +133,7 @@ data class RoomUiState(
 enum class AiSelectionStep {
     SELECT_TYPE,
     SELECT_DIFFICULTY,
+    SELECT_EXTENDED_AI,
 }
 data class DiscoveredDeviceUiState(
     val name: String,

@@ -187,6 +187,10 @@ class RoomAuthorityStore {
             val controllerType = when {
                 participant?.occupantType == SlotOccupantType.AI && participant.aiType == AIType.ONNX_RL ->
                     SeatControllerType.ONNX_RL_AI
+                participant?.occupantType == SlotOccupantType.AI && participant.aiType == AIType.ONNX_RL_V2 ->
+                    SeatControllerType.ONNX_RL_V2_AI
+                participant?.occupantType == SlotOccupantType.AI && participant.aiType == AIType.ONNX_RL_V3 ->
+                    SeatControllerType.ONNX_RL_V3_AI
                 participant?.occupantType == SlotOccupantType.AI ->
                     SeatControllerType.RULE_BASED_AI
                 else -> SeatControllerType.HUMAN
@@ -244,14 +248,17 @@ class RoomAuthorityStore {
         val slotAssignments = emptySlotAssignments().toMutableMap()
         slots.forEach { slot ->
             val participantId = slot.participantId ?: return@forEach
+            val occupantType = slot.occupantType?.let { runCatching { SlotOccupantType.valueOf(it) }.getOrNull() }
+                ?: return@forEach
             participants[participantId] = ParticipantRecord(
                 participantId = participantId,
-                occupantType = slot.occupantType?.let(SlotOccupantType::valueOf) ?: return@forEach,
+                occupantType = occupantType,
                 displayName = slot.displayName,
                 avatarResId = slot.avatarResId,
-                connectionStatus = slot.connectionStatus?.let(MemberConnectionStatus::valueOf),
-                aiDifficulty = slot.aiDifficulty?.let(RoomAiDifficulty::valueOf),
-                aiType = slot.aiType?.let(AIType::valueOf),
+                connectionStatus = slot.connectionStatus
+                    ?.let { runCatching { MemberConnectionStatus.valueOf(it) }.getOrNull() },
+                aiDifficulty = slot.aiDifficulty?.let { runCatching { RoomAiDifficulty.valueOf(it) }.getOrNull() },
+                aiType = slot.aiType?.let { runCatching { AIType.valueOf(it) }.getOrNull() },
                 cumulativeScore = slot.cumulativeScore,
             )
             slotAssignments[slot.slotIndex] = participantId

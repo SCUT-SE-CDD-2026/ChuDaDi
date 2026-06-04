@@ -5,6 +5,8 @@ import com.example.chudadi.ai.base.config.ModelConfig
 import com.example.chudadi.ai.base.config.VariantConfig
 import com.example.chudadi.ai.base.variant.OnnxModelVariant
 import com.example.chudadi.ai.onnx.variant.V1DqnVariant
+import com.example.chudadi.ai.onnx.variant.V2GruDqnVariant
+import com.example.chudadi.ai.onnx.variant.V3DqnVariant
 
 /**
  * AI 模块全局配置
@@ -103,6 +105,8 @@ object AIConfig {
      */
     private fun resolveKotlinVariant(config: VariantConfig): OnnxModelVariant? = when (config.name) {
         V1DqnVariant.COMPANION_NAME -> V1DqnVariant.fromConfig(config)
+        V2GruDqnVariant.COMPANION_NAME -> V2GruDqnVariant.fromConfig(config)
+        V3DqnVariant.COMPANION_NAME -> V3DqnVariant.fromConfig(config)
         else -> null
     }
 }

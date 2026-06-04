@@ -39,6 +39,9 @@ object TurnResolver {
         val nextPlayedCardHistory = match.trickState.playedCardHistory + (
             seatIndex to (match.trickState.playedCardHistory[seatIndex].orEmpty() + combination.cards)
         )
+        val nextPlayedActionHistory = match.trickState.playedActionHistory + (
+            seatIndex to (match.trickState.playedActionHistory[seatIndex].orEmpty() + listOf(combination.cards))
+        )
 
         if (remainingHand.isEmpty()) {
             val rankedSeats = assignFinishOrder(updatedSeats, winnerSeatId = seatIndex)
@@ -51,6 +54,7 @@ object TurnResolver {
                     currentCombination = combination,
                     tablePlays = match.trickState.tablePlays + (seatIndex to combination),
                     playedCardHistory = nextPlayedCardHistory,
+                    playedActionHistory = nextPlayedActionHistory,
                     passedSeatIndices = emptySet(),
                     tablePlayOrders = match.trickState.tablePlayOrders + (
                         seatIndex to match.trickState.nextTablePlayOrder
@@ -79,6 +83,7 @@ object TurnResolver {
                 currentCombination = combination,
                 tablePlays = match.trickState.tablePlays + (seatIndex to combination),
                 playedCardHistory = nextPlayedCardHistory,
+                playedActionHistory = nextPlayedActionHistory,
                 passedSeatIndices = emptySet(),
                 tablePlayOrders = match.trickState.tablePlayOrders + (
                     seatIndex to match.trickState.nextTablePlayOrder

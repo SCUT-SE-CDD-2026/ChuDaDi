@@ -1,4 +1,4 @@
-﻿package com.example.chudadi.ai.onnx
+package com.example.chudadi.ai.onnx
 
 import android.util.Log
 import com.example.chudadi.ai.base.AIDecision
@@ -43,28 +43,100 @@ class OnnxAIPlayerController(
 
     companion object {
         private const val TAG = "OnnxAIPlayerController"
+        private val cacheLock = Any()
+        private val modelCache = mutableMapOf<String, CachedModel>()
+        private val preloadedKeys = mutableSetOf<String>()
+
+        fun preloadModel(modelPath: String, variant: OnnxModelVariant): Boolean {
+            val key = cacheKey(modelPath, variant)
+            synchronized(cacheLock) {
+                if (key in preloadedKeys && modelCache[key]?.model?.isAvailable() == true) {
+                    Log.i(TAG, "ONNX model already preloaded variant=${variant.name}")
+                    return true
+                }
+            }
+            val model = acquireModel(
+                key = key,
+                modelPath = modelPath,
+                variant = variant,
+                seatIndex = PRELOAD_SEAT_INDEX,
+            )
+            return if (model?.isAvailable() == true) {
+                synchronized(cacheLock) { preloadedKeys += key }
+                Log.i(TAG, "ONNX model preloaded variant=${variant.name}")
+                true
+            } else {
+                false
+            }
+        }
+
+        private fun cacheKey(modelPath: String, variant: OnnxModelVariant): String = "$modelPath|${variant.name}"
+        private const val PRELOAD_SEAT_INDEX = -1
+        private fun acquireModel(
+            key: String,
+            modelPath: String,
+            variant: OnnxModelVariant,
+            seatIndex: Int,
+        ): OnnxModel? = synchronized(cacheLock) {
+            val existing = modelCache[key]
+            if (existing != null && existing.model.isAvailable()) {
+                existing.refCount += 1
+                Log.i(TAG, "[AI-$seatIndex] Reusing ONNX model variant=${variant.name}, refs=${existing.refCount}")
+                return@synchronized existing.model
+            }
+            if (modelPath.isBlank() || !File(modelPath).exists()) {
+                Log.w(TAG, "[AI-$seatIndex] Model path empty or file not found (path='$modelPath')")
+                return@synchronized null
+            }
+            Log.i(TAG, "[AI-$seatIndex] Loading ONNX model from: $modelPath, variant=${variant.name}")
+            val model = OnnxModel(modelPath, variant.ioContract)
+            return@synchronized if (model.isAvailable()) {
+                modelCache[key] = CachedModel(model = model, refCount = 1)
+                Log.i(TAG, "[AI-$seatIndex] ONNX model loaded and cached")
+                model
+            } else {
+                model.release()
+                null
+            }
+        }
+
+        private fun releaseModel(key: String) = synchronized(cacheLock) {
+            val cached = modelCache[key] ?: return@synchronized
+            cached.refCount -= 1
+            if (cached.refCount <= 0) {
+                modelCache.remove(key)
+                cached.model.release()
+                Log.i(TAG, "Released cached ONNX model key=$key")
+            } else {
+                Log.i(TAG, "Kept cached ONNX model key=$key, refs=${cached.refCount}")
+            }
+        }
     }
+
+    private data class CachedModel(
+        val model: OnnxModel,
+        var refCount: Int,
+    )
 
     private val pipeline = variant.createPipeline()
     private val obsEncoder = variant.createObsEncoder()
 
-    private val model: OnnxModel? = if (modelPath.isNotBlank() && File(modelPath).exists()) {
-        Log.i(TAG, "[AI-$seatIndex] Loading ONNX model from: $modelPath")
-        try {
-            val m = OnnxModel(modelPath, variant.ioContract)
-            Log.i(TAG, "[AI-$seatIndex] ONNX model loaded successfully, available=${m.isAvailable()}")
-            m
-        } catch (e: Exception) {
-            Log.e(TAG, "[AI-$seatIndex] Failed to load ONNX model", e)
-            null
-        }
-    } else {
-        Log.w(
-            TAG,
-            "[AI-$seatIndex] Model path empty or file not found (path='$modelPath')",
+    private val modelKey = cacheKey(modelPath, variant)
+    private val model: OnnxModel? = try {
+        acquireModel(
+            key = modelKey,
+            modelPath = modelPath,
+            variant = variant,
+            seatIndex = seatIndex,
         )
+    } catch (e: Exception) {
+        Log.e(TAG, "[AI-$seatIndex] Failed to load ONNX model", e)
         null
     }
+    val variantName: String get() = variant.name
+    @Volatile
+    private var released = false
+
 
     init {
         if (model?.isAvailable() != true) {
@@ -205,7 +277,10 @@ class OnnxAIPlayerController(
     }
 
     fun release() {
-        model?.release()
+        if (!released && model != null) {
+            released = true
+            releaseModel(modelKey)
+        }
     }
 
     override fun close() {

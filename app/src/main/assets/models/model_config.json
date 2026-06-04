@@ -12,6 +12,34 @@
         "actionDim": 139,
         "outputDim": 1
       }
+    },
+    {
+      "name": "v2_gru_dqn",
+      "modelFileName": "chudadi_v2_01.onnx",
+      "ioContract": {
+        "obsInputName": "obs",
+        "actionsInputName": "actions",
+        "historyInputName": "history",
+        "outputName": "Q",
+        "obsDim": 178,
+        "actionDim": 139,
+        "historyPlayers": 3,
+        "historyLen": 13,
+        "historyDim": 52,
+        "outputDim": 1
+      }
+    },
+    {
+      "name": "v3_dqn",
+      "modelFileName": "chudadi_v3_01.onnx",
+      "ioContract": {
+        "obsInputName": "obs",
+        "actionsInputName": "actions",
+        "outputName": "Q",
+        "obsDim": 334,
+        "actionDim": 139,
+        "outputDim": 1
+      }
     }
   ]
 }

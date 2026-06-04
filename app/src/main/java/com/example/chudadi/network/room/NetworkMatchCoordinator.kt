@@ -4,8 +4,12 @@ package com.example.chudadi.network.room
 
 import android.content.Context
 import com.example.chudadi.ai.AIFactory
+import com.example.chudadi.ai.base.AIDifficulty
 import com.example.chudadi.ai.base.AIPlayerController
 import com.example.chudadi.ai.onnx.OnnxAIPlayerController
+import com.example.chudadi.ai.onnx.variant.V1DqnVariant
+import com.example.chudadi.ai.onnx.variant.V2GruDqnVariant
+import com.example.chudadi.ai.onnx.variant.V3DqnVariant
 import com.example.chudadi.controller.client.BluetoothRemoteMatchController
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.controller.game.MatchUiStateMapper
@@ -225,11 +229,25 @@ class NetworkMatchCoordinator(
         toRelease.forEach { it.close() }
 
         val created = toCreate.associate { (seatId, _, controllerType) ->
-            val result = AIFactory.createAIPlayerWithStatus(
-                context = context,
-                seatIndex = seatId,
-                isOnnxAI = controllerType == SeatControllerType.ONNX_RL_AI,
-            )
+            val result = when (controllerType) {
+                SeatControllerType.ONNX_RL_V2_AI -> AIFactory.createAIPlayerWithStatus(
+                    context = context,
+                    seatIndex = seatId,
+                    difficulty = AIDifficulty.HARD,
+                    variantName = V2GruDqnVariant.COMPANION_NAME,
+                )
+                SeatControllerType.ONNX_RL_V3_AI -> AIFactory.createAIPlayerWithStatus(
+                    context = context,
+                    seatIndex = seatId,
+                    difficulty = AIDifficulty.HARD,
+                    variantName = V3DqnVariant.COMPANION_NAME,
+                )
+                else -> AIFactory.createAIPlayerWithStatus(
+                    context = context,
+                    seatIndex = seatId,
+                    isOnnxAI = controllerType == SeatControllerType.ONNX_RL_AI,
+                )
+            }
             if (result.isFallback) {
                 android.util.Log.w(TAG, "AI seat $seatId fallback to rule-based: ${result.errorMessage}")
             }
@@ -249,9 +267,18 @@ class NetworkMatchCoordinator(
     }
 
     private fun isCompatibleController(controller: AIPlayerController, type: SeatControllerType): Boolean {
-        val isOnnx = controller is OnnxAIPlayerController
-        val expectOnnx = type == SeatControllerType.ONNX_RL_AI
-        return isOnnx == expectOnnx
+        val onnxController = controller as? OnnxAIPlayerController
+        val expectOnnx = type == SeatControllerType.ONNX_RL_AI ||
+            type == SeatControllerType.ONNX_RL_V2_AI ||
+            type == SeatControllerType.ONNX_RL_V3_AI
+        val expectedVariant = when (type) {
+            SeatControllerType.ONNX_RL_AI -> V1DqnVariant.COMPANION_NAME
+            SeatControllerType.ONNX_RL_V2_AI -> V2GruDqnVariant.COMPANION_NAME
+            SeatControllerType.ONNX_RL_V3_AI -> V3DqnVariant.COMPANION_NAME
+            else -> null
+        }
+        val variantMatches = expectedVariant == null || onnxController?.variantName == expectedVariant
+        return (onnxController != null) == expectOnnx && variantMatches
     }
 
     private fun buildCompositeResolver(

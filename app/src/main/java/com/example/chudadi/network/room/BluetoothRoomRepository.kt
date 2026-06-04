@@ -12,6 +12,7 @@ package com.example.chudadi.network.room
 
 import android.content.Context
 import com.example.chudadi.BuildConfig
+import com.example.chudadi.ai.AIFactory
 import com.example.chudadi.controller.game.LocalGameAction
 import com.example.chudadi.data.repository.ReconnectSession
 import com.example.chudadi.data.repository.ReconnectSessionRepository
@@ -28,6 +29,7 @@ import com.example.chudadi.network.room.presentation.RoomUiStateMapper
 import com.example.chudadi.ui.room.BluetoothSearchState
 import com.example.chudadi.ui.room.GameRuleDisplay
 import com.example.chudadi.ui.room.MemberConnectionStatus
+import com.example.chudadi.ui.room.AIType
 import com.example.chudadi.ui.room.RoomAiDifficulty
 import com.example.chudadi.ui.room.RoomMode
 import com.example.chudadi.ui.room.RoomUiState
@@ -82,6 +84,7 @@ class BluetoothRoomRepository private constructor(
         ),
     )
 
+    private val appContext = dependencies.appContext
     private val reconnectSessionRepository = dependencies.reconnectSessionRepository
     private val scope = dependencies.scope
     private val permissionChecker = dependencies.permissionChecker
@@ -581,8 +584,30 @@ class BluetoothRoomRepository private constructor(
 
     fun handleAddAiToSlot(slotIndex: Int, difficulty: RoomAiDifficulty) {
         if (roomRole !is RoomRole.Host) return
-        seatCoordinator.handleAddAiToSlot(slotIndex, difficulty)
-        publishUiState(showRoomAiDifficultyDialog = false, aiDialogTargetSlot = -1)
+        if (difficulty.aiType == AIType.RULE_BASED) {
+            seatCoordinator.handleAddAiToSlot(slotIndex, difficulty)
+            publishUiState(showRoomAiDifficultyDialog = false, aiDialogTargetSlot = -1)
+            return
+        }
+        publishUiState(
+            connectionHint = "正在加载${difficulty.label}模型…",
+            showRoomAiDifficultyDialog = false,
+            aiDialogTargetSlot = -1,
+        )
+        scope.launch {
+            val loaded = runCatching {
+                AIFactory.preloadOnnxAiType(appContext, difficulty.aiType.name)
+            }.getOrElse { error ->
+                publishUiState(connectionHint = "AI模型加载失败：${error.message ?: "未知错误"}")
+                false
+            }
+            if (loaded) {
+                seatCoordinator.handleAddAiToSlot(slotIndex, difficulty)
+                publishUiState(connectionHint = "${difficulty.label}模型已加载")
+            } else {
+                publishUiState(connectionHint = "AI模型加载失败，请检查模型文件")
+            }
+        }
     }
 
     fun handleRemoveSlotOccupant(slotIndex: Int) {

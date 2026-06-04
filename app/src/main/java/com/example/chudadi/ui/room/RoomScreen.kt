@@ -1,4 +1,4 @@
-﻿@file:Suppress("TooManyFunctions", "FunctionNaming")
+@file:Suppress("TooManyFunctions", "FunctionNaming")
 
 package com.example.chudadi.ui.room
 
@@ -138,6 +138,7 @@ fun RoomScreen(
                 step = uiState.aiSelectionStep,
                 selectedAiType = uiState.selectedAiType,
                 onSelectType = { onAction(RoomAction.SelectAiType(it)) },
+                onOpenExtendedAi = { onAction(RoomAction.OpenExtendedAiSelection) },
                 onSelectDifficulty = { diff ->
                     onAction(RoomAction.AddAiToSlot(uiState.aiDialogTargetSlot, diff))
                 },
@@ -664,6 +665,7 @@ private fun RoomAiDifficultyDialog(
     step: AiSelectionStep,
     selectedAiType: AIType?,
     onSelectType: (AIType) -> Unit,
+    onOpenExtendedAi: () -> Unit,
     onSelectDifficulty: (RoomAiDifficulty) -> Unit,
     onBack: () -> Unit,
     onDismiss: () -> Unit,
@@ -678,6 +680,7 @@ private fun RoomAiDifficultyDialog(
                 when (step) {
                     AiSelectionStep.SELECT_TYPE -> "选择 AI 类型"
                     AiSelectionStep.SELECT_DIFFICULTY -> "选择 AI 难度"
+                    AiSelectionStep.SELECT_EXTENDED_AI -> "选择扩展 AI"
                 },
                 style = MaterialTheme.typography.titleMedium,
                 color = TextPrimary,
@@ -703,6 +706,13 @@ private fun RoomAiDifficultyDialog(
                             enabled = isOnnxAvailable,
                             modifier = Modifier.fillMaxWidth(),
                         )
+                        ChuButton(
+                            text = if (isOnnxAvailable) "扩展 AI" else "扩展 AI（暂不可用）",
+                            onClick = onOpenExtendedAi,
+                            style = ChuButtonStyle.SECONDARY,
+                            enabled = isOnnxAvailable,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     AiSelectionStep.SELECT_DIFFICULTY -> {
                         onnxDifficulties.forEach { diff ->
@@ -714,11 +724,21 @@ private fun RoomAiDifficultyDialog(
                             )
                         }
                     }
+                    AiSelectionStep.SELECT_EXTENDED_AI -> {
+                        listOf(RoomAiDifficulty.ONNX_V2, RoomAiDifficulty.ONNX_V3).forEach { diff ->
+                            ChuButton(
+                                text = diff.label,
+                                onClick = { onSelectDifficulty(diff) },
+                                style = ChuButtonStyle.SECONDARY,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
-            if (step == AiSelectionStep.SELECT_DIFFICULTY) {
+            if (step == AiSelectionStep.SELECT_DIFFICULTY || step == AiSelectionStep.SELECT_EXTENDED_AI) {
                 TextButton(onClick = onBack) {
                     Text("返回", color = TextSecondary)
                 }

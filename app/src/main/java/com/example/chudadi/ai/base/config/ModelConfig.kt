@@ -52,6 +52,10 @@ data class IoContractConfig(
     val obsDim: Int,
     val actionDim: Int? = null,
     val outputDim: Int,
+    val historyInputName: String? = null,
+    val historyPlayers: Int? = null,
+    val historyLen: Int? = null,
+    val historyDim: Int? = null,
 )
 
 /**
@@ -64,6 +68,10 @@ fun IoContractConfig.toModelIoContract(): ModelIoContract = ModelIoContract(
     obsDim = obsDim,
     actionDim = actionDim,
     outputDim = outputDim,
+    historyInputName = historyInputName,
+    historyPlayers = historyPlayers,
+    historyLen = historyLen,
+    historyDim = historyDim,
 )
 
 /**
