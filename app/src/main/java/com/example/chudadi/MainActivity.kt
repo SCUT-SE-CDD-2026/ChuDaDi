@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,7 +39,8 @@ class MainActivity : ComponentActivity() {
 
         enableEdgeToEdge()
         setContent {
-            ChuDaDiTheme {
+            val nightMode by playerPrefsRepository.nightMode.collectAsState(initial = false)
+            ChuDaDiTheme(nightMode = nightMode) {
                 var pendingEnableCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
                 var pendingPermissionCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
                 val latestEnableCallback by rememberUpdatedState(pendingEnableCallback)

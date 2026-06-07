@@ -275,6 +275,20 @@ fun ChuDaDiNavGraph(
             }
         }
     }
+    LaunchedEffect(
+        appFlowState.activeMatchUiState.phase,
+        appFlowState.useNetworkMatch,
+        gameViewModelType,
+        requestedRoute,
+    ) {
+        val isLocalGame = gameViewModelType == GameViewModelType.LOCAL && !appFlowState.useNetworkMatch
+        val isFinishedGameRoute = appFlowState.activeMatchUiState.phase == MatchPhase.FINISHED &&
+            requestedRoute == AppFlowRoute.GAME
+        if (isLocalGame && isFinishedGameRoute) {
+            requestedRoute = AppFlowRoute.RESULT
+        }
+    }
+
     // Auto-navigate for ONNX game state changes (GAME → RESULT → ROOM)
     LaunchedEffect(onnxUiState.phase, gameViewModelType) {
         if (gameViewModelType == GameViewModelType.ONNX && !appFlowState.useNetworkMatch) {

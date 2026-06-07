@@ -32,6 +32,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -42,33 +43,169 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.BuildConfig
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
+import com.example.chudadi.ui.theme.LocalChuUiPalette
 
-private val BgOuter = Color(0xFF1A1008)
-private val BgCard = Color(0xFF241912)
-private val BgCardBorder = Color(0x44C8A96A)
-private val SectionBg = Color(0x22C8A96A)
-private val SectionBorder = Color(0x33C8A96A)
-private val SlotEmptyBg = Color(0x14C8A96A)
-private val SlotEmptyBorder = Color(0x44C8A96A)
-private val SlotFilledBg = Color(0xAA1D1A14)
-private val SlotFilledBorder = Color(0x66C8A96A)
-private val SlotHostBorder = Color(0xAABA8C43)
-private val TextPrimary = Color(0xFFF7F1E4)
-private val TextSecondary = Color(0xFFB8A882)
-private val TextMuted = Color(0xFF7A6A50)
-private val StatusReady = Color(0xFF4CAF50)
-private val StatusConnected = Color(0xFFD4A85A)
-private val StatusNotReady = Color(0xFFFF9800)
-private val StatusDisconnected = Color(0xFF9E9E9E)
-private val ScorePositive = Color(0xFF81C784)
-private val ScoreNegative = Color(0xFFE57373)
-private val DividerColor = Color(0x33C8A96A)
-private val GoldAccent = Color(0xFFD4A85A)
+private val BgOuter: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.outer
+
+private val BgCard: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.card
+
+private val BgCardBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardBorder
+
+private val CardShadow: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardShadow
+
+private val SectionBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.section
+
+private val SectionBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.sectionBorder
+
+private val SectionShadow: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.sectionShadow
+
+private val SlotEmptyBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.section
+
+private val SlotEmptyBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.rowBorder
+
+private val SlotFilledBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.row
+
+private val SlotFilledBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.rowBorder
+
+private val SlotHostBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.inputBorderFocused
+
+private val TextPrimary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textPrimary
+
+private val TextSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textSecondary
+
+private val TextMuted: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textMuted
+
+private val StatusReady: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.success
+
+private val StatusConnected: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.goldAccent
+
+private val StatusNotReady: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.warning
+
+private val StatusDisconnected: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textMuted
+
+private val ScorePositive: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.success
+
+private val ScoreNegative: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.error
+
+private val DividerColor: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.divider
+
+private val GoldAccent: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.goldAccent
+
+private val HostBadgeBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.subtleGlow
+
+private val HostBadgeBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.goldHighlight
+
+private val EmptyAvatarBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.iconTile
+
+private val AvatarBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.avatarBg
+
+private val AvatarBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.avatarBorder
+
+private val LocalPlayerAvatarBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.inputBorderFocused
+
+private val OccupantTagBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.iconTile
+
+private val DialogContainer: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.card
+
 private val HostActionButtonHeight = 44.dp
 private val MemberActionButtonHeight = 44.dp
 private val BroadcastButtonHeight = 28.dp
@@ -92,7 +229,7 @@ fun RoomScreen(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.92f)
-                .shadow(24.dp, RoundedCornerShape(24.dp))
+                .shadow(CardShadow, RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(BgCard)
                 .border(1.dp, BgCardBorder, RoundedCornerShape(24.dp)),
@@ -183,8 +320,8 @@ private fun RoomTopBar(
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0x44BA8C43))
-                    .border(1.dp, Color(0x88BA8C43), RoundedCornerShape(6.dp))
+                    .background(HostBadgeBg)
+                    .border(1.dp, HostBadgeBorder, RoundedCornerShape(6.dp))
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
                 Text("房主", style = MaterialTheme.typography.labelSmall, color = GoldAccent)
@@ -292,7 +429,7 @@ private fun SlotCard(
 
     Box(
         modifier = modifier
-            .shadow(if (isEmpty) 2.dp else 6.dp, RoundedCornerShape(14.dp))
+            .shadow(SectionShadow, RoundedCornerShape(14.dp))
             .clip(RoundedCornerShape(14.dp))
             .background(bgColor)
             .border(
@@ -326,7 +463,7 @@ private fun SlotActionMenu(
     DropdownMenu(
         expanded = true,
         onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
-        containerColor = Color(0xFF2A1F14),
+        containerColor = DialogContainer,
     ) {
         if (slot.occupantType == null) {
             if (isHost) {
@@ -359,7 +496,7 @@ private fun SlotActionMenu(
             (!slot.isLocalPlayer || BuildConfig.DEBUG)
         if (canRemoveOccupant) {
             DropdownMenuItem(
-                text = { Text("移除", color = Color(0xFFE57373)) },
+                text = { Text("移除", color = ScoreNegative) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },
             )
         }
@@ -380,7 +517,7 @@ private fun EmptySlotContent(slotIndex: Int) {
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color(0x22C8A96A))
+                .background(EmptyAvatarBg)
                 .border(1.dp, SlotEmptyBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
@@ -418,10 +555,10 @@ private fun FilledSlotContent(slot: SlotState) {
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF3A2A1A))
+                .background(AvatarBg)
                 .border(
                     width = if (slot.isLocalPlayer) 2.dp else 1.5.dp,
-                    color = if (slot.isLocalPlayer) Color(0xAABA8C43) else Color(0x66F7E8C2),
+                    color = if (slot.isLocalPlayer) LocalPlayerAvatarBorder else AvatarBorder,
                     shape = CircleShape,
                 ),
             contentAlignment = Alignment.Center,
@@ -475,7 +612,7 @@ private fun FilledSlotContent(slot: SlotState) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x33C8A96A))
+                        .background(OccupantTagBg)
                         .padding(horizontal = 5.dp, vertical = 2.dp),
                 ) {
                     Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
@@ -527,7 +664,7 @@ private fun ControlPanel(
 ) {
     Column(
         modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(16.dp))
+            .shadow(SectionShadow, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(SectionBg)
             .border(1.dp, SectionBorder, RoundedCornerShape(16.dp))
@@ -749,7 +886,7 @@ private fun RoomAiDifficultyDialog(
                 Text("取消", color = TextSecondary)
             }
         },
-        containerColor = Color(0xFF2A1F14),
+        containerColor = DialogContainer,
         titleContentColor = TextPrimary,
         textContentColor = TextSecondary,
         shape = RoundedCornerShape(16.dp),
@@ -778,7 +915,7 @@ private fun SwapRequestDialog(
         dismissButton = {
             ChuButton(text = "拒绝", onClick = onDecline, style = ChuButtonStyle.SECONDARY)
         },
-        containerColor = Color(0xFF2A1F14),
+        containerColor = DialogContainer,
         shape = RoundedCornerShape(16.dp),
     )
 }

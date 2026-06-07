@@ -38,6 +38,13 @@ class SettingsViewModel(
             initialValue = 0,
         )
 
+    val nightMode: StateFlow<Boolean> = repository.nightMode
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = false,
+        )
+
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -78,6 +85,12 @@ class SettingsViewModel(
     fun onCancelEditName() {
         _uiState.update {
             it.copy(isEditingName = false, editingName = "", nameError = null)
+        }
+    }
+
+    fun onNightModeChanged(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateNightMode(enabled)
         }
     }
 

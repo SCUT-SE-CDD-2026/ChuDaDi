@@ -19,6 +19,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -27,6 +28,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.chudadi.model.game.entity.RoundScore
@@ -34,26 +36,112 @@ import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
+import com.example.chudadi.ui.theme.LocalChuUiPalette
 
-private val BgOuter = Color(0xFF1A1008)
-private val BgCard = Color(0xFF241912)
-private val BgCardBorder = Color(0x44C8A96A)
-private val GoldAccent = Color(0xFFD4A85A)
-private val RowBg = Color(0xAA1D1A14)
-private val RowBorder = Color(0x44C8A96A)
-private val HeaderBg = Color(0x22C8A96A)
-private val TextPrimary = Color(0xFFF7F1E4)
-private val TextSecondary = Color(0xFFB8A882)
-private val TextMuted = Color(0xFF7A6A50)
-private val ScorePositive = Color(0xFF7EC87E)
-private val ScoreNegative = Color(0xFFE07070)
-private val BaopeiRowBg = Color(0x44E07070)
-private val BaopeiRowBorder = Color(0xAAE07070)
-private val BaopeiTagBg = Color(0x33E07070)
-private val DividerColor = Color(0x33C8A96A)
-private val RankGold = Color(0xFFD4A85A)
-private val RankSilver = Color(0xFF94A3B8)
-private val RankBronze = Color(0xFFCD7F32)
+private val BgOuter: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.outer
+private val BgCard: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.card
+private val BgCardBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardBorder
+private val BgCardShadow: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardShadow
+private val GoldAccent: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.goldAccent
+private val RowBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.row
+private val RowBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.rowBorder
+private val HeaderBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.section
+private val ResultSectionShadow: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.sectionShadow
+private val TextPrimary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textPrimary
+private val TextSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textSecondary
+private val TextMuted: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textMuted
+private val ScorePositive: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.success
+private val ScoreNegative: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.error
+private val BaopeiRowBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.baopeiRow
+private val BaopeiRowBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.baopeiBorder
+private val BaopeiTagBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.baopeiTag
+private val DividerColor: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.divider
+private val RankGold: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.goldAccent
+private val RankSilver: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.rankSilver
+private val RankBronze: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.rankBronze
+private val LeftPanelStart: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.leftPanelStart
+private val LeftPanelEnd: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.leftPanelEnd
+private val WinnerGlow: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.subtleGlow
+private val WinnerTileBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.iconTile
+private val WinnerTileBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.avatarBorder
 
 @Composable
 fun ResultScreen(
@@ -72,7 +160,7 @@ fun ResultScreen(
             modifier = Modifier
                 .fillMaxWidth(0.90f)
                 .fillMaxHeight(0.90f)
-                .shadow(12.dp, RoundedCornerShape(24.dp))
+                .shadow(BgCardShadow, RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(BgCard)
                 .border(1.dp, BgCardBorder, RoundedCornerShape(24.dp)),
@@ -112,7 +200,7 @@ private fun ResultLeftPanel(
         modifier = modifier
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(Color(0xFF2A1A08), Color(0xFF1A1008)),
+                    colors = listOf(LeftPanelStart, LeftPanelEnd),
                 ),
             )
             .padding(24.dp),
@@ -125,7 +213,7 @@ private fun ResultLeftPanel(
                     .size(100.dp)
                     .background(
                         Brush.radialGradient(
-                            colors = listOf(Color(0x20D4A85A), Color.Transparent),
+                            colors = listOf(WinnerGlow, Color.Transparent),
                         ),
                     ),
             )
@@ -133,8 +221,8 @@ private fun ResultLeftPanel(
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(Color(0x33C8A96A))
-                    .border(1.5.dp, Color(0x88C8A96A), CircleShape),
+                    .background(WinnerTileBg)
+                    .border(1.5.dp, WinnerTileBorder, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Text("🏆", fontSize = 32.sp)
@@ -275,7 +363,7 @@ private fun ScoreRow(rank: Int, score: RoundScore) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(2.dp, RoundedCornerShape(10.dp))
+            .shadow(ResultSectionShadow, RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
             .background(rowBg)
             .border(1.dp, rowBorder, RoundedCornerShape(10.dp))

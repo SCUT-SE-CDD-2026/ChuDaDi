@@ -27,26 +27,83 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
+import com.example.chudadi.ui.theme.LocalChuUiPalette
 
-private val SearchBgOuter = Color(0xFF1A1008)
-private val SearchBgCard = Color(0xFF241912)
-private val SearchCardBorder = Color(0x44C8A96A)
-private val SearchSectionBg = Color(0x22C8A96A)
-private val SearchSectionBorder = Color(0x33C8A96A)
-private val SearchTextPrimary = Color(0xFFF7F1E4)
-private val SearchTextSecondary = Color(0xFFB8A882)
-private val SearchTextMuted = Color(0xFF7A6A50)
-private val SearchDivider = Color(0x33C8A96A)
-private val SearchHighlight = Color(0xFFD4A85A)
+private val SearchBgOuter: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.outer
+private val SearchBgCard: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.card
+private val SearchCardBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardBorder
+private val SearchCardShadow: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardShadow
+private val SearchSectionBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.section
+private val SearchSectionBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.sectionBorder
+private val SearchSectionShadow: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.sectionShadow
+private val SearchRowBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.row
+private val SearchRowBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.rowBorder
+private val SearchIconTile: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.iconTile
+private val SearchTextPrimary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textPrimary
+private val SearchTextSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textSecondary
+private val SearchTextMuted: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textMuted
+private val SearchDivider: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.divider
+private val SearchHighlight: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.goldAccent
+private val SearchError: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.error
 
 @Composable
 fun BluetoothSearchScreen(
@@ -66,7 +123,7 @@ fun BluetoothSearchScreen(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.92f)
-                .shadow(24.dp, RoundedCornerShape(24.dp))
+                .shadow(SearchCardShadow, RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(SearchBgCard)
                 .border(1.dp, SearchCardBorder, RoundedCornerShape(24.dp)),
@@ -114,7 +171,7 @@ fun BluetoothSearchScreen(
                 title = {
                     Text(
                         text = uiState.joinErrorTitle,
-                        color = SearchTextPrimary,
+                        color = SearchError,
                     )
                 },
                 text = {
@@ -168,7 +225,7 @@ private fun SearchTopBar(
                 BluetoothSearchState.FAILED -> "连接失败"
             },
             style = MaterialTheme.typography.labelMedium,
-            color = if (searchState == BluetoothSearchState.FAILED) Color(0xFFE57373) else SearchHighlight,
+            color = if (searchState == BluetoothSearchState.FAILED) SearchError else SearchHighlight,
         )
         IconButton(onClick = onRefresh, enabled = refreshEnabled) {
             Icon(
@@ -187,7 +244,7 @@ private fun SearchGuidePanel(
 ) {
     Column(
         modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(16.dp))
+            .shadow(SearchSectionShadow, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(SearchSectionBg)
             .border(1.dp, SearchSectionBorder, RoundedCornerShape(16.dp))
@@ -199,7 +256,7 @@ private fun SearchGuidePanel(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0x33C8A96A)),
+                    .background(SearchIconTile),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -245,7 +302,7 @@ private fun SearchDevicePanel(
 ) {
     Column(
         modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(16.dp))
+            .shadow(SearchSectionShadow, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
             .background(SearchSectionBg)
             .border(1.dp, SearchSectionBorder, RoundedCornerShape(16.dp))
@@ -320,7 +377,7 @@ private fun EmptyDeviceList(searchState: BluetoothSearchState) {
                 BluetoothSearchState.IDLE -> "暂无设备，点击右上角重新扫描"
             },
             style = MaterialTheme.typography.bodyMedium,
-            color = SearchTextMuted,
+            color = if (searchState == BluetoothSearchState.FAILED) SearchError else SearchTextMuted,
         )
     }
 }
@@ -337,8 +394,8 @@ private fun DeviceRow(
             .fillMaxWidth()
             .height(74.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(Color(0xAA1D1A14))
-            .border(1.dp, SearchSectionBorder, RoundedCornerShape(14.dp))
+            .background(SearchRowBg)
+            .border(1.dp, SearchRowBorder, RoundedCornerShape(14.dp))
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -346,7 +403,7 @@ private fun DeviceRow(
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color(0x33C8A96A)),
+                .background(SearchIconTile),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

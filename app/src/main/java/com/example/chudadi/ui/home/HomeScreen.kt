@@ -28,6 +28,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -41,22 +42,74 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.chudadi.R
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
+import com.example.chudadi.ui.theme.LocalChuUiPalette
 
-private val BgOuter = Color(0xFF1A1008)
-private val BgCard = Color(0xFF241912)
-private val BgCardBorder = Color(0x44C8A96A)
-private val LeftPanelBg = Color(0x22C8A96A)
-private val PlayerInfoBg = Color(0xAA1A1008)
-private val PlayerInfoBorder = Color(0x55F7E8C2)
-private val TextPrimary = Color(0xFFF7F1E4)
-private val TextSecondary = Color(0xFFB8A882)
-private val DividerColor = Color(0x33C8A96A)
+private val BgOuter: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.outer
+
+private val BgCard: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.card
+
+private val BgCardBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardBorder
+
+private val MainCardShadow: Dp
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.cardShadow
+
+private val LeftPanelBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.subtleGlow
+
+private val PlayerInfoBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.row
+
+private val PlayerInfoBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.rowBorder
+
+private val TextPrimary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textPrimary
+
+private val TextSecondary: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.textSecondary
+
+private val DividerColor: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.divider
+
+private val AvatarBg: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.avatarBg
+
+private val AvatarBorder: Color
+    @Composable
+    @ReadOnlyComposable
+    get() = LocalChuUiPalette.current.avatarBorder
 
 private data class RuleSection(
     val title: String,
@@ -177,7 +230,7 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.88f)
-                .shadow(elevation = 24.dp, shape = RoundedCornerShape(24.dp))
+                .shadow(elevation = MainCardShadow, shape = RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
                 .background(BgCard)
                 .border(width = 1.dp, color = BgCardBorder, shape = RoundedCornerShape(24.dp)),
@@ -352,8 +405,8 @@ private fun PlayerInfoBlock(playerName: String) {
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF3A2A1A))
-                .border(1.5.dp, Color(0x88F7E8C2), CircleShape),
+                .background(AvatarBg)
+                .border(1.5.dp, AvatarBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Image(
