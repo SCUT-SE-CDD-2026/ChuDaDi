@@ -14,6 +14,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModelProvider
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.data.repository.ReconnectSessionRepository
@@ -38,6 +41,7 @@ class MainActivity : ComponentActivity() {
         val roomViewModel = ViewModelProvider(this, roomViewModelFactory)[RoomViewModel::class.java]
 
         enableEdgeToEdge()
+        enterImmersiveMode()
         setContent {
             val nightMode by playerPrefsRepository.nightMode.collectAsState(initial = false)
             ChuDaDiTheme(nightMode = nightMode) {
@@ -71,6 +75,26 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enterImmersiveMode()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enterImmersiveMode()
+        }
+    }
+
+    private fun enterImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
         }
     }
 
