@@ -1,4 +1,4 @@
-﻿package com.example.chudadi.ai.onnx
+package com.example.chudadi.ai.onnx
 
 import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
@@ -80,6 +80,11 @@ class OnnxInferenceEngine(
             } else {
                 null
             }
+            val historyInputName = if (contract.historyInputName != null) {
+                modelInputNames.find { it.contains("history", ignoreCase = true) }
+            } else {
+                null
+            }
             val outputName = modelOutputNames.first()
 
             val obsNodeInfo = session?.inputInfo?.get(obsInputName)
@@ -136,6 +141,44 @@ class OnnxInferenceEngine(
                 null
             }
 
+            val detectedHistoryShape = if (historyInputName != null) {
+                val historyNodeInfo = session?.inputInfo?.get(historyInputName)
+                    ?: throw IllegalStateException(
+                        "Missing node info for history input '$historyInputName'",
+                    )
+                val historyTensorInfo = historyNodeInfo.info as? ai.onnxruntime.TensorInfo
+                    ?: throw IllegalStateException(
+                        "History input '$historyInputName' is not a tensor",
+                    )
+                val historyShape = historyTensorInfo.shape
+                    ?: throw IllegalStateException(
+                        "History input '$historyInputName' shape is null",
+                    )
+                val invalidHistoryShape = historyShape.size < 4 ||
+                    historyShape[1] <= 0 ||
+                    historyShape[2] <= 0 ||
+                    historyShape[3] <= 0
+                if (invalidHistoryShape) {
+                    throw IllegalStateException(
+                        "Invalid history input shape for '$historyInputName': " +
+                            historyShape.contentToString(),
+                    )
+                }
+                val players = historyShape[1].toInt()
+                val len = historyShape[2].toInt()
+                val dim = historyShape[3].toInt()
+                if (players != contract.historyPlayers || len != contract.historyLen || dim != contract.historyDim) {
+                    throw IllegalStateException(
+                        "History input shape mismatch: expected=[${contract.historyPlayers}, " +
+                            "${contract.historyLen}, ${contract.historyDim}], " +
+                            "detected=[$players, $len, $dim]",
+                    )
+                }
+                Triple(players, len, dim)
+            } else {
+                null
+            }
+
             val outputNodeInfo = session?.outputInfo?.get(outputName)
                 ?: throw IllegalStateException("Missing node info for output '$outputName'")
             val outputTensorInfo = outputNodeInfo.info as? ai.onnxruntime.TensorInfo
@@ -164,6 +207,10 @@ class OnnxInferenceEngine(
                 obsDim = detectedObsDim,
                 actionDim = detectedActionsDim,
                 outputDim = detectedOutputDim,
+                historyInputName = historyInputName,
+                historyPlayers = detectedHistoryShape?.first,
+                historyLen = detectedHistoryShape?.second,
+                historyDim = detectedHistoryShape?.third,
             )
             Log.i(TAG, "Validated model I/O contract: $ioContract")
 
@@ -191,6 +238,7 @@ class OnnxInferenceEngine(
     suspend fun infer(
         obsTensor: FloatArray,
         actionsTensor: FloatArray? = null,
+        historyTensor: FloatArray? = null,
         batchSize: Int = 1,
         obsDim: Int = if (batchSize > 0) (obsTensor.size / batchSize) else obsTensor.size,
     ): FloatArray = withContext(Dispatchers.IO) {
@@ -203,6 +251,7 @@ class OnnxInferenceEngine(
                     runInference(
                         obsTensor = obsTensor,
                         actionsTensor = actionsTensor,
+                        historyTensor = historyTensor,
                         batchSize = batchSize,
                         obsDim = obsDim,
                     )
@@ -222,6 +271,7 @@ class OnnxInferenceEngine(
     private fun runInference(
         obsTensor: FloatArray,
         actionsTensor: FloatArray?,
+        historyTensor: FloatArray?,
         batchSize: Int,
         obsDim: Int,
     ): FloatArray {
@@ -249,6 +299,14 @@ class OnnxInferenceEngine(
             )
             if (actionsInput != null) {
                 inputs[actionsInput.first] = actionsInput.second
+            }
+
+            val historyInput = createHistoryInput(
+                historyTensor = historyTensor,
+                normalizedBatchSize = normalizedBatchSize,
+            )
+            if (historyInput != null) {
+                inputs[historyInput.first] = historyInput.second
             }
 
             return runSession(inputs)
@@ -289,6 +347,44 @@ class OnnxInferenceEngine(
         val actionsBuffer = FloatBuffer.wrap(normalizedActionsData)
         val actionsOnnxTensor = OnnxTensor.createTensor(environment, actionsBuffer, actionsShape)
         return actionsInputName to actionsOnnxTensor
+    }
+    private fun createHistoryInput(
+        historyTensor: FloatArray?,
+        normalizedBatchSize: Int,
+    ): Pair<String, OnnxTensor>? {
+        val historyInputName = ioContract.historyInputName
+        val players = ioContract.historyPlayers
+        val historyLen = ioContract.historyLen
+        val historyDim = ioContract.historyDim
+        val missingHistoryContract = historyInputName == null ||
+            players == null ||
+            historyLen == null ||
+            historyDim == null
+        if (missingHistoryContract) {
+            return null
+        }
+        val requiredHistoryInputName = historyInputName.orEmpty()
+        val requiredPlayers = players ?: 0
+        val requiredHistoryLen = historyLen ?: 0
+        val requiredHistoryDim = historyDim ?: 0
+        val expectedHistorySize = normalizedBatchSize * requiredPlayers * requiredHistoryLen * requiredHistoryDim
+        val historyData = historyTensor ?: FloatArray(expectedHistorySize)
+        val normalizedHistoryData = when {
+            historyData.size < expectedHistorySize ->
+                FloatArray(expectedHistorySize) { index -> historyData.getOrElse(index) { 0f } }
+
+            historyData.size > expectedHistorySize -> historyData.copyOf(expectedHistorySize)
+            else -> historyData
+        }
+        val historyShape = longArrayOf(
+            normalizedBatchSize.toLong(),
+            requiredPlayers.toLong(),
+            requiredHistoryLen.toLong(),
+            requiredHistoryDim.toLong(),
+        )
+        val historyBuffer = FloatBuffer.wrap(normalizedHistoryData)
+        val historyOnnxTensor = OnnxTensor.createTensor(environment, historyBuffer, historyShape)
+        return requiredHistoryInputName to historyOnnxTensor
     }
 
     private fun runSession(inputs: Map<String, OnnxTensor>): FloatArray {

@@ -1,4 +1,4 @@
-﻿package com.example.chudadi.ai.onnx
+package com.example.chudadi.ai.onnx
 
 import android.util.Log
 import com.example.chudadi.ai.base.variant.ModelIoContract
@@ -76,6 +76,42 @@ class OnnxModel(
         }
     }
 
+    suspend fun predictActionValuesWithObsAndHistory(
+        obs: FloatArray,
+        history: FloatArray,
+        actionFeatures: List<FloatArray>,
+    ): FloatArray? {
+        if (!isLoaded || inferenceEngine == null || actionFeatures.isEmpty()) {
+            return null
+        }
+
+        return try {
+            val batchedInput = buildBatchedActionInput(
+                obs = obs,
+                actionFeatures = actionFeatures,
+            )
+            val batchedHistory = buildBatchedHistoryInput(
+                history = history,
+                batchSize = batchedInput.batchSize,
+            )
+            val rawValues = inferenceEngine?.infer(
+                obsTensor = batchedInput.obsBatch,
+                actionsTensor = batchedInput.actionsBatch,
+                historyTensor = batchedHistory,
+                batchSize = batchedInput.batchSize,
+                obsDim = batchedInput.obsDim,
+            )
+            rawValues?.let { alignActionValues(it, batchedInput.batchSize) }
+        } catch (e: OnnxInferenceException) {
+            Log.e(TAG, "Batch inference with history failed", e)
+            null
+        } catch (e: OnnxTimeoutException) {
+            Log.e(TAG, "Batch inference with history timeout", e)
+            null
+        } catch (e: CancellationException) {
+            throw e
+        }
+    }
     fun isAvailable(): Boolean = isLoaded && inferenceEngine?.isAvailable() == true
 
     fun release() {
@@ -97,6 +133,17 @@ internal data class BatchedActionInput(
     val batchSize: Int,
     val obsDim: Int,
 )
+
+internal fun buildBatchedHistoryInput(history: FloatArray, batchSize: Int): FloatArray {
+    val normalizedBatchSize = batchSize.coerceAtLeast(0)
+    if (normalizedBatchSize == 0 || history.isEmpty()) return FloatArray(0)
+    val historyDim = history.size
+    val batchedHistory = FloatArray(normalizedBatchSize * historyDim)
+    for (i in 0 until normalizedBatchSize) {
+        System.arraycopy(history, 0, batchedHistory, i * historyDim, historyDim)
+    }
+    return batchedHistory
+}
 
 internal fun buildBatchedActionInput(
     obs: FloatArray,

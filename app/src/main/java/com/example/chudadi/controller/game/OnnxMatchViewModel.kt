@@ -12,6 +12,9 @@ import com.example.chudadi.ai.base.FallbackDiagnosticLogger
 import com.example.chudadi.ai.onnx.OnnxInferenceException
 import com.example.chudadi.ai.onnx.OnnxTimeoutException
 import com.example.chudadi.ai.rulebased.RuleBasedAIAdapter
+import com.example.chudadi.ai.onnx.variant.V1DqnVariant
+import com.example.chudadi.ai.onnx.variant.V2GruDqnVariant
+import com.example.chudadi.ai.onnx.variant.V3DqnVariant
 import com.example.chudadi.controller.server.LocalAuthoritativeController
 import com.example.chudadi.model.game.engine.ActionResult
 import com.example.chudadi.model.game.engine.GameEngine
@@ -101,7 +104,11 @@ class OnnxMatchViewModel(
 
             // 增量复用：只释放/创建变化的座位，复用不变的 AI 控制器
             aiControllersBySeatId = try {
-                rebuildControllers(aiSeatConfigs)
+                rebuildOnnxControllers(
+                    context = context,
+                    oldControllers = aiControllersBySeatId,
+                    newAiSeatConfigs = aiSeatConfigs,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -501,85 +508,6 @@ class OnnxMatchViewModel(
      * 对比新旧座位配置：复用 controllerType + difficulty 不变的控制器，
      * 只释放不再需要的、创建新增或变化的。
      */
-    private suspend fun rebuildControllers(
-        newAiSeatConfigs: List<SeatConfig>,
-    ): Map<Int, AIPlayerController> {
-        val oldControllers = aiControllersBySeatId
-        val reused = mutableMapOf<Int, AIPlayerController>()
-        val toRelease = mutableListOf<AIPlayerController>()
-        val toCreate = mutableListOf<SeatConfig>()
-
-        // 1. 对旧控制器分类：复用 or 释放
-        for ((seatId, controller) in oldControllers) {
-            val newConfig = newAiSeatConfigs.firstOrNull { it.seatId == seatId }
-            if (newConfig != null && isCompatibleConfig(controller, newConfig)) {
-                reused[seatId] = controller
-            } else {
-                toRelease += controller
-            }
-        }
-
-        // 2. 找出需要新建的座位
-        for (config in newAiSeatConfigs) {
-            if (config.seatId !in reused) {
-                toCreate += config
-            }
-        }
-
-        // 3. 释放不再需要的控制器
-        for (controller in toRelease) {
-            try {
-                controller.close()
-            } catch (e: Exception) {
-                android.util.Log.w(TAG, "Failed to close controller for seat ${controller.seatIndex}", e)
-            }
-        }
-
-        // 4. 创建新控制器
-        val created = if (toCreate.isNotEmpty()) {
-            val creationResults = toCreate.associate { config ->
-                val result = AIFactory.createAIPlayerWithStatus(
-                    context = context,
-                    seatIndex = config.seatId,
-                    difficulty = config.aiDifficulty ?: AIDifficulty.NORMAL,
-                    isOnnxAI = config.controllerType == SeatControllerType.ONNX_RL_AI,
-                )
-                config.seatId to result
-            }
-            val fallbackEntries = creationResults.filterValues { it.isFallback }
-            if (fallbackEntries.isNotEmpty()) {
-                val seatIds = fallbackEntries.keys.sorted()
-                val errorMessages = fallbackEntries.values.mapNotNull { it.errorMessage }.distinct()
-                android.util.Log.w(TAG, "AI fallback seats: $seatIds, errors: $errorMessages")
-            }
-            creationResults.mapValues { it.value.controller }
-        } else {
-            emptyMap()
-        }
-
-        if (toRelease.isNotEmpty() || toCreate.isNotEmpty()) {
-            android.util.Log.i(
-                TAG,
-                "Controllers rebuilt: reused=${reused.keys.sorted()}, " +
-                    "released=${toRelease.map { it.seatIndex }.sorted()}, " +
-                    "created=${created.keys.sorted()}",
-            )
-        }
-
-        return reused + created
-    }
-
-    /**
-     * 判断现有控制器是否与新配置兼容（可复用）。
-     *
-     * 条件：controllerType 一致、difficulty 一致。
-     */
-    private fun isCompatibleConfig(controller: AIPlayerController, config: SeatConfig): Boolean {
-        val isOnnxController = controller is com.example.chudadi.ai.onnx.OnnxAIPlayerController
-        val expectedOnnx = config.controllerType == SeatControllerType.ONNX_RL_AI
-        val expectedDifficulty = config.aiDifficulty ?: AIDifficulty.NORMAL
-        return isOnnxController == expectedOnnx && controller.difficulty == expectedDifficulty
-    }
 
     private fun releaseAiControllers() {
         aiScope.coroutineContext.cancelChildren()
@@ -604,7 +532,9 @@ class OnnxMatchViewModel(
         }
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
-            activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_AI ||
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_V2_AI ||
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_V3_AI
         val isLeadingTurn = match.trickState.currentCombination == null
         turnTimer.scheduleTurn(
             isAiDrivenTurn = isAiDrivenTurn,
@@ -714,6 +644,127 @@ class OnnxMatchViewModel(
         private const val HUMAN_TURN_LOOP_INTERVAL_MS = 250L
     }
 }
+
+private suspend fun rebuildOnnxControllers(
+    context: Context,
+    oldControllers: Map<Int, AIPlayerController>,
+    newAiSeatConfigs: List<SeatConfig>,
+): Map<Int, AIPlayerController> {
+    val reused = mutableMapOf<Int, AIPlayerController>()
+    val toRelease = mutableListOf<AIPlayerController>()
+    val toCreate = mutableListOf<SeatConfig>()
+
+    for ((seatId, controller) in oldControllers) {
+        val newConfig = newAiSeatConfigs.firstOrNull { it.seatId == seatId }
+        if (newConfig != null && isCompatibleAiController(controller, newConfig)) {
+            reused[seatId] = controller
+        } else {
+            toRelease += controller
+        }
+    }
+
+    for (config in newAiSeatConfigs) {
+        if (config.seatId !in reused) {
+            toCreate += config
+        }
+    }
+
+    toRelease.forEach { controller ->
+        try {
+            controller.close()
+        } catch (e: Exception) {
+            android.util.Log.w(
+                AI_CONTROLLER_REBUILD_TAG,
+                "Failed to close controller for seat ${controller.seatIndex}",
+                e,
+            )
+        }
+    }
+
+    val created = createAiControllers(context = context, toCreate = toCreate)
+    if (toRelease.isNotEmpty() || toCreate.isNotEmpty()) {
+        android.util.Log.i(
+            AI_CONTROLLER_REBUILD_TAG,
+            "Controllers rebuilt: reused=${reused.keys.sorted()}, " +
+                "released=${toRelease.map { it.seatIndex }.sorted()}, " +
+                "created=${created.keys.sorted()}",
+        )
+    }
+    return reused + created
+}
+
+private suspend fun createAiControllers(
+    context: Context,
+    toCreate: List<SeatConfig>,
+): Map<Int, AIPlayerController> {
+    if (toCreate.isEmpty()) return emptyMap()
+    val creationResults = toCreate.associate { config ->
+        val result = when (config.controllerType) {
+            SeatControllerType.ONNX_RL_V2_AI -> AIFactory.createAIPlayerWithStatus(
+                context = context,
+                seatIndex = config.seatId,
+                difficulty = AIDifficulty.HARD,
+                variantName = V2GruDqnVariant.COMPANION_NAME,
+            )
+            SeatControllerType.ONNX_RL_V3_AI -> AIFactory.createAIPlayerWithStatus(
+                context = context,
+                seatIndex = config.seatId,
+                difficulty = AIDifficulty.HARD,
+                variantName = V3DqnVariant.COMPANION_NAME,
+            )
+            else -> AIFactory.createAIPlayerWithStatus(
+                context = context,
+                seatIndex = config.seatId,
+                difficulty = config.aiDifficulty ?: AIDifficulty.NORMAL,
+                isOnnxAI = config.controllerType == SeatControllerType.ONNX_RL_AI,
+            )
+        }
+        config.seatId to result
+    }
+    logFallbackAiControllers(creationResults)
+    return creationResults.mapValues { it.value.controller }
+}
+
+private fun logFallbackAiControllers(creationResults: Map<Int, com.example.chudadi.ai.AICreationResult>) {
+    val fallbackEntries = creationResults.filterValues { it.isFallback }
+    if (fallbackEntries.isEmpty()) return
+    val seatIds = fallbackEntries.keys.sorted()
+    val errorMessages = fallbackEntries.values.mapNotNull { it.errorMessage }.distinct()
+    android.util.Log.w(AI_CONTROLLER_REBUILD_TAG, "AI fallback seats: $seatIds, errors: $errorMessages")
+}
+
+private fun isCompatibleAiController(controller: AIPlayerController, config: SeatConfig): Boolean {
+    val onnxController = controller as? com.example.chudadi.ai.onnx.OnnxAIPlayerController
+    val expectedVariant = config.controllerType.expectedVariantName()
+    val variantMatches = expectedVariant == null || onnxController?.variantName == expectedVariant
+    return (onnxController != null) == config.controllerType.isOnnxController() &&
+        variantMatches &&
+        controller.difficulty == config.expectedAiDifficulty()
+}
+
+private fun SeatControllerType.expectedVariantName(): String? {
+    return when (this) {
+        SeatControllerType.ONNX_RL_AI -> V1DqnVariant.COMPANION_NAME
+        SeatControllerType.ONNX_RL_V2_AI -> V2GruDqnVariant.COMPANION_NAME
+        SeatControllerType.ONNX_RL_V3_AI -> V3DqnVariant.COMPANION_NAME
+        else -> null
+    }
+}
+
+private fun SeatControllerType.isOnnxController(): Boolean {
+    return this == SeatControllerType.ONNX_RL_AI ||
+        this == SeatControllerType.ONNX_RL_V2_AI ||
+        this == SeatControllerType.ONNX_RL_V3_AI
+}
+
+private fun SeatConfig.expectedAiDifficulty(): AIDifficulty {
+    return when (controllerType) {
+        SeatControllerType.ONNX_RL_V2_AI, SeatControllerType.ONNX_RL_V3_AI -> AIDifficulty.HARD
+        else -> aiDifficulty ?: AIDifficulty.NORMAL
+    }
+}
+
+private const val AI_CONTROLLER_REBUILD_TAG = "OnnxMatchViewModel"
 
 sealed class AIErrorState {
     abstract val message: String

@@ -59,6 +59,20 @@ class OnnxModelBatchPipelineTest {
     }
 
     @Test
+    fun buildBatchedHistoryInput_repeatsHistoryForEveryAction() {
+        val history = buildContinuousVector(start = 100f, size = 5)
+
+        val batched = buildBatchedHistoryInput(history = history, batchSize = ACTION_COUNT)
+
+        assertEquals(ACTION_COUNT * history.size, batched.size)
+        assertArrayEquals(
+            FloatArray(ACTION_COUNT * history.size) { index -> history[index % history.size] },
+            batched,
+            ZERO_TOLERANCE,
+        )
+    }
+
+    @Test
     fun alignActionValues_returnsExpectedLengthAndKeepsOrder() {
         val longValues = floatArrayOf(LONG_VALUE_1, LONG_VALUE_2, LONG_VALUE_3, LONG_VALUE_4)
         val trimmed = alignActionValues(values = longValues, expectedSize = TRIM_EXPECTED_SIZE)

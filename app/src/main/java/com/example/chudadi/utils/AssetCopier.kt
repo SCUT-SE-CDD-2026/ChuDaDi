@@ -26,7 +26,7 @@ object AssetCopier {
      * 加锁防止并发调用导致文件损坏。
      */
     @Synchronized
-    fun copyModelsToPrivateDir(context: Context): Boolean {
+    fun copyModelsToPrivateDir(context: Context, modelNames: Set<String>? = null): Boolean {
         return try {
             val modelsDir = File(context.filesDir, MODEL_ASSETS_DIR)
             if (!modelsDir.exists() && !modelsDir.mkdirs()) {
@@ -35,8 +35,8 @@ object AssetCopier {
             }
 
             val assetManager = context.assets
-            val modelFiles = assetManager.list(MODEL_ASSETS_DIR).orEmpty()
-            val onnxFiles = modelFiles.filter { it.endsWith(".onnx", ignoreCase = true) }
+            val onnxFiles = findOnnxModelAssets(assetManager, modelNames)
+            deleteUnconfiguredModels(modelsDir, modelNames)
 
             if (onnxFiles.isEmpty()) {
                 Log.w(TAG, "No .onnx model files found in assets/$MODEL_ASSETS_DIR")
@@ -82,6 +82,26 @@ object AssetCopier {
         }
     }
 
+    private fun findOnnxModelAssets(
+        assetManager: AssetManager,
+        modelNames: Set<String>?,
+    ): List<String> {
+        return assetManager.list(MODEL_ASSETS_DIR).orEmpty().filter { fileName ->
+            fileName.endsWith(".onnx", ignoreCase = true) &&
+                (modelNames == null || fileName in modelNames)
+        }
+    }
+
+    private fun deleteUnconfiguredModels(modelsDir: File, modelNames: Set<String>?) {
+        if (modelNames == null) return
+        modelsDir.listFiles { file ->
+            file.isFile && file.extension.equals("onnx", ignoreCase = true) && file.name !in modelNames
+        }.orEmpty().forEach { staleFile ->
+            if (staleFile.delete()) {
+                Log.i(TAG, "Deleted unconfigured model file: ${staleFile.name}")
+            }
+        }
+    }
     /**
      * 获取模型文件在私有目录中的路径。
      */

@@ -200,11 +200,28 @@ class RoomViewModel(
             RoomAction.DismissSlotActionMenu -> bluetoothRoomRepository.dismissMenus()
             is RoomAction.ToggleAiPlaySpeed -> toggleAiPlaySpeed()
             is RoomAction.SelectAiType -> {
+                if (action.aiType == AIType.ONNX_RL_V2 || action.aiType == AIType.ONNX_RL_V3) {
+                    localAiState.update {
+                        it.copy(aiSelectionStep = AiSelectionStep.SELECT_TYPE, selectedAiType = null)
+                    }
+                    val difficulty = when (action.aiType) {
+                        AIType.ONNX_RL_V2 -> RoomAiDifficulty.ONNX_V2
+                        AIType.ONNX_RL_V3 -> RoomAiDifficulty.ONNX_V3
+                        else -> error("Unexpected fixed-difficulty AI type: ${action.aiType}")
+                    }
+                    bluetoothRoomRepository.handleAddAiToSlot(uiState.value.aiDialogTargetSlot, difficulty)
+                } else {
+                    localAiState.update {
+                        it.copy(
+                            selectedAiType = action.aiType,
+                            aiSelectionStep = AiSelectionStep.SELECT_DIFFICULTY,
+                        )
+                    }
+                }
+            }
+            RoomAction.OpenExtendedAiSelection -> {
                 localAiState.update {
-                    it.copy(
-                        selectedAiType = action.aiType,
-                        aiSelectionStep = AiSelectionStep.SELECT_DIFFICULTY,
-                    )
+                    it.copy(aiSelectionStep = AiSelectionStep.SELECT_EXTENDED_AI, selectedAiType = null)
                 }
             }
             RoomAction.BackToAiTypeSelection -> {
@@ -401,37 +418,7 @@ class RoomViewModel(
 
     private fun emitLocalGameLaunch() {
         val slots = uiState.value.slots
-        var aiNumber = 0
-        val seatConfigs = slots.map { slot ->
-            val controllerType: SeatControllerType
-            val aiDifficulty: AIDifficulty? = when {
-                slot.occupantType == SlotOccupantType.AI && slot.aiType == AIType.ONNX_RL -> {
-                    aiNumber++
-                    controllerType = SeatControllerType.ONNX_RL_AI
-                    slot.aiDifficulty?.difficultyLevel?.toAIDifficulty()
-                }
-                slot.occupantType == SlotOccupantType.AI -> {
-                    aiNumber++
-                    controllerType = SeatControllerType.RULE_BASED_AI
-                    slot.aiDifficulty?.difficultyLevel?.toAIDifficulty()
-                }
-                else -> {
-                    controllerType = SeatControllerType.HUMAN
-                    null
-                }
-            }
-            val displayName = if (slot.occupantType == SlotOccupantType.AI && slot.aiDifficulty != null) {
-                generateAiDisplayName(slot.aiDifficulty, aiNumber)
-            } else {
-                slot.displayName.ifBlank { "玩家${slot.seatId + 1}" }
-            }
-            SeatConfig(
-                seatId = slot.seatId,
-                name = displayName,
-                controllerType = controllerType,
-                aiDifficulty = aiDifficulty,
-            )
-        }
+        val seatConfigs = buildLocalSeatConfigs(slots)
         val localSeatId = slots.firstOrNull { it.isLocalPlayer }?.seatId
             ?: MatchUiStateMapper.NO_LOCAL_SEAT_ID
         val ruleSet = when (uiState.value.currentRule) {
@@ -448,6 +435,60 @@ class RoomViewModel(
                 aiPlaySpeed = aiPlaySpeed,
             ),
         )
+    }
+
+    private fun buildLocalSeatConfigs(slots: List<SlotState>): List<SeatConfig> {
+        var aiNumber = 0
+        return slots.map { slot ->
+            if (slot.occupantType != SlotOccupantType.AI) {
+                return@map slot.toHumanSeatConfig()
+            }
+            aiNumber++
+            slot.toAiSeatConfig(aiNumber)
+        }
+    }
+
+    private fun SlotState.toHumanSeatConfig(): SeatConfig {
+        return SeatConfig(
+            seatId = seatId,
+            name = displayName.ifBlank { "玩家${seatId + 1}" },
+            controllerType = SeatControllerType.HUMAN,
+            aiDifficulty = null,
+        )
+    }
+
+    private fun SlotState.toAiSeatConfig(aiNumber: Int): SeatConfig {
+        return SeatConfig(
+            seatId = seatId,
+            name = aiDisplayName(aiNumber),
+            controllerType = aiControllerType(),
+            aiDifficulty = localAiDifficulty(),
+        )
+    }
+
+    private fun SlotState.aiDisplayName(aiNumber: Int): String {
+        return aiDifficulty?.let { generateAiDisplayName(it, aiNumber) }
+            ?: when (aiType) {
+                AIType.ONNX_RL_V2 -> "RL2-$aiNumber"
+                AIType.ONNX_RL_V3 -> "RL3-$aiNumber"
+                else -> displayName.ifBlank { "玩家${seatId + 1}" }
+            }
+    }
+
+    private fun SlotState.aiControllerType(): SeatControllerType {
+        return when (aiType) {
+            AIType.ONNX_RL -> SeatControllerType.ONNX_RL_AI
+            AIType.ONNX_RL_V2 -> SeatControllerType.ONNX_RL_V2_AI
+            AIType.ONNX_RL_V3 -> SeatControllerType.ONNX_RL_V3_AI
+            else -> SeatControllerType.RULE_BASED_AI
+        }
+    }
+
+    private fun SlotState.localAiDifficulty(): AIDifficulty? {
+        return when (aiType) {
+            AIType.ONNX_RL_V2, AIType.ONNX_RL_V3 -> AIDifficulty.HARD
+            else -> aiDifficulty?.difficultyLevel?.toAIDifficulty()
+        }
     }
 
     private fun observeRoomExitEvents() {
@@ -513,6 +554,8 @@ class RoomViewModel(
             return when (difficulty.aiType) {
                 AIType.RULE_BASED -> "AIN$aiNumber"
                 AIType.ONNX_RL -> "${difficulty.aiType.shortLabel}${difficulty.difficultyLevel.symbol}$aiNumber"
+                AIType.ONNX_RL_V2 -> "RL2-$aiNumber"
+                AIType.ONNX_RL_V3 -> "RL3-$aiNumber"
             }
         }
 

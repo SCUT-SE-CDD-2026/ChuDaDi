@@ -4,6 +4,8 @@ enum class SeatControllerType {
     HUMAN,
     RULE_BASED_AI,
     ONNX_RL_AI,
+    ONNX_RL_V2_AI,
+    ONNX_RL_V3_AI,
 }
 
 enum class SeatStatus {

@@ -65,3 +65,7 @@ CLAUDE.local.md
 # AI Model files (large binary files)
 *.onnx
 app/src/main/assets/models/*.onnx
+
+# rlcard
+rlcard/
+/rlcard

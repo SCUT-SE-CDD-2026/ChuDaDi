@@ -13,4 +13,8 @@ data class ModelIoContract(
     val obsDim: Int,
     val actionDim: Int?,
     val outputDim: Int,
+    val historyInputName: String? = null,
+    val historyPlayers: Int? = null,
+    val historyLen: Int? = null,
+    val historyDim: Int? = null,
 )

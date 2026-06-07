@@ -258,7 +258,9 @@ class LocalPlayerController(
         }
         val activeSeat = match.seats.first { it.seatId == match.activeSeatIndex }
         val isAiDrivenTurn = activeSeat.controllerType == SeatControllerType.RULE_BASED_AI ||
-            activeSeat.controllerType == SeatControllerType.ONNX_RL_AI
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_AI ||
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_V2_AI ||
+            activeSeat.controllerType == SeatControllerType.ONNX_RL_V3_AI
         val isLeadingTurn = match.trickState.currentCombination == null
         turnTimer.scheduleTurn(
             isAiDrivenTurn = isAiDrivenTurn,

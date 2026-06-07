@@ -23,6 +23,7 @@ sealed interface RoomAction {
     data class OpenAiDialog(val slotIndex: Int) : RoomAction
     data object DismissAiDialog : RoomAction
     data class SelectAiType(val aiType: AIType) : RoomAction
+    data object OpenExtendedAiSelection : RoomAction
     data object BackToAiTypeSelection : RoomAction
     data class OpenSlotActionMenu(val slotIndex: Int) : RoomAction
     data object DismissSlotActionMenu : RoomAction
