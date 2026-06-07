@@ -38,11 +38,12 @@ class SettingsNightModeTest {
             repository.updateNightMode(false)
             assertFalse(repository.nightMode.first())
         }
+        val viewModel = SettingsViewModel(repository)
 
         composeRule.setContent {
             ChuDaDiTheme(nightMode = false) {
                 SettingsScreen(
-                    viewModel = SettingsViewModel(repository),
+                    viewModel = viewModel,
                     onNavigateBack = {},
                 )
             }
