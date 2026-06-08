@@ -55,21 +55,6 @@ import com.example.chudadi.ui.components.ChuButtonStyle
 import com.example.chudadi.ui.theme.ChuUiTokens
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 private data class SettingsActions(
     val onEnterEditName: () -> Unit,
     val onNameChanged: (String) -> Unit,
