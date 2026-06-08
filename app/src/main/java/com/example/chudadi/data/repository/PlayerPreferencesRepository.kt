@@ -33,6 +33,14 @@ class PlayerPreferencesRepository(private val context: Context) {
         preferences[KEY_NIGHT_MODE] ?: DEFAULT_NIGHT_MODE
     }
 
+    val soundEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_SOUND_ENABLED] ?: DEFAULT_SOUND_ENABLED
+    }
+
+    val bgmEnabled: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[KEY_BGM_ENABLED] ?: DEFAULT_BGM_ENABLED
+    }
+
     suspend fun updatePlayerName(name: String) {
         context.dataStore.edit { preferences ->
             preferences[KEY_PLAYER_NAME] = name.take(MAX_NAME_LENGTH).trim()
@@ -51,14 +59,30 @@ class PlayerPreferencesRepository(private val context: Context) {
         }
     }
 
+    suspend fun updateSoundEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_SOUND_ENABLED] = enabled
+        }
+    }
+
+    suspend fun updateBgmEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[KEY_BGM_ENABLED] = enabled
+        }
+    }
+
     companion object {
         private val KEY_PLAYER_NAME = stringPreferencesKey("player_name")
         private val KEY_AVATAR_RES_ID = intPreferencesKey("avatar_res_id")
         private val KEY_NIGHT_MODE = booleanPreferencesKey("night_mode")
+        private val KEY_SOUND_ENABLED = booleanPreferencesKey("sound_enabled")
+        private val KEY_BGM_ENABLED = booleanPreferencesKey("bgm_enabled")
 
         private const val DEFAULT_PLAYER_NAME = "默认玩家"
         private const val DEFAULT_AVATAR_RES_ID = 0 // 0 表示使用默认头像
         private const val DEFAULT_NIGHT_MODE = false
+        private const val DEFAULT_SOUND_ENABLED = true
+        private const val DEFAULT_BGM_ENABLED = true
         const val MAX_NAME_LENGTH = 8
     }
 }

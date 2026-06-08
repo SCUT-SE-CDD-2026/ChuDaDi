@@ -61,12 +61,16 @@ private data class SettingsActions(
     val onConfirmName: () -> Unit,
     val onCancelEditName: () -> Unit,
     val onNightModeChanged: (Boolean) -> Unit,
+    val onSoundEnabledChanged: (Boolean) -> Unit,
+    val onBgmEnabledChanged: (Boolean) -> Unit,
 )
 
 private data class SettingsContentState(
     val playerName: String,
     val avatarResId: Int,
     val nightMode: Boolean,
+    val soundEnabled: Boolean,
+    val bgmEnabled: Boolean,
     val uiState: SettingsUiState,
 )
 
@@ -79,6 +83,8 @@ fun SettingsScreen(
     val playerName by viewModel.playerName.collectAsState()
     val avatarResId by viewModel.avatarResId.collectAsState()
     val nightMode by viewModel.nightMode.collectAsState()
+    val soundEnabled by viewModel.soundEnabled.collectAsState()
+    val bgmEnabled by viewModel.bgmEnabled.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val actions = remember(viewModel) {
         SettingsActions(
@@ -87,6 +93,8 @@ fun SettingsScreen(
             onConfirmName = viewModel::onConfirmName,
             onCancelEditName = viewModel::onCancelEditName,
             onNightModeChanged = viewModel::onNightModeChanged,
+            onSoundEnabledChanged = viewModel::onSoundEnabledChanged,
+            onBgmEnabledChanged = viewModel::onBgmEnabledChanged,
         )
     }
 
@@ -119,6 +127,8 @@ fun SettingsScreen(
                         playerName = playerName,
                         avatarResId = avatarResId,
                         nightMode = nightMode,
+                        soundEnabled = soundEnabled,
+                        bgmEnabled = bgmEnabled,
                         uiState = uiState,
                     ),
                     actions = actions,
@@ -184,6 +194,13 @@ private fun SettingsContent(
             onNightModeChanged = actions.onNightModeChanged,
         )
 
+        AudioSettingsCard(
+            soundEnabled = state.soundEnabled,
+            bgmEnabled = state.bgmEnabled,
+            onSoundEnabledChanged = actions.onSoundEnabledChanged,
+            onBgmEnabledChanged = actions.onBgmEnabledChanged,
+        )
+
         // 版本信息
         Text(
             text = "版本 1.0",
@@ -242,6 +259,88 @@ private fun AppearanceSettingsCard(
                 uncheckedBorderColor = ChuUiTokens.InputBorder,
             ),
             modifier = Modifier.testTag(ComposeTestTags.NIGHT_MODE_SWITCH),
+        )
+    }
+}
+
+@Composable
+private fun AudioSettingsCard(
+    soundEnabled: Boolean,
+    bgmEnabled: Boolean,
+    onSoundEnabledChanged: (Boolean) -> Unit,
+    onBgmEnabledChanged: (Boolean) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .background(ChuUiTokens.Section)
+            .border(1.dp, ChuUiTokens.SectionBorder, RoundedCornerShape(16.dp))
+            .padding(20.dp),
+    ) {
+        Text(
+            text = "音频设置",
+            style = MaterialTheme.typography.titleMedium,
+            color = ChuUiTokens.TextPrimary,
+        )
+        Spacer(modifier = Modifier.height(16.dp))
+        AudioSwitchRow(
+            label = "音效",
+            description = "出牌、轮次、胜负等游戏音效",
+            checked = soundEnabled,
+            onCheckedChange = onSoundEnabledChanged,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        AudioSwitchRow(
+            label = "背景音乐",
+            description = "菜单和游戏中的背景音乐",
+            checked = bgmEnabled,
+            onCheckedChange = onBgmEnabledChanged,
+        )
+    }
+}
+
+@Composable
+private fun AudioSwitchRow(
+    label: String,
+    description: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(ChuUiTokens.Input)
+            .border(1.dp, ChuUiTokens.InputBorder, RoundedCornerShape(12.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = ChuUiTokens.TextPrimary,
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = ChuUiTokens.TextSecondary,
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = ChuUiTokens.TextPrimary,
+                checkedTrackColor = ChuUiTokens.GoldAccent,
+                checkedBorderColor = ChuUiTokens.GoldAccent,
+                uncheckedThumbColor = ChuUiTokens.TextSecondary,
+                uncheckedTrackColor = ChuUiTokens.Input,
+                uncheckedBorderColor = ChuUiTokens.InputBorder,
+            ),
         )
     }
 }
