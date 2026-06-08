@@ -8,11 +8,15 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModelProvider
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.data.repository.ReconnectSessionRepository
@@ -37,8 +41,10 @@ class MainActivity : ComponentActivity() {
         val roomViewModel = ViewModelProvider(this, roomViewModelFactory)[RoomViewModel::class.java]
 
         enableEdgeToEdge()
+        enterImmersiveMode()
         setContent {
-            ChuDaDiTheme {
+            val nightMode by playerPrefsRepository.nightMode.collectAsState(initial = false)
+            ChuDaDiTheme(nightMode = nightMode) {
                 var pendingEnableCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
                 var pendingPermissionCallback by remember { mutableStateOf<(() -> Unit)?>(null) }
                 val latestEnableCallback by rememberUpdatedState(pendingEnableCallback)
@@ -69,6 +75,26 @@ class MainActivity : ComponentActivity() {
                     },
                 )
             }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        enterImmersiveMode()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            enterImmersiveMode()
+        }
+    }
+
+    private fun enterImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            hide(WindowInsetsCompat.Type.systemBars())
         }
     }
 

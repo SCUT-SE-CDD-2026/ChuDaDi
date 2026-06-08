@@ -2,6 +2,10 @@ package com.example.chudadi.ui
 
 object ComposeTestTags {
     const val HOME_SCREEN = "home_screen"
+    const val RULES_BUTTON = "rules_button"
+    const val RULES_DIALOG = "rules_dialog"
+    const val RULES_DIALOG_CONTENT = "rules_dialog_content"
+    const val NIGHT_MODE_SWITCH = "night_mode_switch"
     const val ROOM_SCREEN = "room_screen"
     const val START_GAME_BUTTON = "start_game_button"
     const val GAME_SCREEN = "game_screen"

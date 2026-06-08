@@ -2,6 +2,7 @@ package com.example.chudadi.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -45,12 +46,7 @@ class ResultFlowTest {
             playerPrefsRepository = playerPreferencesRepository,
             bluetoothRoomRepository = bluetoothRoomRepository,
             reconnectSessionRepository = reconnectSessionRepository,
-        ).apply {
-            createHostRoom(hostDeviceName = "Test Device")
-dispatch(RoomAction.AddAiToSlot(1, RoomAiDifficulty.RULE_NORMAL))
-dispatch(RoomAction.AddAiToSlot(2, RoomAiDifficulty.RULE_NORMAL))
-dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
-        }
+        )
 
         composeRule.setContent {
             ChuDaDiNavGraph(
@@ -64,9 +60,26 @@ dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
         }
 
         composeRule.onNodeWithText("创建房间").performClick()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag(ComposeTestTags.ROOM_SCREEN).fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.runOnIdle {
+            roomViewModel.dispatch(RoomAction.AddAiToSlot(1, RoomAiDifficulty.RULE_NORMAL))
+            roomViewModel.dispatch(RoomAction.AddAiToSlot(2, RoomAiDifficulty.RULE_NORMAL))
+            roomViewModel.dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
+        }
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            roomViewModel.uiState.value.canStartGame
+        }
         composeRule.waitForIdle()
-        composeRule.onNodeWithTag(ComposeTestTags.START_GAME_BUTTON).performClick()
+        composeRule.onNodeWithTag(ComposeTestTags.START_GAME_BUTTON).assertIsDisplayed()
+        composeRule.runOnIdle {
+            roomViewModel.dispatch(RoomAction.StartGame)
+        }
         composeRule.waitForIdle()
+        composeRule.waitUntil(timeoutMillis = 5_000) {
+            composeRule.onAllNodesWithTag(ComposeTestTags.RESULT_SCREEN).fetchSemanticsNodes().isNotEmpty()
+        }
         composeRule.onNodeWithTag(ComposeTestTags.RESULT_SCREEN).assertIsDisplayed()
 
         composeRule.onNodeWithTag(ComposeTestTags.RETURN_TO_ROOM_BUTTON).performClick()
@@ -80,7 +93,14 @@ dispatch(RoomAction.AddAiToSlot(3, RoomAiDifficulty.RULE_NORMAL))
     ) : GameEngine() {
         private var cursor = 0
 
-        override fun startLocalMatch(ruleSet: GameRuleSet): Match {
+        override fun startLocalMatch(ruleSet: GameRuleSet): Match = nextMatch()
+
+        override fun startLocalMatch(
+            ruleSet: GameRuleSet,
+            seatConfigs: List<Triple<Int, String, SeatControllerType>>,
+        ): Match = nextMatch()
+
+        private fun nextMatch(): Match {
             val match = scriptedMatches[cursor.coerceAtMost(scriptedMatches.lastIndex)]
             if (cursor < scriptedMatches.lastIndex) {
                 cursor++

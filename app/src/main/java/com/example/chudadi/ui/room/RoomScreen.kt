@@ -42,33 +42,45 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.BuildConfig
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
+import com.example.chudadi.ui.theme.ChuUiTokens
 
-private val BgOuter = Color(0xFF1A1008)
-private val BgCard = Color(0xFF241912)
-private val BgCardBorder = Color(0x44C8A96A)
-private val SectionBg = Color(0x22C8A96A)
-private val SectionBorder = Color(0x33C8A96A)
-private val SlotEmptyBg = Color(0x14C8A96A)
-private val SlotEmptyBorder = Color(0x44C8A96A)
-private val SlotFilledBg = Color(0xAA1D1A14)
-private val SlotFilledBorder = Color(0x66C8A96A)
-private val SlotHostBorder = Color(0xAABA8C43)
-private val TextPrimary = Color(0xFFF7F1E4)
-private val TextSecondary = Color(0xFFB8A882)
-private val TextMuted = Color(0xFF7A6A50)
-private val StatusReady = Color(0xFF4CAF50)
-private val StatusConnected = Color(0xFFD4A85A)
-private val StatusNotReady = Color(0xFFFF9800)
-private val StatusDisconnected = Color(0xFF9E9E9E)
-private val ScorePositive = Color(0xFF81C784)
-private val ScoreNegative = Color(0xFFE57373)
-private val DividerColor = Color(0x33C8A96A)
-private val GoldAccent = Color(0xFFD4A85A)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 private val HostActionButtonHeight = 44.dp
 private val MemberActionButtonHeight = 44.dp
 private val BroadcastButtonHeight = 28.dp
@@ -84,7 +96,7 @@ fun RoomScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BgOuter)
+            .background(ChuUiTokens.Outer)
             .testTag(ComposeTestTags.ROOM_SCREEN),
         contentAlignment = Alignment.Center,
     ) {
@@ -92,10 +104,10 @@ fun RoomScreen(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.92f)
-                .shadow(24.dp, RoundedCornerShape(24.dp))
+                .shadow(ChuUiTokens.CardShadow, RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
-                .background(BgCard)
-                .border(1.dp, BgCardBorder, RoundedCornerShape(24.dp)),
+                .background(ChuUiTokens.Card)
+                .border(1.dp, ChuUiTokens.CardBorder, RoundedCornerShape(24.dp)),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 RoomTopBar(
@@ -107,7 +119,7 @@ fun RoomScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(1.dp)
-                        .background(DividerColor),
+                        .background(ChuUiTokens.Divider),
                 )
                 Row(
                     modifier = Modifier
@@ -170,24 +182,24 @@ private fun RoomTopBar(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = TextSecondary)
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回", tint = ChuUiTokens.TextSecondary)
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = if (uiState.isHost) "我的房间（房主）" else "房间（成员）",
             style = MaterialTheme.typography.titleMedium,
-            color = TextPrimary,
+            color = ChuUiTokens.TextPrimary,
         )
         Spacer(modifier = Modifier.width(8.dp))
         if (uiState.isHost) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0x44BA8C43))
-                    .border(1.dp, Color(0x88BA8C43), RoundedCornerShape(6.dp))
+                    .background(ChuUiTokens.SubtleGlow)
+                    .border(1.dp, ChuUiTokens.GoldHighlight, RoundedCornerShape(6.dp))
                     .padding(horizontal = 8.dp, vertical = 3.dp),
             ) {
-                Text("房主", style = MaterialTheme.typography.labelSmall, color = GoldAccent)
+                Text("房主", style = MaterialTheme.typography.labelSmall, color = ChuUiTokens.GoldAccent)
             }
         }
         Spacer(modifier = Modifier.weight(1f))
@@ -195,20 +207,20 @@ private fun RoomTopBar(
         Text(
             text = "$filledCount / 4",
             style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
+            color = ChuUiTokens.TextSecondary,
         )
         Spacer(modifier = Modifier.width(16.dp))
         if (uiState.totalGamesPlayed > 0) {
             Text(
                 text = "总局数 ${uiState.totalGamesPlayed}",
                 style = MaterialTheme.typography.labelMedium,
-                color = TextMuted,
+                color = ChuUiTokens.TextMuted,
             )
             Spacer(modifier = Modifier.width(12.dp))
         }
         if (uiState.isHost) {
             TextButton(onClick = onResetScores) {
-                Text("重置分数", style = MaterialTheme.typography.labelMedium, color = TextMuted)
+                Text("重置分数", style = MaterialTheme.typography.labelMedium, color = ChuUiTokens.TextMuted)
             }
         }
     }
@@ -284,15 +296,15 @@ private fun SlotCard(
     val isEmpty = slot.occupantType == null
     val isHostSlot = slot.occupantType == SlotOccupantType.HUMAN_HOST
     val borderColor = when {
-        isHostSlot -> SlotHostBorder
-        isEmpty -> SlotEmptyBorder
-        else -> SlotFilledBorder
+        isHostSlot -> ChuUiTokens.InputBorderFocused
+        isEmpty -> ChuUiTokens.RowBorder
+        else -> ChuUiTokens.RowBorder
     }
-    val bgColor = if (isEmpty) SlotEmptyBg else SlotFilledBg
+    val bgColor = if (isEmpty) ChuUiTokens.Section else ChuUiTokens.Row
 
     Box(
         modifier = modifier
-            .shadow(if (isEmpty) 2.dp else 6.dp, RoundedCornerShape(14.dp))
+            .shadow(ChuUiTokens.SectionShadow, RoundedCornerShape(14.dp))
             .clip(RoundedCornerShape(14.dp))
             .background(bgColor)
             .border(
@@ -326,12 +338,12 @@ private fun SlotActionMenu(
     DropdownMenu(
         expanded = true,
         onDismissRequest = { onAction(RoomAction.DismissSlotActionMenu) },
-        containerColor = Color(0xFF2A1F14),
+        containerColor = ChuUiTokens.Card,
     ) {
         if (slot.occupantType == null) {
             if (isHost) {
                 DropdownMenuItem(
-                    text = { Text("添加 AI", color = GoldAccent) },
+                    text = { Text("添加 AI", color = ChuUiTokens.GoldAccent) },
                     onClick = {
                         onAction(RoomAction.DismissSlotActionMenu)
                         onAction(RoomAction.OpenAiDialog(slot.slotIndex))
@@ -339,7 +351,7 @@ private fun SlotActionMenu(
                 )
             }
             DropdownMenuItem(
-                text = { Text("请求换位", color = GoldAccent) },
+                text = { Text("请求换位", color = ChuUiTokens.GoldAccent) },
                 onClick = {
                     onAction(RoomAction.DismissSlotActionMenu)
                     onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
@@ -348,7 +360,7 @@ private fun SlotActionMenu(
         }
         if (slot.occupantType != null && !slot.isLocalPlayer) {
             DropdownMenuItem(
-                text = { Text("请求换位", color = GoldAccent) },
+                text = { Text("请求换位", color = ChuUiTokens.GoldAccent) },
                 onClick = {
                     onAction(RoomAction.DismissSlotActionMenu)
                     onAction(RoomAction.RequestSwapWithSlot(slot.slotIndex))
@@ -359,12 +371,12 @@ private fun SlotActionMenu(
             (!slot.isLocalPlayer || BuildConfig.DEBUG)
         if (canRemoveOccupant) {
             DropdownMenuItem(
-                text = { Text("移除", color = Color(0xFFE57373)) },
+                text = { Text("移除", color = ChuUiTokens.Error) },
                 onClick = { onAction(RoomAction.RemoveSlotOccupant(slot.slotIndex)) },
             )
         }
         DropdownMenuItem(
-            text = { Text("取消", color = TextSecondary) },
+            text = { Text("取消", color = ChuUiTokens.TextSecondary) },
             onClick = { onAction(RoomAction.DismissSlotActionMenu) },
         )
     }
@@ -380,26 +392,26 @@ private fun EmptySlotContent(slotIndex: Int) {
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color(0x22C8A96A))
-                .border(1.dp, SlotEmptyBorder, CircleShape),
+                .background(ChuUiTokens.IconTile)
+                .border(1.dp, ChuUiTokens.RowBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 Icons.Default.Add,
                 contentDescription = null,
-                tint = TextMuted,
+                tint = ChuUiTokens.TextMuted,
                 modifier = Modifier.size(24.dp),
             )
         }
         Text(
             text = "位置 ${slotIndex + 1}",
             style = MaterialTheme.typography.labelMedium,
-            color = TextMuted,
+            color = ChuUiTokens.TextMuted,
         )
         Text(
             text = "空位 / 可加入",
             style = MaterialTheme.typography.labelSmall,
-            color = TextMuted,
+            color = ChuUiTokens.TextMuted,
         )
     }
 }
@@ -418,10 +430,10 @@ private fun FilledSlotContent(slot: SlotState) {
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF3A2A1A))
+                .background(ChuUiTokens.AvatarBg)
                 .border(
                     width = if (slot.isLocalPlayer) 2.dp else 1.5.dp,
-                    color = if (slot.isLocalPlayer) Color(0xAABA8C43) else Color(0x66F7E8C2),
+                    color = if (slot.isLocalPlayer) ChuUiTokens.InputBorderFocused else ChuUiTokens.AvatarBorder,
                     shape = CircleShape,
                 ),
             contentAlignment = Alignment.Center,
@@ -444,13 +456,13 @@ private fun FilledSlotContent(slot: SlotState) {
             Text(
                 text = slot.displayName,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
 
-            val scoreColor = if (slot.cumulativeScore >= 0) ScorePositive else ScoreNegative
+            val scoreColor = if (slot.cumulativeScore >= 0) ChuUiTokens.Success else ChuUiTokens.Error
             Text(
                 text = if (slot.cumulativeScore >= 0) "+${slot.cumulativeScore}" else "${slot.cumulativeScore}",
                 style = MaterialTheme.typography.labelMedium,
@@ -475,18 +487,18 @@ private fun FilledSlotContent(slot: SlotState) {
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color(0x33C8A96A))
+                        .background(ChuUiTokens.IconTile)
                         .padding(horizontal = 5.dp, vertical = 2.dp),
                 ) {
-                    Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = TextSecondary)
+                    Text(typeLabel, style = MaterialTheme.typography.labelSmall, color = ChuUiTokens.TextSecondary)
                 }
             }
 
             val (statusDot, statusText) = when (slot.connectionStatus) {
-                MemberConnectionStatus.READY -> StatusReady to "已准备"
-                MemberConnectionStatus.NOT_READY -> StatusNotReady to "未准备"
-                MemberConnectionStatus.DISCONNECTED -> StatusDisconnected to "掉线"
-                MemberConnectionStatus.CONNECTED -> StatusConnected to "已连接"
+                MemberConnectionStatus.READY -> ChuUiTokens.Success to "已准备"
+                MemberConnectionStatus.NOT_READY -> ChuUiTokens.Warning to "未准备"
+                MemberConnectionStatus.DISCONNECTED -> ChuUiTokens.TextMuted to "掉线"
+                MemberConnectionStatus.CONNECTED -> ChuUiTokens.GoldAccent to "已连接"
                 null -> Color.Transparent to ""
             }
             if (statusText.isNotEmpty()) {
@@ -506,14 +518,14 @@ private fun FilledSlotContent(slot: SlotState) {
 private fun InfoRow(
     label: String,
     value: String,
-    valueColor: Color = TextSecondary,
+    valueColor: Color = ChuUiTokens.TextSecondary,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = TextMuted)
+        Text(label, style = MaterialTheme.typography.bodySmall, color = ChuUiTokens.TextMuted)
         Text(value, style = MaterialTheme.typography.bodySmall, color = valueColor)
     }
 }
@@ -527,13 +539,13 @@ private fun ControlPanel(
 ) {
     Column(
         modifier = modifier
-            .shadow(4.dp, RoundedCornerShape(16.dp))
+            .shadow(ChuUiTokens.SectionShadow, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
-            .background(SectionBg)
-            .border(1.dp, SectionBorder, RoundedCornerShape(16.dp))
+            .background(ChuUiTokens.Section)
+            .border(1.dp, ChuUiTokens.SectionBorder, RoundedCornerShape(16.dp))
             .padding(20.dp),
     ) {
-        Text("房间信息", style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+        Text("房间信息", style = MaterialTheme.typography.titleMedium, color = ChuUiTokens.TextPrimary)
         Spacer(modifier = Modifier.height(6.dp))
         InfoRow(label = "房主设备", value = uiState.hostDeviceName.ifEmpty { "本机" })
         Spacer(modifier = Modifier.height(2.dp))
@@ -549,11 +561,11 @@ private fun ControlPanel(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("蓝牙状态", style = MaterialTheme.typography.bodySmall, color = TextMuted)
+                Text("蓝牙状态", style = MaterialTheme.typography.bodySmall, color = ChuUiTokens.TextMuted)
                 Text(
                     text = if (uiState.bluetoothVisible) "已开启" else "未开启",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (uiState.bluetoothVisible) StatusReady else TextMuted,
+                    color = if (uiState.bluetoothVisible) ChuUiTokens.Success else ChuUiTokens.TextMuted,
                 )
             }
             if (uiState.canEnableBroadcast) {
@@ -574,12 +586,12 @@ private fun ControlPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(DividerColor),
+                .background(ChuUiTokens.Divider),
         )
         Spacer(modifier = Modifier.height(4.dp))
 
         if (uiState.isHost) {
-            Text("房主操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+            Text("房主操作", style = MaterialTheme.typography.labelLarge, color = ChuUiTokens.TextSecondary)
             Spacer(modifier = Modifier.height(4.dp))
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ChuButton(
@@ -625,12 +637,12 @@ private fun ControlPanel(
             val localSlot = uiState.slots.firstOrNull { it.isLocalPlayer }
             val isReady = localSlot?.connectionStatus == MemberConnectionStatus.READY
 
-            Text("成员操作", style = MaterialTheme.typography.labelLarge, color = TextSecondary)
+            Text("成员操作", style = MaterialTheme.typography.labelLarge, color = ChuUiTokens.TextSecondary)
             Spacer(modifier = Modifier.height(6.dp))
             Text(
                 text = "已连接 ${uiState.hostDeviceName.ifEmpty { "房主" }}",
                 style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
+                color = ChuUiTokens.TextSecondary,
             )
 
             Spacer(modifier = Modifier.weight(1f))
@@ -651,7 +663,7 @@ private fun ControlPanel(
             Text(
                 text = uiState.connectionHint,
                 style = MaterialTheme.typography.bodySmall,
-                color = TextMuted,
+                color = ChuUiTokens.TextMuted,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -683,7 +695,7 @@ private fun RoomAiDifficultyDialog(
                     AiSelectionStep.SELECT_EXTENDED_AI -> "选择扩展 AI"
                 },
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
         },
         text = {
@@ -740,18 +752,18 @@ private fun RoomAiDifficultyDialog(
         confirmButton = {
             if (step == AiSelectionStep.SELECT_DIFFICULTY || step == AiSelectionStep.SELECT_EXTENDED_AI) {
                 TextButton(onClick = onBack) {
-                    Text("返回", color = TextSecondary)
+                    Text("返回", color = ChuUiTokens.TextSecondary)
                 }
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消", color = TextSecondary)
+                Text("取消", color = ChuUiTokens.TextSecondary)
             }
         },
-        containerColor = Color(0xFF2A1F14),
-        titleContentColor = TextPrimary,
-        textContentColor = TextSecondary,
+        containerColor = ChuUiTokens.Card,
+        titleContentColor = ChuUiTokens.TextPrimary,
+        textContentColor = ChuUiTokens.TextSecondary,
         shape = RoundedCornerShape(16.dp),
     )
 }
@@ -764,12 +776,12 @@ private fun SwapRequestDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDecline,
-        title = { Text("换位请求", style = MaterialTheme.typography.titleMedium, color = TextPrimary) },
+        title = { Text("换位请求", style = MaterialTheme.typography.titleMedium, color = ChuUiTokens.TextPrimary) },
         text = {
             Text(
                 "${request.requesterName} 请求与你换位，是否同意？",
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
+                color = ChuUiTokens.TextSecondary,
             )
         },
         confirmButton = {
@@ -778,7 +790,7 @@ private fun SwapRequestDialog(
         dismissButton = {
             ChuButton(text = "拒绝", onClick = onDecline, style = ChuButtonStyle.SECONDARY)
         },
-        containerColor = Color(0xFF2A1F14),
+        containerColor = ChuUiTokens.Card,
         shape = RoundedCornerShape(16.dp),
     )
 }
