@@ -27,7 +27,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -38,72 +37,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
-import com.example.chudadi.ui.theme.LocalChuUiPalette
+import com.example.chudadi.ui.theme.ChuUiTokens
 
-private val SearchBgOuter: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.outer
-private val SearchBgCard: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.card
-private val SearchCardBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.cardBorder
-private val SearchCardShadow: Dp
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.cardShadow
-private val SearchSectionBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.section
-private val SearchSectionBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.sectionBorder
-private val SearchSectionShadow: Dp
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.sectionShadow
-private val SearchRowBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.row
-private val SearchRowBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.rowBorder
-private val SearchIconTile: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.iconTile
-private val SearchTextPrimary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textPrimary
-private val SearchTextSecondary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textSecondary
-private val SearchTextMuted: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textMuted
-private val SearchDivider: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.divider
-private val SearchHighlight: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.goldAccent
-private val SearchError: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.error
 
 @Composable
 fun BluetoothSearchScreen(
@@ -116,17 +51,17 @@ fun BluetoothSearchScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(SearchBgOuter),
+            .background(ChuUiTokens.Outer),
         contentAlignment = Alignment.Center,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.92f)
-                .shadow(SearchCardShadow, RoundedCornerShape(24.dp))
+                .shadow(ChuUiTokens.CardShadow, RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
-                .background(SearchBgCard)
-                .border(1.dp, SearchCardBorder, RoundedCornerShape(24.dp)),
+                .background(ChuUiTokens.Card)
+                .border(1.dp, ChuUiTokens.CardBorder, RoundedCornerShape(24.dp)),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 SearchTopBar(
@@ -139,7 +74,7 @@ fun BluetoothSearchScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(1.dp)
-                        .background(SearchDivider),
+                        .background(ChuUiTokens.Divider),
                 )
                 Row(
                     modifier = Modifier
@@ -171,21 +106,21 @@ fun BluetoothSearchScreen(
                 title = {
                     Text(
                         text = uiState.joinErrorTitle,
-                        color = SearchError,
+                        color = ChuUiTokens.Error,
                     )
                 },
                 text = {
                     Text(
                         text = message,
-                        color = SearchTextSecondary,
+                        color = ChuUiTokens.TextSecondary,
                     )
                 },
                 confirmButton = {
                     TextButton(onClick = onDismissJoinError) {
-                        Text(text = "知道了", color = SearchHighlight)
+                        Text(text = "知道了", color = ChuUiTokens.GoldAccent)
                     }
                 },
-                containerColor = SearchBgCard,
+                containerColor = ChuUiTokens.Card,
             )
         }
     }
@@ -208,13 +143,13 @@ private fun SearchTopBar(
             Icon(
                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "返回",
-                tint = SearchTextSecondary,
+                tint = ChuUiTokens.TextSecondary,
             )
         }
         Text(
             text = "加入房间",
             style = MaterialTheme.typography.titleMedium,
-            color = SearchTextPrimary,
+            color = ChuUiTokens.TextPrimary,
         )
         Box(modifier = Modifier.weight(1f))
         Text(
@@ -225,13 +160,13 @@ private fun SearchTopBar(
                 BluetoothSearchState.FAILED -> "连接失败"
             },
             style = MaterialTheme.typography.labelMedium,
-            color = if (searchState == BluetoothSearchState.FAILED) SearchError else SearchHighlight,
+            color = if (searchState == BluetoothSearchState.FAILED) ChuUiTokens.Error else ChuUiTokens.GoldAccent,
         )
         IconButton(onClick = onRefresh, enabled = refreshEnabled) {
             Icon(
                 imageVector = Icons.Default.Refresh,
                 contentDescription = "重新扫描",
-                tint = if (refreshEnabled) SearchTextSecondary else SearchTextMuted,
+                tint = if (refreshEnabled) ChuUiTokens.TextSecondary else ChuUiTokens.TextMuted,
             )
         }
     }
@@ -244,10 +179,10 @@ private fun SearchGuidePanel(
 ) {
     Column(
         modifier = modifier
-            .shadow(SearchSectionShadow, RoundedCornerShape(16.dp))
+            .shadow(ChuUiTokens.SectionShadow, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
-            .background(SearchSectionBg)
-            .border(1.dp, SearchSectionBorder, RoundedCornerShape(16.dp))
+            .background(ChuUiTokens.Section)
+            .border(1.dp, ChuUiTokens.SectionBorder, RoundedCornerShape(16.dp))
             .padding(20.dp),
         verticalArrangement = Arrangement.SpaceBetween,
     ) {
@@ -256,25 +191,25 @@ private fun SearchGuidePanel(
                 modifier = Modifier
                     .size(52.dp)
                     .clip(RoundedCornerShape(14.dp))
-                    .background(SearchIconTile),
+                    .background(ChuUiTokens.IconTile),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     imageVector = Icons.Default.Add,
                     contentDescription = null,
-                    tint = SearchHighlight,
+                    tint = ChuUiTokens.GoldAccent,
                     modifier = Modifier.size(28.dp),
                 )
             }
             Text(
                 text = "连接说明",
                 style = MaterialTheme.typography.titleMedium,
-                color = SearchTextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
             Text(
                 text = "1. 让房主先点击“创建房间”\n2. 选择下方设备建立连接\n3. 连接成功后自动进入房间页",
                 style = MaterialTheme.typography.bodyMedium,
-                color = SearchTextSecondary,
+                color = ChuUiTokens.TextSecondary,
             )
         }
 
@@ -282,12 +217,12 @@ private fun SearchGuidePanel(
             Text(
                 text = "状态提示",
                 style = MaterialTheme.typography.labelLarge,
-                color = SearchTextSecondary,
+                color = ChuUiTokens.TextSecondary,
             )
             Text(
                 text = hint.ifBlank { "准备开始扫描周围房间" },
                 style = MaterialTheme.typography.bodySmall,
-                color = SearchTextMuted,
+                color = ChuUiTokens.TextMuted,
             )
         }
     }
@@ -302,10 +237,10 @@ private fun SearchDevicePanel(
 ) {
     Column(
         modifier = modifier
-            .shadow(SearchSectionShadow, RoundedCornerShape(16.dp))
+            .shadow(ChuUiTokens.SectionShadow, RoundedCornerShape(16.dp))
             .clip(RoundedCornerShape(16.dp))
-            .background(SearchSectionBg)
-            .border(1.dp, SearchSectionBorder, RoundedCornerShape(16.dp))
+            .background(ChuUiTokens.Section)
+            .border(1.dp, ChuUiTokens.SectionBorder, RoundedCornerShape(16.dp))
             .padding(20.dp),
     ) {
         Row(
@@ -317,7 +252,7 @@ private fun SearchDevicePanel(
             Text(
                 text = "可连接设备",
                 style = MaterialTheme.typography.titleMedium,
-                color = SearchTextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
             Box(modifier = Modifier.weight(1f))
             ChuButton(
@@ -332,7 +267,7 @@ private fun SearchDevicePanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(1.dp)
-                .background(SearchDivider)
+                .background(ChuUiTokens.Divider)
                 .padding(top = 12.dp),
         )
         Box(
@@ -377,7 +312,7 @@ private fun EmptyDeviceList(searchState: BluetoothSearchState) {
                 BluetoothSearchState.IDLE -> "暂无设备，点击右上角重新扫描"
             },
             style = MaterialTheme.typography.bodyMedium,
-            color = if (searchState == BluetoothSearchState.FAILED) SearchError else SearchTextMuted,
+            color = if (searchState == BluetoothSearchState.FAILED) ChuUiTokens.Error else ChuUiTokens.TextMuted,
         )
     }
 }
@@ -394,8 +329,8 @@ private fun DeviceRow(
             .fillMaxWidth()
             .height(74.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(SearchRowBg)
-            .border(1.dp, SearchRowBorder, RoundedCornerShape(14.dp))
+            .background(ChuUiTokens.Row)
+            .border(1.dp, ChuUiTokens.RowBorder, RoundedCornerShape(14.dp))
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -403,13 +338,13 @@ private fun DeviceRow(
             modifier = Modifier
                 .size(38.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(SearchIconTile),
+                .background(ChuUiTokens.IconTile),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = null,
-                tint = SearchHighlight,
+                tint = ChuUiTokens.GoldAccent,
             )
         }
         Column(
@@ -421,14 +356,14 @@ private fun DeviceRow(
             Text(
                 text = device.name,
                 style = MaterialTheme.typography.bodyLarge,
-                color = SearchTextPrimary,
+                color = ChuUiTokens.TextPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = device.address,
                 style = MaterialTheme.typography.bodySmall,
-                color = SearchTextMuted,
+                color = ChuUiTokens.TextMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -437,7 +372,7 @@ private fun DeviceRow(
             Text(
                 text = "已配对",
                 style = MaterialTheme.typography.labelSmall,
-                color = SearchHighlight,
+                color = ChuUiTokens.GoldAccent,
                 modifier = Modifier.padding(end = 12.dp),
             )
         }

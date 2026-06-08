@@ -19,7 +19,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -36,112 +35,8 @@ import com.example.chudadi.model.game.snapshot.MatchUiState
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
-import com.example.chudadi.ui.theme.LocalChuUiPalette
+import com.example.chudadi.ui.theme.ChuUiTokens
 
-private val BgOuter: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.outer
-private val BgCard: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.card
-private val BgCardBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.cardBorder
-private val BgCardShadow: Dp
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.cardShadow
-private val GoldAccent: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.goldAccent
-private val RowBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.row
-private val RowBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.rowBorder
-private val HeaderBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.section
-private val ResultSectionShadow: Dp
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.sectionShadow
-private val TextPrimary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textPrimary
-private val TextSecondary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textSecondary
-private val TextMuted: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textMuted
-private val ScorePositive: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.success
-private val ScoreNegative: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.error
-private val BaopeiRowBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.baopeiRow
-private val BaopeiRowBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.baopeiBorder
-private val BaopeiTagBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.baopeiTag
-private val DividerColor: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.divider
-private val RankGold: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.goldAccent
-private val RankSilver: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.rankSilver
-private val RankBronze: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.rankBronze
-private val LeftPanelStart: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.leftPanelStart
-private val LeftPanelEnd: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.leftPanelEnd
-private val WinnerGlow: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.subtleGlow
-private val WinnerTileBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.iconTile
-private val WinnerTileBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.avatarBorder
 
 @Composable
 fun ResultScreen(
@@ -152,7 +47,7 @@ fun ResultScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BgOuter)
+            .background(ChuUiTokens.Outer)
             .testTag(ComposeTestTags.RESULT_SCREEN),
         contentAlignment = Alignment.Center,
     ) {
@@ -160,10 +55,10 @@ fun ResultScreen(
             modifier = Modifier
                 .fillMaxWidth(0.90f)
                 .fillMaxHeight(0.90f)
-                .shadow(BgCardShadow, RoundedCornerShape(24.dp))
+                .shadow(ChuUiTokens.CardShadow, RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
-                .background(BgCard)
-                .border(1.dp, BgCardBorder, RoundedCornerShape(24.dp)),
+                .background(ChuUiTokens.Card)
+                .border(1.dp, ChuUiTokens.CardBorder, RoundedCornerShape(24.dp)),
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 ResultLeftPanel(
@@ -177,7 +72,7 @@ fun ResultScreen(
                         .width(1.dp)
                         .fillMaxHeight(0.85f)
                         .align(Alignment.CenterVertically)
-                        .background(DividerColor),
+                        .background(ChuUiTokens.Divider),
                 )
                 ResultRightPanel(
                     uiState = uiState,
@@ -200,7 +95,7 @@ private fun ResultLeftPanel(
         modifier = modifier
             .background(
                 Brush.verticalGradient(
-                    colors = listOf(LeftPanelStart, LeftPanelEnd),
+                    colors = listOf(ChuUiTokens.LeftPanelStart, ChuUiTokens.LeftPanelEnd),
                 ),
             )
             .padding(24.dp),
@@ -213,7 +108,7 @@ private fun ResultLeftPanel(
                     .size(100.dp)
                     .background(
                         Brush.radialGradient(
-                            colors = listOf(WinnerGlow, Color.Transparent),
+                            colors = listOf(ChuUiTokens.SubtleGlow, Color.Transparent),
                         ),
                     ),
             )
@@ -221,8 +116,8 @@ private fun ResultLeftPanel(
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(WinnerTileBg)
-                    .border(1.5.dp, WinnerTileBorder, CircleShape),
+                    .background(ChuUiTokens.IconTile)
+                    .border(1.5.dp, ChuUiTokens.AvatarBorder, CircleShape),
                 contentAlignment = Alignment.Center,
             ) {
                 Text("🏆", fontSize = 32.sp)
@@ -234,20 +129,20 @@ private fun ResultLeftPanel(
         Text(
             text = "本局结束",
             style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary,
+            color = ChuUiTokens.TextSecondary,
             letterSpacing = 2.sp,
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = "胜者",
             style = MaterialTheme.typography.labelMedium,
-            color = TextMuted,
+            color = ChuUiTokens.TextMuted,
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
             text = winnerName,
             style = MaterialTheme.typography.headlineSmall,
-            color = GoldAccent,
+            color = ChuUiTokens.GoldAccent,
             textAlign = TextAlign.Center,
         )
 
@@ -257,7 +152,7 @@ private fun ResultLeftPanel(
             modifier = Modifier
                 .width(48.dp)
                 .height(1.dp)
-                .background(DividerColor),
+                .background(ChuUiTokens.Divider),
         )
     }
 }
@@ -275,7 +170,7 @@ private fun ResultRightPanel(
         Text(
             text = "本局结算",
             style = MaterialTheme.typography.titleMedium,
-            color = TextPrimary,
+            color = ChuUiTokens.TextPrimary,
         )
 
         val scores = uiState.resultSummary?.roundScores.orEmpty()
@@ -291,12 +186,12 @@ private fun ResultRightPanel(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(10.dp))
-                    .background(HeaderBg)
-                    .border(1.dp, RowBorder, RoundedCornerShape(10.dp))
+                    .background(ChuUiTokens.Section)
+                    .border(1.dp, ChuUiTokens.RowBorder, RoundedCornerShape(10.dp))
                     .padding(20.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("暂无结算数据", style = MaterialTheme.typography.bodyMedium, color = TextMuted)
+                Text("暂无结算数据", style = MaterialTheme.typography.bodyMedium, color = ChuUiTokens.TextMuted)
             }
         }
 
@@ -319,21 +214,32 @@ private fun ScoreTableHeader() {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(8.dp))
-            .background(HeaderBg)
+            .background(ChuUiTokens.Section)
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text("#", style = MaterialTheme.typography.labelMedium, color = TextMuted, modifier = Modifier.width(28.dp))
-        Text("玩家", style = MaterialTheme.typography.labelMedium, color = TextMuted, modifier = Modifier.weight(1f))
-        Text("剩余牌",
+        Text(
+            text = "#",
             style = MaterialTheme.typography.labelMedium,
-            color = TextMuted,
+            color = ChuUiTokens.TextMuted,
+            modifier = Modifier.width(28.dp),
+        )
+        Text(
+            text = "玩家",
+            style = MaterialTheme.typography.labelMedium,
+            color = ChuUiTokens.TextMuted,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            text = "剩余牌",
+            style = MaterialTheme.typography.labelMedium,
+            color = ChuUiTokens.TextMuted,
             modifier = Modifier.width(52.dp),
             textAlign = TextAlign.Center,
         )
         Text("本局得分",
             style = MaterialTheme.typography.labelMedium,
-            color = TextMuted,
+            color = ChuUiTokens.TextMuted,
             modifier = Modifier.width(64.dp),
             textAlign = TextAlign.End,
         )
@@ -343,10 +249,10 @@ private fun ScoreTableHeader() {
 @Composable
 private fun ScoreRow(rank: Int, score: RoundScore) {
     val rankColor = when (rank) {
-        1 -> RankGold
-        2 -> RankSilver
-        3 -> RankBronze
-        else -> TextMuted
+        1 -> ChuUiTokens.GoldAccent
+        2 -> ChuUiTokens.RankSilver
+        3 -> ChuUiTokens.RankBronze
+        else -> ChuUiTokens.TextMuted
     }
     val rankLabel = when (rank) {
         1 -> "1"
@@ -354,16 +260,16 @@ private fun ScoreRow(rank: Int, score: RoundScore) {
         3 -> "3"
         else -> "$rank"
     }
-    val scoreColor = if (score.roundScore >= 0) ScorePositive else ScoreNegative
+    val scoreColor = if (score.roundScore >= 0) ChuUiTokens.Success else ChuUiTokens.Error
     val scoreText = if (score.roundScore >= 0) "+${score.roundScore}" else "${score.roundScore}"
 
-    val rowBg = if (score.isBaopei) BaopeiRowBg else RowBg
-    val rowBorder = if (score.isBaopei) BaopeiRowBorder else RowBorder
+    val rowBg = if (score.isBaopei) ChuUiTokens.BaopeiRow else ChuUiTokens.Row
+    val rowBorder = if (score.isBaopei) ChuUiTokens.BaopeiBorder else ChuUiTokens.RowBorder
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(ResultSectionShadow, RoundedCornerShape(10.dp))
+            .shadow(ChuUiTokens.SectionShadow, RoundedCornerShape(10.dp))
             .clip(RoundedCornerShape(10.dp))
             .background(rowBg)
             .border(1.dp, rowBorder, RoundedCornerShape(10.dp))
@@ -379,20 +285,20 @@ private fun ScoreRow(rank: Int, score: RoundScore) {
         Text(
             text = score.playerName,
             style = MaterialTheme.typography.bodyMedium,
-            color = TextPrimary,
+            color = ChuUiTokens.TextPrimary,
             modifier = Modifier.weight(1f),
         )
         if (score.isBaopei) {
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(4.dp))
-                    .background(BaopeiTagBg)
+                    .background(ChuUiTokens.BaopeiTag)
                     .padding(horizontal = 6.dp, vertical = 2.dp),
             ) {
                 Text(
                     text = "包赔",
                     style = MaterialTheme.typography.labelSmall,
-                    color = ScoreNegative,
+                    color = ChuUiTokens.Error,
                     fontSize = 10.sp,
                 )
             }
@@ -401,7 +307,7 @@ private fun ScoreRow(rank: Int, score: RoundScore) {
         Text(
             text = "${score.remainingCards} 张",
             style = MaterialTheme.typography.bodySmall,
-            color = TextSecondary,
+            color = ChuUiTokens.TextSecondary,
             modifier = Modifier.width(52.dp),
             textAlign = TextAlign.Center,
         )

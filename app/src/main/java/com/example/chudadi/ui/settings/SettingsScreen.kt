@@ -35,7 +35,6 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -53,87 +52,23 @@ import com.example.chudadi.R
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButtonStyle
-import com.example.chudadi.ui.theme.LocalChuUiPalette
+import com.example.chudadi.ui.theme.ChuUiTokens
 
-private val BgOuter: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.outer
 
-private val BgCard: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.card
 
-private val BgCardBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.cardBorder
 
-private val SectionBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.section
 
-private val SectionBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.sectionBorder
 
-private val TextPrimary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textPrimary
 
-private val TextSecondary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textSecondary
 
-private val TextMuted: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textMuted
 
-private val InputBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.input
 
-private val InputBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.inputBorder
 
-private val InputBorderFocused: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.inputBorderFocused
 
-private val GoldAccent: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.goldAccent
 
-private val DividerColor: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.divider
 
-private val AvatarBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.avatarBg
 
-private val AvatarBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.avatarBorder
 
-private val ErrorColor: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.error
 
 private data class SettingsActions(
     val onEnterEditName: () -> Unit,
@@ -173,7 +108,7 @@ fun SettingsScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BgOuter),
+            .background(ChuUiTokens.Outer),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -181,8 +116,8 @@ fun SettingsScreen(
                 .fillMaxWidth(0.96f)
                 .fillMaxHeight(0.88f)
                 .clip(RoundedCornerShape(24.dp))
-                .background(BgCard)
-                .border(1.dp, BgCardBorder, RoundedCornerShape(24.dp)),
+                .background(ChuUiTokens.Card)
+                .border(1.dp, ChuUiTokens.CardBorder, RoundedCornerShape(24.dp)),
         ) {
             Column(modifier = Modifier.fillMaxSize()) {
                 SettingsTopBar(
@@ -192,7 +127,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(1.dp)
-                        .background(DividerColor),
+                        .background(ChuUiTokens.Divider),
                 )
                 SettingsContent(
                     state = SettingsContentState(
@@ -226,14 +161,14 @@ private fun SettingsTopBar(
             Icon(
                 Icons.AutoMirrored.Filled.ArrowBack,
                 contentDescription = "返回",
-                tint = TextSecondary,
+                tint = ChuUiTokens.TextSecondary,
             )
         }
         Spacer(modifier = Modifier.width(8.dp))
         Text(
             text = "设置",
             style = MaterialTheme.typography.titleMedium,
-            color = TextPrimary,
+            color = ChuUiTokens.TextPrimary,
         )
     }
 }
@@ -268,7 +203,7 @@ private fun SettingsContent(
         Text(
             text = "版本 1.0",
             style = MaterialTheme.typography.bodySmall,
-            color = TextMuted,
+            color = ChuUiTokens.TextMuted,
             modifier = Modifier.fillMaxWidth(),
             textAlign = TextAlign.Center,
         )
@@ -285,8 +220,8 @@ private fun AppearanceSettingsCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(SectionBg)
-            .border(1.dp, SectionBorder, RoundedCornerShape(16.dp))
+            .background(ChuUiTokens.Section)
+            .border(1.dp, ChuUiTokens.SectionBorder, RoundedCornerShape(16.dp))
             .clickable { onNightModeChanged(!nightMode) }
             .padding(20.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -295,31 +230,31 @@ private fun AppearanceSettingsCard(
             Text(
                 text = "外观设置",
                 style = MaterialTheme.typography.titleMedium,
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = "夜间模式",
                 style = MaterialTheme.typography.bodyLarge,
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "深灰蓝黑背景 · 金色边框高光",
                 style = MaterialTheme.typography.bodySmall,
-                color = TextSecondary,
+                color = ChuUiTokens.TextSecondary,
             )
         }
         Switch(
             checked = nightMode,
             onCheckedChange = onNightModeChanged,
             colors = SwitchDefaults.colors(
-                checkedThumbColor = TextPrimary,
-                checkedTrackColor = GoldAccent,
-                checkedBorderColor = GoldAccent,
-                uncheckedThumbColor = TextSecondary,
-                uncheckedTrackColor = InputBg,
-                uncheckedBorderColor = InputBorder,
+                checkedThumbColor = ChuUiTokens.TextPrimary,
+                checkedTrackColor = ChuUiTokens.GoldAccent,
+                checkedBorderColor = ChuUiTokens.GoldAccent,
+                uncheckedThumbColor = ChuUiTokens.TextSecondary,
+                uncheckedTrackColor = ChuUiTokens.Input,
+                uncheckedBorderColor = ChuUiTokens.InputBorder,
             ),
             modifier = Modifier.testTag(ComposeTestTags.NIGHT_MODE_SWITCH),
         )
@@ -337,15 +272,15 @@ private fun PlayerInfoCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(SectionBg)
-            .border(1.dp, SectionBorder, RoundedCornerShape(16.dp))
+            .background(ChuUiTokens.Section)
+            .border(1.dp, ChuUiTokens.SectionBorder, RoundedCornerShape(16.dp))
             .padding(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = "玩家信息",
             style = MaterialTheme.typography.titleMedium,
-            color = TextPrimary,
+            color = ChuUiTokens.TextPrimary,
             modifier = Modifier.align(Alignment.Start),
         )
 
@@ -356,8 +291,8 @@ private fun PlayerInfoCard(
             modifier = Modifier
                 .size(80.dp)
                 .clip(CircleShape)
-                .background(AvatarBg)
-                .border(2.dp, AvatarBorder, CircleShape),
+                .background(ChuUiTokens.AvatarBg)
+                .border(2.dp, ChuUiTokens.AvatarBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             val actualResId = if (avatarResId != 0) avatarResId else R.drawable.avatar
@@ -372,7 +307,7 @@ private fun PlayerInfoCard(
         Text(
             text = "头像（暂不支持自定义）",
             style = MaterialTheme.typography.labelSmall,
-            color = TextMuted,
+            color = ChuUiTokens.TextMuted,
             modifier = Modifier.padding(top = 8.dp),
         )
 
@@ -405,8 +340,8 @@ private fun NameDisplayField(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(InputBg)
-            .border(1.dp, InputBorder, RoundedCornerShape(12.dp))
+            .background(ChuUiTokens.Input)
+            .border(1.dp, ChuUiTokens.InputBorder, RoundedCornerShape(12.dp))
             .clickable { onEdit() }
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -415,19 +350,19 @@ private fun NameDisplayField(
             Text(
                 text = "显示名称",
                 style = MaterialTheme.typography.labelSmall,
-                color = TextMuted,
+                color = ChuUiTokens.TextMuted,
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = playerName,
                 style = MaterialTheme.typography.bodyLarge,
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
         }
         Icon(
             Icons.Default.Edit,
             contentDescription = "编辑",
-            tint = GoldAccent,
+            tint = ChuUiTokens.GoldAccent,
             modifier = Modifier.size(20.dp),
         )
     }
@@ -457,31 +392,31 @@ private fun NameEditField(
             label = {
                 Text(
                     text = "显示名称",
-                    color = TextMuted,
+                    color = ChuUiTokens.TextMuted,
                 )
             },
             placeholder = {
                 Text(
                     text = "请输入玩家名称",
-                    color = TextMuted,
+                    color = ChuUiTokens.TextMuted,
                 )
             },
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = TextPrimary),
+            textStyle = MaterialTheme.typography.bodyLarge.copy(color = ChuUiTokens.TextPrimary),
             isError = error != null,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { onConfirm() }),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedTextColor = TextPrimary,
-                unfocusedTextColor = TextPrimary,
-                focusedContainerColor = InputBg,
-                unfocusedContainerColor = InputBg,
-                errorContainerColor = InputBg,
-                focusedBorderColor = InputBorderFocused,
-                unfocusedBorderColor = InputBorder,
-                errorBorderColor = ErrorColor,
-                focusedLabelColor = GoldAccent,
-                unfocusedLabelColor = TextMuted,
-                cursorColor = GoldAccent,
+                focusedTextColor = ChuUiTokens.TextPrimary,
+                unfocusedTextColor = ChuUiTokens.TextPrimary,
+                focusedContainerColor = ChuUiTokens.Input,
+                unfocusedContainerColor = ChuUiTokens.Input,
+                errorContainerColor = ChuUiTokens.Input,
+                focusedBorderColor = ChuUiTokens.InputBorderFocused,
+                unfocusedBorderColor = ChuUiTokens.InputBorder,
+                errorBorderColor = ChuUiTokens.Error,
+                focusedLabelColor = ChuUiTokens.GoldAccent,
+                unfocusedLabelColor = ChuUiTokens.TextMuted,
+                cursorColor = ChuUiTokens.GoldAccent,
             ),
         )
 
@@ -489,7 +424,7 @@ private fun NameEditField(
             Text(
                 text = error,
                 style = MaterialTheme.typography.labelSmall,
-                color = ErrorColor,
+                color = ChuUiTokens.Error,
             )
         }
 

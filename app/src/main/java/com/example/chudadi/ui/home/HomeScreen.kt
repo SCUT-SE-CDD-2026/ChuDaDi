@@ -28,7 +28,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -49,67 +48,19 @@ import com.example.chudadi.R
 import com.example.chudadi.ui.ComposeTestTags
 import com.example.chudadi.ui.components.ChuButton
 import com.example.chudadi.ui.components.ChuButtonStyle
-import com.example.chudadi.ui.theme.LocalChuUiPalette
+import com.example.chudadi.ui.theme.ChuUiTokens
 
-private val BgOuter: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.outer
 
-private val BgCard: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.card
 
-private val BgCardBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.cardBorder
 
-private val MainCardShadow: Dp
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.cardShadow
 
-private val LeftPanelBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.subtleGlow
 
-private val PlayerInfoBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.row
 
-private val PlayerInfoBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.rowBorder
 
-private val TextPrimary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textPrimary
 
-private val TextSecondary: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.textSecondary
 
-private val DividerColor: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.divider
 
-private val AvatarBg: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.avatarBg
 
-private val AvatarBorder: Color
-    @Composable
-    @ReadOnlyComposable
-    get() = LocalChuUiPalette.current.avatarBorder
 
 private data class RuleSection(
     val title: String,
@@ -222,7 +173,7 @@ fun HomeScreen(
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(BgOuter)
+            .background(ChuUiTokens.Outer)
             .testTag(ComposeTestTags.HOME_SCREEN),
         contentAlignment = Alignment.Center,
     ) {
@@ -230,10 +181,10 @@ fun HomeScreen(
             modifier = Modifier
                 .fillMaxWidth(0.94f)
                 .fillMaxHeight(0.88f)
-                .shadow(elevation = MainCardShadow, shape = RoundedCornerShape(24.dp))
+                .shadow(elevation = ChuUiTokens.CardShadow, shape = RoundedCornerShape(24.dp))
                 .clip(RoundedCornerShape(24.dp))
-                .background(BgCard)
-                .border(width = 1.dp, color = BgCardBorder, shape = RoundedCornerShape(24.dp)),
+                .background(ChuUiTokens.Card)
+                .border(width = 1.dp, color = ChuUiTokens.CardBorder, shape = RoundedCornerShape(24.dp)),
         ) {
             Row(modifier = Modifier.fillMaxSize()) {
                 LeftPanel(
@@ -247,7 +198,7 @@ fun HomeScreen(
                         .width(1.dp)
                         .fillMaxHeight(0.85f)
                         .align(Alignment.CenterVertically)
-                        .background(DividerColor),
+                        .background(ChuUiTokens.Divider),
                 )
                 RightPanel(
                     onCreateRoom = onCreateRoom,
@@ -270,21 +221,21 @@ fun HomeScreen(
                 title = {
                     Text(
                         text = "提示",
-                        color = TextPrimary,
+                        color = ChuUiTokens.TextPrimary,
                     )
                 },
                 text = {
                     Text(
                         text = message,
-                        color = TextSecondary,
+                        color = ChuUiTokens.TextSecondary,
                     )
                 },
                 confirmButton = {
                     TextButton(onClick = onDismissNotice) {
-                        Text(text = "知道了", color = TextPrimary)
+                        Text(text = "知道了", color = ChuUiTokens.TextPrimary)
                     }
                 },
-                containerColor = BgCard,
+                containerColor = ChuUiTokens.Card,
             )
         }
 
@@ -301,7 +252,7 @@ private fun RuleExplanationDialog(onDismiss: () -> Unit) {
         title = {
             Text(
                 text = "游戏规则说明",
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
         },
         text = {
@@ -315,14 +266,14 @@ private fun RuleExplanationDialog(onDismiss: () -> Unit) {
                     Text(
                         text = section.title,
                         style = MaterialTheme.typography.titleSmall,
-                        color = TextPrimary,
+                        color = ChuUiTokens.TextPrimary,
                     )
                     Spacer(modifier = Modifier.height(6.dp))
                     section.lines.forEach { line ->
                         Text(
                             text = "• $line",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = TextSecondary,
+                            color = ChuUiTokens.TextSecondary,
                         )
                         Spacer(modifier = Modifier.height(4.dp))
                     }
@@ -332,10 +283,10 @@ private fun RuleExplanationDialog(onDismiss: () -> Unit) {
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text(text = "关闭", color = TextPrimary)
+                Text(text = "关闭", color = ChuUiTokens.TextPrimary)
             }
         },
-        containerColor = BgCard,
+        containerColor = ChuUiTokens.Card,
         modifier = Modifier.testTag(ComposeTestTags.RULES_DIALOG),
     )
 }
@@ -349,7 +300,7 @@ private fun LeftPanel(
         modifier = modifier
             .background(
                 Brush.horizontalGradient(
-                    colors = listOf(LeftPanelBg, Color.Transparent),
+                    colors = listOf(ChuUiTokens.SubtleGlow, Color.Transparent),
                 ),
             )
             .padding(horizontal = 32.dp, vertical = 28.dp),
@@ -374,13 +325,13 @@ private fun LeftPanel(
             Text(
                 text = "锄大地",
                 style = MaterialTheme.typography.headlineMedium,
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
                 fontSize = 28.sp,
             )
             Text(
                 text = "The Big Two",
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextSecondary,
+                color = ChuUiTokens.TextSecondary,
                 letterSpacing = 2.sp,
             )
         }
@@ -395,8 +346,8 @@ private fun PlayerInfoBlock(playerName: String) {
             .fillMaxWidth()
             .shadow(3.dp, RoundedCornerShape(12.dp))
             .clip(RoundedCornerShape(12.dp))
-            .background(PlayerInfoBg)
-            .border(1.dp, PlayerInfoBorder, RoundedCornerShape(12.dp))
+            .background(ChuUiTokens.Row)
+            .border(1.dp, ChuUiTokens.RowBorder, RoundedCornerShape(12.dp))
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -405,8 +356,8 @@ private fun PlayerInfoBlock(playerName: String) {
             modifier = Modifier
                 .size(40.dp)
                 .clip(CircleShape)
-                .background(AvatarBg)
-                .border(1.5.dp, AvatarBorder, CircleShape),
+                .background(ChuUiTokens.AvatarBg)
+                .border(1.5.dp, ChuUiTokens.AvatarBorder, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Image(
@@ -420,12 +371,12 @@ private fun PlayerInfoBlock(playerName: String) {
             Text(
                 text = playerName,
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextPrimary,
+                color = ChuUiTokens.TextPrimary,
             )
             Text(
                 text = "南方规则 · v1.0",
                 style = MaterialTheme.typography.labelSmall,
-                color = TextSecondary,
+                color = ChuUiTokens.TextSecondary,
             )
         }
     }
@@ -447,7 +398,7 @@ private fun RightPanel(
         Text(
             text = "选择模式",
             style = MaterialTheme.typography.titleMedium,
-            color = TextSecondary,
+            color = ChuUiTokens.TextSecondary,
             letterSpacing = 1.sp,
         )
         Spacer(modifier = Modifier.height(16.dp))
