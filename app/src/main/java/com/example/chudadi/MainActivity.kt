@@ -18,6 +18,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.ViewModelProvider
+import com.example.chudadi.audio.AudioViewModel
 import com.example.chudadi.data.repository.PlayerPreferencesRepository
 import com.example.chudadi.data.repository.ReconnectSessionRepository
 import com.example.chudadi.navigation.ChuDaDiNavGraph
@@ -39,6 +40,10 @@ class MainActivity : ComponentActivity() {
             reconnectSessionRepository = reconnectSessionRepository,
         )
         val roomViewModel = ViewModelProvider(this, roomViewModelFactory)[RoomViewModel::class.java]
+        val audioViewModel = ViewModelProvider(
+            this,
+            AudioViewModel.factory(playerPrefsRepository),
+        )[AudioViewModel::class.java]
 
         enableEdgeToEdge()
         enterImmersiveMode()
@@ -64,6 +69,7 @@ class MainActivity : ComponentActivity() {
                 ChuDaDiNavGraph(
                     roomViewModel = roomViewModel,
                     playerPreferencesRepository = playerPrefsRepository,
+                    audioService = audioViewModel.audioService,
                     localDeviceName = deviceName(),
                     onRequestBluetoothEnable = { onComplete ->
                         pendingEnableCallback = onComplete

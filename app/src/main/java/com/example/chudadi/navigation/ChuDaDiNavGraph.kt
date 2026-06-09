@@ -35,6 +35,8 @@ import com.example.chudadi.ui.room.RoomScreen
 import com.example.chudadi.ui.room.RoomViewModel
 import com.example.chudadi.ui.settings.SettingsScreen
 import com.example.chudadi.ui.settings.SettingsViewModel
+import com.example.chudadi.audio.AudioHost
+import com.example.chudadi.audio.GameAudioService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -66,6 +68,7 @@ fun ChuDaDiNavGraph(
     viewModel: LocalMatchViewModel = viewModel(),
     roomViewModel: RoomViewModel,
     playerPreferencesRepository: PlayerPreferencesRepository,
+    audioService: GameAudioService,
     localDeviceName: String,
     onRequestBluetoothEnable: (onComplete: () -> Unit) -> Unit,
     onRequestBluetoothPermissions: (onComplete: () -> Unit) -> Unit,
@@ -317,6 +320,26 @@ fun ChuDaDiNavGraph(
         }
     }
 
+    // 统一 activeUiState（合并 local/onnx/network 三种来源）
+    val activeUiState = when {
+        appFlowState.useNetworkMatch -> appFlowState.activeMatchUiState
+        gameViewModelType == GameViewModelType.ONNX -> onnxUiState
+        else -> appFlowState.activeMatchUiState
+    }
+
+    // 统一 activeUiStateFlow：根据当前游戏类型选择对应的 StateFlow 供 AudioHost collect
+    val activeUiStateFlow = when {
+        appFlowState.useNetworkMatch -> roomViewModel.matchUiState
+        gameViewModelType == GameViewModelType.ONNX -> onnxViewModel.uiState
+        else -> viewModel.uiState
+    }
+
+    AudioHost(
+        uiStateFlow = activeUiStateFlow,
+        currentRoute = appFlowState.currentRoute,
+        audioService = audioService,
+    )
+
     NavHost(
         navController = navController,
         startDestination = AppFlowRoute.HOME.route,
@@ -418,11 +441,6 @@ fun ChuDaDiNavGraph(
             )
         }
         composable(AppFlowRoute.GAME.route) {
-            val activeUiState = when {
-                appFlowState.useNetworkMatch -> appFlowState.activeMatchUiState
-                gameViewModelType == GameViewModelType.ONNX -> onnxUiState
-                else -> appFlowState.activeMatchUiState
-            }
             // Dispatch ONNX start when pending params are available
             val startParams = pendingOnnxStart
             if (startParams != null && gameViewModelType == GameViewModelType.ONNX) {

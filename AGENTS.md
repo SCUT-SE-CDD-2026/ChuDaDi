@@ -39,6 +39,7 @@
 `app/src/main/java/com/example/chudadi/` 代码包结构：
 ```text
 ├── ai/rulebased/policy|scoring   // 规则型 AI
+├── audio                          // 音频系统（SFX + BGM）
 ├── controller/client|game|server // 控制层
 ├── model/game/engine|entity|rule|snapshot // 模型层
 ├── navigation                    // 页面路由

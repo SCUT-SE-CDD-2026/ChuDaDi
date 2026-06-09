@@ -45,6 +45,20 @@ class SettingsViewModel(
             initialValue = false,
         )
 
+    val soundEnabled: StateFlow<Boolean> = repository.soundEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true,
+        )
+
+    val bgmEnabled: StateFlow<Boolean> = repository.bgmEnabled
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = true,
+        )
+
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
@@ -91,6 +105,18 @@ class SettingsViewModel(
     fun onNightModeChanged(enabled: Boolean) {
         viewModelScope.launch {
             repository.updateNightMode(enabled)
+        }
+    }
+
+    fun onSoundEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateSoundEnabled(enabled)
+        }
+    }
+
+    fun onBgmEnabledChanged(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateBgmEnabled(enabled)
         }
     }
 
